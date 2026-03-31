@@ -41,69 +41,64 @@ export async function POST(req: Request) {
     const file = formData.get("image");
 
     if (!(file instanceof File)) {
-      return Response.json(
-        { error: "Kein Bild empfangen." },
-        { status: 400 }
-      );
+      return Response.json({ error: "Kein Bild empfangen." }, { status: 400 });
     }
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const base64 = buffer.toString("base64");
     const mimeType = file.type || "image/jpeg";
+
     const dataUrl = `data:${mimeType};base64,${base64}`;
+
+    // 👇 WICHTIG: ANY FIX für TypeScript
+    const input: any = [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "Extrahiere aus einer Stellenanzeige die Felder jobTitle, company und email. Antworte nur als JSON.",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "Lies dieses Bild und extrahiere jobTitle, company und email als JSON.",
+          },
+          {
+            type: "input_image",
+            image_url: dataUrl,
+            detail: "low",
+          },
+        ],
+      },
+    ];
 
     const response = await client.responses.create({
       model: "gpt-5",
-      input: [
-        {
-          role: "system",
-          content: [
-            {
-              type: "input_text",
-              text:
-                "Du liest eine fotografierte Stellenanzeige aus und extrahierst die wichtigsten Kontaktdaten. Antworte ausschließlich als JSON mit den Feldern jobTitle, company und email. Wenn etwas nicht sicher erkennbar ist, gib einen leeren String zurück.",
-            },
-          ],
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text:
-                "Lies dieses Bild einer Stellenanzeige aus. Extrahiere Stellentitel, Unternehmen und E-Mail-Adresse. Antworte nur als JSON mit genau diesen drei Feldern: jobTitle, company, email.",
-            },
-            {
-              type: "input_image",
-              image_url: dataUrl,
-            },
-          ],
-        },
-      ],
+      input,
     });
 
-    const raw = response.output_text?.trim() || "";
+    const raw = response.output_text || "{}";
 
-    let parsed: { jobTitle?: string; company?: string; email?: string } = {};
+    let parsed: any = {};
 
     try {
       parsed = JSON.parse(raw);
     } catch {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
-      } else {
-        return Response.json(
-          { error: "Die Bilddaten konnten nicht sauber gelesen werden." },
-          { status: 500 }
-        );
-      }
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
     }
 
-    const jobTitle = (parsed.jobTitle || "").trim();
-    const company = (parsed.company || "").trim();
-    const email = (parsed.email || "").trim();
+    const jobTitle = parsed.jobTitle || "";
+    const company = parsed.company || "";
+    const email = parsed.email || "";
 
     const { subject, body } = buildMail(jobTitle, company);
 
@@ -117,7 +112,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error(error);
     return Response.json(
-      { error: "Beim Verarbeiten des Bildes ist ein Fehler aufgetreten." },
+      { error: "Fehler bei Bildanalyse" },
       { status: 500 }
     );
   }
