@@ -59,7 +59,11 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
         <div style="margin-bottom: 24px;">
-          ${textToHtml(text)}
+          ${textToHtml(
+  text.includes("Mit freundlichen Grüßen")
+    ? text
+    : `${text}\n\nMit freundlichen Grüßen`
+)}
         </div>
 
         <div style="margin: 20px 0 18px 0;">
@@ -113,7 +117,11 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
       subject:
         subject || "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de",
       html,
-      text: `${text}${plainSignature}`,
+      const finalText = text.includes("Mit freundlichen Grüßen")
+  ? text
+  : `${text}\n\nMit freundlichen Grüßen`;
+
+text: `${finalText}${plainSignature}`,
       bcc: process.env.TEST_RECIPIENT_EMAIL || undefined,
     });
 
