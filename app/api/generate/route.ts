@@ -1,9 +1,5 @@
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 function countWords(text: string) {
   return text
     .trim()
@@ -39,6 +35,19 @@ Vorgaben:
 
 export async function POST(req: Request) {
   try {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+      return Response.json(
+        { error: "OPENAI_API_KEY fehlt." },
+        { status: 500 }
+      );
+    }
+
+    const client = new OpenAI({
+      apiKey,
+    });
+
     const body = await req.json();
 
     const theme = String(body.theme || "").trim();
