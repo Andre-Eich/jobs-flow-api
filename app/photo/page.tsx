@@ -91,15 +91,56 @@ export default function PhotoToMailPage() {
           Stellenanzeige hochladen
         </label>
 
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-          style={{
-            marginBottom: "20px",
-            width: "100%",
-          }}
-        />
+        <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
+  
+  {/* Datei auswählen */}
+  <label
+    style={{
+      padding: "10px 14px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "8px",
+      background: "#ffffff",
+      cursor: "pointer",
+    }}
+  >
+    📁 Datei auswählen
+    <input
+      type="file"
+      accept="image/*"
+      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+      style={{ display: "none" }}
+    />
+  </label>
+
+  {/* Kamera */}
+  <label
+    style={{
+      padding: "10px 14px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "8px",
+      background: "#ffffff",
+      cursor: "pointer",
+    }}
+  >
+    📷 Foto machen
+    <input
+      type="file"
+      accept="image/*"
+      capture="environment"
+      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+      style={{ display: "none" }}
+    />
+  </label>
+
+</div>
+
+{selectedFile && (
+  <div style={{ marginBottom: "20px", fontSize: "14px" }}>
+    Ausgewählt: {selectedFile.name}
+  </div>
+)}
+
+
 
         <button
           onClick={handleAnalyze}
