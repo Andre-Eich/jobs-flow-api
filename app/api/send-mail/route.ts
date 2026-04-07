@@ -17,13 +17,7 @@ function textToHtml(text: string) {
 }
 
 function buildFinalText(text: string) {
-  let cleanedText = text.trim();
-
-  cleanedText = cleanedText.replace(
-    /(mit freundlichen grüßen[,!]?|freundliche grüße[,!]?)\s*$/i,
-    ""
-  ).trim();
-
+  const cleanedText = text.trim();
   return `${cleanedText}\n\nMit freundlichen Grüßen`;
 }
 
@@ -121,7 +115,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
     `;
 
     const data = await resend.emails.send({
-      from: "Andre Eichstädt <onboarding@resend.dev>",
+      from: "Andre Eichstädt <mail@jobs-in-berlin-brandenburg.de>",
       to: actualRecipient,
       subject:
         subject || "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de",

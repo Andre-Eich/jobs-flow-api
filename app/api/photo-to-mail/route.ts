@@ -56,9 +56,15 @@ Regeln:
 - kurz
 - professionell
 - kein "Betreff:" im generierten Text
+- keine Signatur
+- kein Name
+- keine Kontaktdaten
+- keine Platzhalter wie [Ihr Name], [Ihr Unternehmen], [Ihr Kontakt]
 - nutze erkannte Daten
-- Ende mit einem kurzen Abschlusssatz, z. B.:
+- ende mit einem kurzen Abschlusssatz, z. B.:
   "Gerne sende ich Ihnen ein unverbindliches Angebot zu."
+- KEINE Grußformel
+- KEINE Signatur
 
 Antwort als JSON:
 {
@@ -67,7 +73,7 @@ Antwort als JSON:
   "contactPerson": "...",
   "email": "...",
   "category": "...",
-  "generatedEmail": "komplette Mail OHNE Betreff-Zeile"
+  "generatedEmail": "nur der eigentliche Mailtext ohne Grußformel und ohne Signatur"
 }
 `;
 
@@ -135,26 +141,12 @@ https://jobs-in-berlin-brandenburg.de/
 
 Damit erreichen Sie gezielt Bewerber aus Berlin & Brandenburg.
 
-Gerne sende ich Ihnen ein unverbindliches Angebot zu.
-
-Mit freundlichen Grüßen`;
-
-    const signature = `
-
-Andre Eichstädt
-Anzeigenberater
-Jobs in Berlin-Brandenburg
-Tel. 0335/629797-38
-a.eichstaedt@jobs-in-berlin-brandenburg.de
-
-Leipziger Str. 56
-15236 Frankfurt (Oder)
-www.jobs-in-berlin-brandenburg.de`;
+Gerne sende ich Ihnen ein unverbindliches Angebot zu.`;
 
     const generatedEmail =
-      (parsed.generatedEmail && parsed.generatedEmail.trim().length > 20
+      parsed.generatedEmail && parsed.generatedEmail.trim().length > 20
         ? parsed.generatedEmail.trim()
-        : fallbackEmail) + signature;
+        : fallbackEmail;
 
     return NextResponse.json({
       jobTitle,
