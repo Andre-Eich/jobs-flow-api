@@ -25,6 +25,7 @@ export default function PhotoToMailPage() {
 
   const [analyzing, setAnalyzing] = useState(false);
   const [sending, setSending] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [testMode, setTestMode] = useState(true);
 
   const [error, setError] = useState("");
@@ -126,6 +127,50 @@ export default function PhotoToMailPage() {
     }
   }
 
+  async function handleRegenerateEmail() {
+    setError("");
+    setSuccessMessage("");
+
+    if (!jobData.jobTitle.trim() && !jobData.company.trim()) {
+      setError("Bitte zuerst eine Datei oder URL analysieren.");
+      return;
+    }
+
+    try {
+      setRegenerating(true);
+
+      const response = await fetch("/api/regenerate-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jobTitle: jobData.jobTitle,
+          company: jobData.company,
+          contactPerson: jobData.contactPerson,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Fehler bei der Neugenerierung.");
+        return;
+      }
+
+      setJobData((prev) => ({
+        ...prev,
+        generatedEmail: data.generatedEmail || prev.generatedEmail,
+      }));
+
+      setSuccessMessage("E-Mail-Text neu generiert.");
+    } catch {
+      setError("Der E-Mail-Text konnte nicht neu generiert werden.");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   async function handleSendEmail() {
     setError("");
     setSuccessMessage("");
@@ -220,16 +265,7 @@ export default function PhotoToMailPage() {
               <button
                 onClick={handleAnalyzeUrl}
                 disabled={analyzing}
-                style={{
-                  padding: "10px 16px",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "8px",
-                  background: "#ffffff",
-                  color: "#111827",
-                  cursor: analyzing ? "not-allowed" : "pointer",
-                  fontSize: "15px",
-                  opacity: analyzing ? 0.7 : 1,
-                }}
+                style={secondaryButtonStyle(analyzing)}
               >
                 {analyzing ? "Wird analysiert..." : "URL analysieren"}
               </button>
@@ -255,15 +291,7 @@ export default function PhotoToMailPage() {
             flexWrap: "wrap",
           }}
         >
-          <label
-            style={{
-              padding: "10px 14px",
-              border: "1px solid #cbd5e1",
-              borderRadius: "8px",
-              background: "#ffffff",
-              cursor: "pointer",
-            }}
-          >
+          <label style={uploadLabelStyle}>
             📁 Datei
             <input
               type="file"
@@ -274,15 +302,7 @@ export default function PhotoToMailPage() {
           </label>
 
           {isMobile && (
-            <label
-              style={{
-                padding: "10px 14px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "8px",
-                background: "#ffffff",
-                cursor: "pointer",
-              }}
-            >
+            <label style={uploadLabelStyle}>
               📷 Foto
               <input
                 type="file"
@@ -466,22 +486,11 @@ export default function PhotoToMailPage() {
             </button>
 
             <button
-              onClick={() => {
-                setError("");
-                setSuccessMessage("");
-                setJobData(EMPTY_JOB_DATA);
-              }}
-              style={{
-                padding: "10px 16px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "8px",
-                background: "#ffffff",
-                color: "#111827",
-                cursor: "pointer",
-                fontSize: "15px",
-              }}
+              onClick={handleRegenerateEmail}
+              disabled={regenerating}
+              style={secondaryButtonStyle(regenerating)}
             >
-              Text neu
+              {regenerating ? "Wird neu erstellt..." : "Text neu"}
             </button>
           </div>
         </div>
@@ -529,4 +538,25 @@ function Field({
       />
     </div>
   );
+}
+
+const uploadLabelStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "8px",
+  background: "#ffffff",
+  cursor: "pointer",
+};
+
+function secondaryButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    padding: "10px 16px",
+    border: "1px solid #cbd5e1",
+    borderRadius: "8px",
+    background: "#ffffff",
+    color: "#111827",
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontSize: "15px",
+    opacity: disabled ? 0.7 : 1,
+  };
 }

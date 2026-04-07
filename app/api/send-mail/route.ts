@@ -17,7 +17,14 @@ function textToHtml(text: string) {
 }
 
 function buildFinalText(text: string) {
-  const cleanedText = text.trim();
+  let cleanedText = text.trim();
+
+  // Entfernt am Ende evtl. schon vorhandene Grußformeln
+  cleanedText = cleanedText.replace(
+    /(mit freundlichen grüßen[,!]?|freundliche grüße[,!]?)\s*$/i,
+    ""
+  ).trim();
+
   return `${cleanedText}\n\nMit freundlichen Grüßen`;
 }
 
