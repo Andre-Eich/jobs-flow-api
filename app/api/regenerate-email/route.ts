@@ -6,9 +6,13 @@ export async function POST(req: Request) {
 
     const safeJobTitle =
       String(jobTitle || "").trim() || "die ausgeschriebene Position";
-    const safeCompany = String(company || "").trim() || "Ihrem Unternehmen";
-    const safeContactPerson =
-      String(contactPerson || "").trim() || "Sehr geehrte Damen und Herren";
+    const safeCompany =
+      String(company || "").trim() || "Ihr Unternehmen";
+    const safeContactPerson = String(contactPerson || "").trim();
+
+    const opening = safeContactPerson
+      ? `Nutze als Einstieg natürlich den Ansprechpartner "${safeContactPerson}".`
+      : `Falls kein Ansprechpartner vorhanden ist, beginne mit "Sehr geehrte Damen und Herren,".`;
 
     const prompt = `
 Erstelle eine kurze, professionelle Akquise-E-Mail auf Deutsch.
@@ -16,24 +20,42 @@ Erstelle eine kurze, professionelle Akquise-E-Mail auf Deutsch.
 Kontext:
 - Stellentitel: ${safeJobTitle}
 - Unternehmen: ${safeCompany}
-- Ansprechpartner: ${safeContactPerson}
+
+${opening}
 
 Ziel:
 Dem Unternehmen soll angeboten werden, die Stellenanzeige zusätzlich auf jobs-in-berlin-brandenburg.de zu veröffentlichen.
 
-Wichtige Regeln:
-- Kein Bewerbungston
-- Nicht "ich habe Interesse an der Stelle"
-- Stattdessen Nutzen für das Unternehmen hervorheben
-- Kurz, klar, lösungsorientiert
-- Kein "Betreff:"
-- Keine Signatur
-- Keine Kontaktdaten
-- Keine Grußformel
-- Ende mit:
-"Gerne sende ich Ihnen ein unverbindliches Angebot zu."
+SEHR WICHTIG:
+Diese Mail ist KEINE Bewerbung.
+Sie darf nicht so klingen, als wolle sich der Absender auf die Stelle bewerben.
 
-Wenn kein konkreter Ansprechpartner vorhanden ist, neutral formulieren.
+Verboten:
+- "ich interessiere mich für die Stelle"
+- "ich habe großes Interesse"
+- "ich möchte mich bewerben"
+- "Bewerbung"
+- "Gesprächstermin"
+- "ich freue mich über Ihre Rückmeldung zu meiner Bewerbung"
+
+Stattdessen:
+- Nutzen für das Unternehmen
+- zusätzliche Reichweite
+- Sichtbarkeit in Berlin und Brandenburg
+- ggf. weitere Ausspielung über Indeed, meinestadt und Stepstone
+- lösungsorientierter, vertrieblicher Ton
+
+Regeln:
+- kurz
+- klar
+- professionell
+- kein "Betreff:"
+- keine Grußformel am Ende
+- keine Signatur
+- keine Kontaktdaten
+
+Die Mail soll mit diesem Satz enden:
+"Gerne sende ich Ihnen ein unverbindliches Angebot zu."
 `;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {

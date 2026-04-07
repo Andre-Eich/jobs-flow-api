@@ -11,7 +11,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 👉 Seite laden
     const response = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0",
@@ -27,52 +26,78 @@ export async function POST(req: Request) {
 
     const html = await response.text();
 
-    // 👉 sehr simple Text-Extraktion
     const textContent = html
       .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
-      .slice(0, 8000); // begrenzen
+      .trim()
+      .slice(0, 10000);
 
-    // 👉 Prompt
     const prompt = `
-Du bekommst den Inhalt einer deutschen Stellenanzeige.
+Du bekommst den extrahierten Text einer deutschen Stellenanzeige.
 
-Extrahiere:
+Aufgabe 1: Extrahiere:
 - jobTitle
 - company
 - contactPerson
 - email
+- category
 
-Erstelle zusätzlich eine kurze, professionelle Akquise-Mail.
+Aufgabe 2: Erstelle eine kurze, professionelle Akquise-Mail für den Vertrieb eines Stellenportals.
 
-Regeln:
-- Deutsch
-- kurz und klar
-- kein "Betreff:"
+SEHR WICHTIG:
+Diese Mail ist KEINE Bewerbung.
+Sie darf nicht so klingen, als wolle sich der Absender auf die Stelle bewerben.
+
+Verboten sind insbesondere:
+- "ich interessiere mich für die Stelle"
+- "ich habe großes Interesse"
+- "ich möchte mich bewerben"
+- "Gesprächstermin"
+- "Bewerbung"
+
+Ziel:
+Dem Unternehmen soll angeboten werden, die Stellenanzeige zusätzlich auf jobs-in-berlin-brandenburg.de zu veröffentlichen.
+
+Nutzenargumente:
+- Handwerk / Pflege / Logistik:
+  schwierige Besetzung, passive Kandidaten, regionale Sichtbarkeit
+- IT / Management / Büro / Verwaltung:
+  digitale Reichweite, Sichtbarkeit in Berlin und Brandenburg, zusätzliche Schaltung über Indeed, meinestadt und Stepstone
+- Sonstiges:
+  zusätzliche Reichweite, regionale Präsenz
+
+Stil:
+- kurz
+- klar
+- professionell
+- vertrieblich
+- kein Betreff
+- keine Grußformel am Ende
 - keine Signatur
-- kein Name
-- kein "Mit freundlichen Grüßen"
-- kein Platzhalter
+- keine Kontaktdaten
 
-Ende mit:
+Falls kein Ansprechpartner vorhanden ist, beginne neutral mit:
+"Sehr geehrte Damen und Herren,"
+
+Die Mail soll mit diesem Satz enden:
 "Gerne sende ich Ihnen ein unverbindliches Angebot zu."
 
-Antwort als JSON:
+Antworte ausschließlich als JSON:
 {
   "jobTitle": "...",
   "company": "...",
   "contactPerson": "...",
   "email": "...",
+  "category": "...",
   "generatedEmail": "..."
 }
 
-Text:
+Stellenanzeigentext:
 ${textContent}
 `;
 
-    // 👉 OpenAI Call
     const aiResponse = await fetch(
       "https://api.openai.com/v1/chat/completions",
       {
@@ -90,7 +115,7 @@ ${textContent}
               content: prompt,
             },
           ],
-          max_tokens: 800,
+          max_tokens: 900,
         }),
       }
     );

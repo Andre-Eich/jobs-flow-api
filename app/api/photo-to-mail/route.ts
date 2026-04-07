@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 const DEFAULT_VALUES = {
   jobTitle: "die ausgeschriebene Position",
   company: "Ihr Unternehmen",
-  contactPerson: "Guten Tag",
+  contactPerson: "",
   email: "",
 };
 
@@ -26,54 +26,72 @@ export async function POST(req: Request) {
     const prompt = `
 Du analysierst ein Foto oder einen Screenshot einer deutschen Stellenanzeige.
 
-1. Extrahiere:
-- jobTitle (Stellentitel)
-- company (Unternehmen)
-- contactPerson (Ansprechpartner)
-- email (E-Mail)
+Aufgabe 1: Extrahiere diese Felder:
+- jobTitle = Stellentitel
+- company = Unternehmen
+- contactPerson = Ansprechpartner, falls vorhanden
+- email = E-Mail-Adresse, falls vorhanden
+- category = eine passende Kategorie, z. B. Handwerk, Pflege, Logistik, IT, Management, Büro, Verwaltung, Sonstiges
 
-2. Bestimme zusätzlich:
-- category (z. B. Handwerk, Pflege, IT, Management, Büro, Sonstiges)
+Aufgabe 2: Erstelle eine kurze, professionelle Akquise-Mail für den Vertrieb eines Stellenportals.
 
-3. Erstelle eine kurze, überzeugende Akquise-E-Mail für ein Stellenportal.
+WICHTIG:
+Diese Mail ist KEINE Bewerbung.
+Die Mail darf auf keinen Fall so klingen, als wolle sich der Absender auf die Stelle bewerben.
 
-Ziel:
-https://jobs-in-berlin-brandenburg.de/
+VERBOTEN sind Formulierungen wie:
+- "ich interessiere mich für die Stelle"
+- "ich habe großes Interesse"
+- "ich möchte mich bewerben"
+- "ich freue mich auf ein Gespräch"
+- "Bewerbung"
+- "Gesprächstermin"
 
-Passe Tonalität und Argumente an:
+Ziel der Mail:
+Dem Unternehmen soll angeboten werden, die Stellenanzeige zusätzlich auf jobs-in-berlin-brandenburg.de zu veröffentlichen.
 
-- Handwerk / Pflege:
-  → Fachkräftemangel
-  → Schwierigkeit passende Bewerber
-  → passive Kandidaten + Social Media
+Argumentationslogik:
+- Handwerk / Pflege / Logistik:
+  Fokus auf schwierige Besetzung, Fachkräftemangel, regionale Sichtbarkeit, passive Kandidaten
+- IT / Management / Büro / Verwaltung:
+  Fokus auf digitale Reichweite, gezielte Sichtbarkeit in Berlin und Brandenburg, zusätzliche Buchungsmöglichkeiten über Indeed, meinestadt und Stepstone
+- Sonstiges:
+  Fokus auf zusätzliche Reichweite und regionale Sichtbarkeit
 
-- IT / Management / Büro:
-  → digitale Reichweite in Berlin & Brandenburg
-  → zusätzlich buchbar über Indeed, meinestadt und Stepstone
-
-Regeln:
-- Deutsch
+Stil:
 - kurz
 - professionell
-- kein "Betreff:" im generierten Text
+- lösungsorientiert
+- vertrieblich
+- kein Bewerbungston
+- kein "Betreff:"
+- keine Grußformel
 - keine Signatur
-- kein Name
 - keine Kontaktdaten
-- keine Platzhalter wie [Ihr Name], [Ihr Unternehmen], [Ihr Kontakt]
-- nutze erkannte Daten
-- ende mit einem kurzen Abschlusssatz, z. B.:
-  "Gerne sende ich Ihnen ein unverbindliches Angebot zu."
-- KEINE Grußformel
-- KEINE Signatur
+- keine Platzhalter wie [Ihr Name]
 
-Antwort als JSON:
+Wenn kein Ansprechpartner vorhanden ist:
+- beginne neutral mit "Sehr geehrte Damen und Herren,"
+
+Wenn ein Ansprechpartner vorhanden ist:
+- nutze ihn sinnvoll, aber natürlich
+
+Die Mail soll ungefähr so aufgebaut sein:
+1. Bezug auf die Anzeige
+2. Nutzenargument
+3. kurzer Abschluss
+
+Die Mail soll mit diesem Satz enden:
+"Gerne sende ich Ihnen ein unverbindliches Angebot zu."
+
+Antworte ausschließlich als JSON in diesem Format:
 {
   "jobTitle": "...",
   "company": "...",
   "contactPerson": "...",
   "email": "...",
   "category": "...",
-  "generatedEmail": "nur der eigentliche Mailtext ohne Grußformel und ohne Signatur"
+  "generatedEmail": "..."
 }
 `;
 
@@ -102,7 +120,7 @@ Antwort als JSON:
               ],
             },
           ],
-          max_tokens: 800,
+          max_tokens: 900,
         }),
       }
     );
@@ -127,24 +145,23 @@ Antwort als JSON:
 
     const jobTitle = parsed.jobTitle?.trim() || DEFAULT_VALUES.jobTitle;
     const company = parsed.company?.trim() || DEFAULT_VALUES.company;
-    const contactPerson =
-      parsed.contactPerson?.trim() || DEFAULT_VALUES.contactPerson;
+    const contactPerson = parsed.contactPerson?.trim() || DEFAULT_VALUES.contactPerson;
     const email = parsed.email?.trim() || DEFAULT_VALUES.email;
 
-    const fallbackEmail = `${contactPerson},
+    const fallbackIntro = contactPerson
+      ? `Guten Tag ${contactPerson},`
+      : `Sehr geehrte Damen und Herren,`;
+
+    const fallbackEmail = `${fallbackIntro}
 
 ich bin auf Ihre Stellenanzeige als "${jobTitle}" bei ${company} aufmerksam geworden.
 
-Gerne würde ich Ihnen anbieten, diese Position zusätzlich auf meinem Stellenportal zu veröffentlichen:
-
-https://jobs-in-berlin-brandenburg.de/
-
-Damit erreichen Sie gezielt Bewerber aus Berlin & Brandenburg.
+Über jobs-in-berlin-brandenburg.de können Sie Ihre Anzeige zusätzlich regional sichtbar machen und gezielt Bewerber aus Berlin und Brandenburg erreichen.
 
 Gerne sende ich Ihnen ein unverbindliches Angebot zu.`;
 
     const generatedEmail =
-      parsed.generatedEmail && parsed.generatedEmail.trim().length > 20
+      parsed.generatedEmail && parsed.generatedEmail.trim().length > 30
         ? parsed.generatedEmail.trim()
         : fallbackEmail;
 
