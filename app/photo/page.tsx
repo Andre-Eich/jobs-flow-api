@@ -2,31 +2,16 @@
 
 import { useState } from "react";
 
-type ExtractedJobData = {
-  jobTitle: string;
-  company: string;
-  contactPerson: string;
-  email: string;
-  generatedEmail: string;
-};
-
-const DEFAULT_VALUES = {
-  jobTitle: "die ausgeschriebene Position",
-  company: "Ihr Unternehmen",
-  contactPerson: "Guten Tag",
-  email: "",
-};
-
 export default function PhotoToMailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [jobData, setJobData] = useState<ExtractedJobData>({
-    jobTitle: DEFAULT_VALUES.jobTitle,
-    company: DEFAULT_VALUES.company,
-    contactPerson: DEFAULT_VALUES.contactPerson,
-    email: DEFAULT_VALUES.email,
+  const [jobData, setJobData] = useState({
+    jobTitle: "",
+    company: "",
+    contactPerson: "",
+    email: "",
     generatedEmail: "",
   });
 
@@ -34,7 +19,7 @@ export default function PhotoToMailPage() {
     setError("");
 
     if (!selectedFile) {
-      setError("Bitte ein Bild der Stellenanzeige auswählen.");
+      setError("Bitte Bild auswählen");
       return;
     }
 
@@ -44,27 +29,21 @@ export default function PhotoToMailPage() {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const response = await fetch("/api/photo-to-mail", {
+      const res = await fetch("/api/photo-to-mail", {
         method: "POST",
         body: formData,
       });
 
-      const data = await response.json();
+      const data = await res.json();
 
-      if (!response.ok) {
-        setError(data.error || "Fehler bei der Analyse.");
+      if (!res.ok) {
+        setError(data.error);
         return;
       }
 
-      setJobData({
-        jobTitle: data.jobTitle || DEFAULT_VALUES.jobTitle,
-        company: data.company || DEFAULT_VALUES.company,
-        contactPerson: data.contactPerson || DEFAULT_VALUES.contactPerson,
-        email: data.email || DEFAULT_VALUES.email,
-        generatedEmail: data.generatedEmail || "",
-      });
+      setJobData(data);
     } catch {
-      setError("Die Anfrage konnte nicht ausgeführt werden.");
+      setError("Fehler");
     } finally {
       setLoading(false);
     }
@@ -72,179 +51,107 @@ export default function PhotoToMailPage() {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0, marginBottom: "18px", fontSize: "18px" }}>
-        Photo to Email
-      </h1>
+      <h1>Photo to Email</h1>
 
-      <div
-        style={{
-          background: "#ffffff",
-          border: "1px solid #d1d5db",
-          borderRadius: "12px",
-          padding: "16px",
-          maxWidth: "850px",
-          width: "100%",
-          boxSizing: "border-box",
-        }}
-      >
-        <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
-          Stellenanzeige hochladen
+      {/* Upload */}
+      <div style={{ display: "flex", gap: 10 }}>
+        <label>
+          📁 Datei
+          <input
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={(e) =>
+              setSelectedFile(e.target.files?.[0] || null)
+            }
+          />
         </label>
 
-        <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
-  
-  {/* Datei auswählen */}
-  <label
-    style={{
-      padding: "10px 14px",
-      border: "1px solid #cbd5e1",
-      borderRadius: "8px",
-      background: "#ffffff",
-      cursor: "pointer",
-    }}
-  >
-    📁 Datei auswählen
-    <input
-      type="file"
-      accept="image/*"
-      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-      style={{ display: "none" }}
-    />
-  </label>
-
-  {/* Kamera */}
-  <label
-    style={{
-      padding: "10px 14px",
-      border: "1px solid #cbd5e1",
-      borderRadius: "8px",
-      background: "#ffffff",
-      cursor: "pointer",
-    }}
-  >
-    📷 Foto machen
-    <input
-      type="file"
-      accept="image/*"
-      capture="environment"
-      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-      style={{ display: "none" }}
-    />
-  </label>
-
-</div>
-
-{selectedFile && (
-  <div style={{ marginBottom: "20px", fontSize: "14px" }}>
-    Ausgewählt: {selectedFile.name}
-  </div>
-)}
-
-
-
-        <button
-          onClick={handleAnalyze}
-          disabled={loading}
-          style={{
-            padding: "10px 16px",
-            border: "none",
-            borderRadius: "8px",
-            background: "#111827",
-            color: "#ffffff",
-            cursor: loading ? "not-allowed" : "pointer",
-            fontSize: "15px",
-            opacity: loading ? 0.7 : 1,
-            marginBottom: "24px",
-          }}
-        >
-          {loading ? "Wird analysiert..." : "Bild analysieren"}
-        </button>
-
-        {error ? (
-          <div
-            style={{
-              marginBottom: "20px",
-              color: "#b91c1c",
-              fontWeight: 600,
-              wordBreak: "break-word",
-            }}
-          >
-            {error}
-          </div>
-        ) : null}
-
-        <div
-          style={{
-            display: "grid",
-            gap: "16px",
-          }}
-        >
-          <Field label="Stellentitel" value={jobData.jobTitle} />
-          <Field label="Unternehmen" value={jobData.company} />
-          <Field label="Ansprechpartner" value={jobData.contactPerson} />
-          <Field label="E-Mail-Adresse" value={jobData.email || "Nicht gefunden"} />
-
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "8px",
-                fontWeight: 600,
-              }}
-            >
-              Generierte E-Mail
-            </label>
-
-            <textarea
-              value={jobData.generatedEmail}
-              readOnly
-              rows={10}
-              style={{
-                width: "100%",
-                padding: "12px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "8px",
-                background: "#f9fafb",
-                fontSize: "15px",
-                boxSizing: "border-box",
-                resize: "vertical",
-                fontFamily: "Arial, sans-serif",
-                lineHeight: 1.5,
-              }}
-            />
-          </div>
-        </div>
+        <label>
+          📷 Kamera
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: "none" }}
+            onChange={(e) =>
+              setSelectedFile(e.target.files?.[0] || null)
+            }
+          />
+        </label>
       </div>
-    </div>
-  );
-}
 
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <label
-        style={{
-          display: "block",
-          marginBottom: "8px",
-          fontWeight: 600,
-        }}
-      >
-        {label}
-      </label>
+      {selectedFile && <p>{selectedFile.name}</p>}
+
+      <button onClick={handleAnalyze}>
+        {loading ? "Analysiere..." : "Analysieren"}
+      </button>
+
+      {error && <p>{error}</p>}
+
+      {/* Felder */}
+      <input
+        value={jobData.jobTitle}
+        onChange={(e) =>
+          setJobData({ ...jobData, jobTitle: e.target.value })
+        }
+        placeholder="Jobtitel"
+      />
 
       <input
-        value={value}
-        readOnly
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          border: "1px solid #cbd5e1",
-          borderRadius: "8px",
-          background: "#f9fafb",
-          fontSize: "15px",
-          boxSizing: "border-box",
-        }}
+        value={jobData.company}
+        onChange={(e) =>
+          setJobData({ ...jobData, company: e.target.value })
+        }
+        placeholder="Firma"
       />
+
+      <input
+        value={jobData.contactPerson}
+        onChange={(e) =>
+          setJobData({
+            ...jobData,
+            contactPerson: e.target.value,
+          })
+        }
+        placeholder="Ansprechpartner"
+      />
+
+      <input
+        value={jobData.email}
+        onChange={(e) =>
+          setJobData({ ...jobData, email: e.target.value })
+        }
+        placeholder="Email"
+      />
+
+      {/* Mail */}
+      <textarea
+        value={jobData.generatedEmail}
+        onChange={(e) =>
+          setJobData({
+            ...jobData,
+            generatedEmail: e.target.value,
+          })
+        }
+        rows={10}
+      />
+
+      {/* Buttons */}
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={() => {
+            window.location.href = `mailto:${jobData.email}?body=${encodeURIComponent(
+              jobData.generatedEmail
+            )}`;
+          }}
+          style={{ background: "black", color: "white" }}
+        >
+          Email senden
+        </button>
+
+        <button onClick={handleAnalyze}>Text neu</button>
+      </div>
     </div>
   );
 }
