@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 function escapeHtml(value: string) {
   return value
@@ -25,52 +27,12 @@ export async function POST(req: Request) {
       );
     }
 
-    if (
-      !process.env.SMTP_HOST ||
-      !process.env.SMTP_PORT ||
-      !process.env.SMTP_USER ||
-      !process.env.SMTP_PASS
-    ) {
-      return NextResponse.json(
-        { error: "SMTP Umgebungsvariablen fehlen." },
-        { status: 500 }
-      );
-    }
-
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT),
-      secure: true, // one.com mit Port 465
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-    });
-
-    await transporter.verify();
-
     const profileImageUrl = "https://api.jobs-flow.com/andre-eichstaedt.png";
     const footerLogosUrl = "https://api.jobs-flow.com/footer-logos.png";
 
-    const signatureText = `
-
-Andre Eichstädt
-Anzeigenberater
-Jobs in Berlin-Brandenburg
-Tel. 0335/629797-38
-a.eichstaedt@jobs-in-berlin-brandenburg.de
-
-Leipziger Str. 56
-15236 Frankfurt (Oder)
-www.jobs-in-berlin-brandenburg.de
-
-Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen, genügt eine kurze Antwort mit "Nein danke".`;
-
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
+        
         <div style="margin-bottom: 24px;">
           ${textToHtml(text)}
         </div>
@@ -113,30 +75,30 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
         <div style="margin-top: 8px;">
           <img
             src="${footerLogosUrl}"
-            alt="Kooperationen, Partnerschaften und Mitgliedschaften"
+            alt="Kooperationen"
             style="display:block; width:600px; max-width:100%; height:auto;"
           />
         </div>
+
       </div>
     `;
 
-    const info = await transporter.sendMail({
-      from: `"Andre Eichstädt" <${process.env.SMTP_USER}>`,
+    const data = await resend.emails.send({
+      from: "Andre Eichstädt <onboarding@resend.dev>", // später Domain ersetzen!
       to,
-      bcc: process.env.SMTP_USER,
       subject:
         subject || "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de",
-      text: `${text}${signatureText}`,
       html,
+      text, // fallback
+      bcc: process.env.SMTP_USER, // Kopie an dich
     });
 
     return NextResponse.json({
       success: true,
-      message: "E-Mail erfolgreich gesendet.",
-      messageId: info.messageId,
+      data,
     });
   } catch (error: any) {
-    console.error("SEND MAIL ERROR:", error);
+    console.error("RESEND ERROR:", error);
 
     return NextResponse.json(
       {
