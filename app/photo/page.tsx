@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type JobData = {
   jobTitle: string;
@@ -20,19 +20,34 @@ const EMPTY_JOB_DATA: JobData = {
 
 export default function PhotoToMailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [jobUrl, setJobUrl] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
+
   const [analyzing, setAnalyzing] = useState(false);
   const [sending, setSending] = useState(false);
   const [testMode, setTestMode] = useState(true);
+
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [jobData, setJobData] = useState<JobData>(EMPTY_JOB_DATA);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   async function handleAnalyze() {
     setError("");
     setSuccessMessage("");
 
     if (!selectedFile) {
-      setError("Bitte ein Bild der Stellenanzeige auswählen.");
+      setError("Bitte eine Datei auswählen oder ein Foto aufnehmen.");
       return;
     }
 
@@ -63,6 +78,49 @@ export default function PhotoToMailPage() {
       });
     } catch {
       setError("Die Anfrage konnte nicht ausgeführt werden.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function handleAnalyzeUrl() {
+    setError("");
+    setSuccessMessage("");
+
+    if (!jobUrl.trim()) {
+      setError("Bitte eine Anzeigen-URL eingeben.");
+      return;
+    }
+
+    try {
+      setAnalyzing(true);
+
+      const response = await fetch("/api/photo-to-mail-url", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: jobUrl.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Fehler bei der URL-Analyse.");
+        return;
+      }
+
+      setJobData({
+        jobTitle: data.jobTitle || "",
+        company: data.company || "",
+        contactPerson: data.contactPerson || "",
+        email: data.email || "",
+        generatedEmail: data.generatedEmail || "",
+      });
+    } catch {
+      setError("Die URL konnte nicht analysiert werden.");
     } finally {
       setAnalyzing(false);
     }
@@ -141,6 +199,44 @@ export default function PhotoToMailPage() {
           boxSizing: "border-box",
         }}
       >
+        {!isMobile && (
+          <>
+            <Field
+              label="Anzeigen-URL"
+              value={jobUrl}
+              onChange={setJobUrl}
+              placeholder="https://..."
+            />
+
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                flexWrap: "wrap",
+                marginTop: "-4px",
+                marginBottom: "18px",
+              }}
+            >
+              <button
+                onClick={handleAnalyzeUrl}
+                disabled={analyzing}
+                style={{
+                  padding: "10px 16px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  background: "#ffffff",
+                  color: "#111827",
+                  cursor: analyzing ? "not-allowed" : "pointer",
+                  fontSize: "15px",
+                  opacity: analyzing ? 0.7 : 1,
+                }}
+              >
+                {analyzing ? "Wird analysiert..." : "URL analysieren"}
+              </button>
+            </div>
+          </>
+        )}
+
         <label
           style={{
             display: "block",
@@ -148,7 +244,7 @@ export default function PhotoToMailPage() {
             fontWeight: 600,
           }}
         >
-          Stellenanzeige hochladen
+          {isMobile ? "Datei oder Foto" : "Datei"}
         </label>
 
         <div
@@ -177,24 +273,26 @@ export default function PhotoToMailPage() {
             />
           </label>
 
-          <label
-            style={{
-              padding: "10px 14px",
-              border: "1px solid #cbd5e1",
-              borderRadius: "8px",
-              background: "#ffffff",
-              cursor: "pointer",
-            }}
-          >
-            📷 Kamera
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-              style={{ display: "none" }}
-            />
-          </label>
+          {isMobile && (
+            <label
+              style={{
+                padding: "10px 14px",
+                border: "1px solid #cbd5e1",
+                borderRadius: "8px",
+                background: "#ffffff",
+                cursor: "pointer",
+              }}
+            >
+              📷 Foto
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                style={{ display: "none" }}
+              />
+            </label>
+          )}
         </div>
 
         {selectedFile && (
@@ -225,7 +323,7 @@ export default function PhotoToMailPage() {
             marginBottom: "24px",
           }}
         >
-          {analyzing ? "Wird analysiert..." : "Analysieren"}
+          {analyzing ? "Wird analysiert..." : "Datei analysieren"}
         </button>
 
         {error ? (
@@ -368,17 +466,19 @@ export default function PhotoToMailPage() {
             </button>
 
             <button
-              onClick={handleAnalyze}
-              disabled={analyzing}
+              onClick={() => {
+                setError("");
+                setSuccessMessage("");
+                setJobData(EMPTY_JOB_DATA);
+              }}
               style={{
                 padding: "10px 16px",
                 border: "1px solid #cbd5e1",
                 borderRadius: "8px",
                 background: "#ffffff",
                 color: "#111827",
-                cursor: analyzing ? "not-allowed" : "pointer",
+                cursor: "pointer",
                 fontSize: "15px",
-                opacity: analyzing ? 0.7 : 1,
               }}
             >
               Text neu
@@ -394,10 +494,12 @@ function Field({
   label,
   value,
   onChange,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -414,6 +516,7 @@ function Field({
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
         style={{
           width: "100%",
           padding: "10px 12px",
