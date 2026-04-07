@@ -2,26 +2,39 @@
 
 import { useState } from "react";
 
+type ExtractedJobData = {
+  jobTitle: string;
+  company: string;
+  contactPerson: string;
+  email: string;
+  generatedEmail: string;
+};
+
+const DEFAULT_VALUES = {
+  jobTitle: "die ausgeschriebene Position",
+  company: "Ihr Unternehmen",
+  contactPerson: "Guten Tag",
+  email: "",
+};
+
 export default function PhotoToMailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [recipient, setRecipient] = useState("");
-  const [subject, setSubject] = useState("");
-  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("");
   const [error, setError] = useState("");
 
-  async function handleSubmit() {
+  const [jobData, setJobData] = useState<ExtractedJobData>({
+    jobTitle: DEFAULT_VALUES.jobTitle,
+    company: DEFAULT_VALUES.company,
+    contactPerson: DEFAULT_VALUES.contactPerson,
+    email: DEFAULT_VALUES.email,
+    generatedEmail: "",
+  });
+
+  async function handleAnalyze() {
     setError("");
-    setResult("");
 
     if (!selectedFile) {
-      setError("Bitte ein Bild auswählen.");
-      return;
-    }
-
-    if (!recipient.trim()) {
-      setError("Bitte eine Empfänger-E-Mail eingeben.");
+      setError("Bitte ein Bild der Stellenanzeige auswählen.");
       return;
     }
 
@@ -30,9 +43,6 @@ export default function PhotoToMailPage() {
 
       const formData = new FormData();
       formData.append("file", selectedFile);
-      formData.append("recipient", recipient);
-      formData.append("subject", subject);
-      formData.append("message", message);
 
       const response = await fetch("/api/photo-to-mail", {
         method: "POST",
@@ -42,11 +52,17 @@ export default function PhotoToMailPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || "Fehler beim Senden.");
+        setError(data.error || "Fehler bei der Analyse.");
         return;
       }
 
-      setResult(data.message || "E-Mail erfolgreich gesendet.");
+      setJobData({
+        jobTitle: data.jobTitle || DEFAULT_VALUES.jobTitle,
+        company: data.company || DEFAULT_VALUES.company,
+        contactPerson: data.contactPerson || DEFAULT_VALUES.contactPerson,
+        email: data.email || DEFAULT_VALUES.email,
+        generatedEmail: data.generatedEmail || "",
+      });
     } catch {
       setError("Die Anfrage konnte nicht ausgeführt werden.");
     } finally {
@@ -56,14 +72,7 @@ export default function PhotoToMailPage() {
 
   return (
     <div>
-      <h1
-        style={{
-          marginTop: 0,
-          marginBottom: "18px",
-          fontSize: "18px",
-          wordBreak: "break-word",
-        }}
-      >
+      <h1 style={{ marginTop: 0, marginBottom: "18px", fontSize: "18px" }}>
         Photo to Email
       </h1>
 
@@ -73,13 +82,13 @@ export default function PhotoToMailPage() {
           border: "1px solid #d1d5db",
           borderRadius: "12px",
           padding: "16px",
-          maxWidth: "760px",
+          maxWidth: "850px",
           width: "100%",
           boxSizing: "border-box",
         }}
       >
         <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
-          Bild hochladen
+          Stellenanzeige hochladen
         </label>
 
         <input
@@ -92,73 +101,8 @@ export default function PhotoToMailPage() {
           }}
         />
 
-        <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
-          Empfänger-E-Mail
-        </label>
-
-        <input
-          type="email"
-          value={recipient}
-          onChange={(e) => setRecipient(e.target.value)}
-          placeholder="beispiel@firma.de"
-          style={{
-            padding: "10px 12px",
-            border: "1px solid #cbd5e1",
-            borderRadius: "8px",
-            background: "#ffffff",
-            width: "100%",
-            marginBottom: "20px",
-            fontSize: "15px",
-            boxSizing: "border-box",
-          }}
-        />
-
-        <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
-          Betreff
-        </label>
-
-        <input
-          type="text"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder="Betreff der E-Mail"
-          style={{
-            padding: "10px 12px",
-            border: "1px solid #cbd5e1",
-            borderRadius: "8px",
-            background: "#ffffff",
-            width: "100%",
-            marginBottom: "20px",
-            fontSize: "15px",
-            boxSizing: "border-box",
-          }}
-        />
-
-        <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
-          Nachricht
-        </label>
-
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Optionale Nachricht"
-          rows={6}
-          style={{
-            padding: "10px 12px",
-            border: "1px solid #cbd5e1",
-            borderRadius: "8px",
-            background: "#ffffff",
-            width: "100%",
-            marginBottom: "20px",
-            fontSize: "15px",
-            boxSizing: "border-box",
-            resize: "vertical",
-            fontFamily: "Arial, sans-serif",
-          }}
-        />
-
         <button
-          onClick={handleSubmit}
+          onClick={handleAnalyze}
           disabled={loading}
           style={{
             padding: "10px 16px",
@@ -169,38 +113,97 @@ export default function PhotoToMailPage() {
             cursor: loading ? "not-allowed" : "pointer",
             fontSize: "15px",
             opacity: loading ? 0.7 : 1,
-            width: "100%",
+            marginBottom: "24px",
           }}
         >
-          {loading ? "Wird gesendet..." : "Bild per E-Mail senden"}
+          {loading ? "Wird analysiert..." : "Bild analysieren"}
         </button>
+
+        {error ? (
+          <div
+            style={{
+              marginBottom: "20px",
+              color: "#b91c1c",
+              fontWeight: 600,
+              wordBreak: "break-word",
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gap: "16px",
+          }}
+        >
+          <Field label="Stellentitel" value={jobData.jobTitle} />
+          <Field label="Unternehmen" value={jobData.company} />
+          <Field label="Ansprechpartner" value={jobData.contactPerson} />
+          <Field label="E-Mail-Adresse" value={jobData.email || "Nicht gefunden"} />
+
+          <div>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "8px",
+                fontWeight: 600,
+              }}
+            >
+              Generierte E-Mail
+            </label>
+
+            <textarea
+              value={jobData.generatedEmail}
+              readOnly
+              rows={10}
+              style={{
+                width: "100%",
+                padding: "12px",
+                border: "1px solid #cbd5e1",
+                borderRadius: "8px",
+                background: "#f9fafb",
+                fontSize: "15px",
+                boxSizing: "border-box",
+                resize: "vertical",
+                fontFamily: "Arial, sans-serif",
+                lineHeight: 1.5,
+              }}
+            />
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
 
-      {error ? (
-        <div
-          style={{
-            marginTop: "16px",
-            color: "#b91c1c",
-            fontWeight: 600,
-            wordBreak: "break-word",
-          }}
-        >
-          {error}
-        </div>
-      ) : null}
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <label
+        style={{
+          display: "block",
+          marginBottom: "8px",
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </label>
 
-      {result ? (
-        <div
-          style={{
-            marginTop: "16px",
-            color: "#166534",
-            fontWeight: 600,
-            wordBreak: "break-word",
-          }}
-        >
-          {result}
-        </div>
-      ) : null}
+      <input
+        value={value}
+        readOnly
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "8px",
+          background: "#f9fafb",
+          fontSize: "15px",
+          boxSizing: "border-box",
+        }}
+      />
     </div>
   );
 }
