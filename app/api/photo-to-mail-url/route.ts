@@ -1,8 +1,24 @@
 import { NextResponse } from "next/server";
 
+function buildHintsText(hints: string[] = []) {
+  if (!hints.length) return "";
+
+  const map: Record<string, string> = {
+    "multiple-jobs": "Mehrere Anzeigen gleichzeitig schalten erwähnen.",
+    "social-media": "Facebook & Instagram Reichweite erwähnen.",
+    "print": "Print-Anzeige bei BB CROSS erwähnen.",
+    "multiposting": "Indeed, MeineStadt und Stepstone erwähnen.",
+  };
+
+  return `
+Zusätzliche Hinweise:
+${hints.map((h) => "- " + map[h]).join("\n")}
+`;
+}
+
 export async function POST(req: Request) {
   try {
-    const { url } = await req.json();
+    const { url, hints } = await req.json();
 
     if (!url) {
       return NextResponse.json(
@@ -11,129 +27,77 @@ export async function POST(req: Request) {
       );
     }
 
-    const response = await fetch(url, {
+    const res = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0",
       },
     });
 
-    if (!response.ok) {
+    if (!res.ok) {
       return NextResponse.json(
         { error: "Seite konnte nicht geladen werden." },
         { status: 500 }
       );
     }
 
-    const html = await response.text();
+    const html = await res.text();
 
-    const textContent = html
+    const text = html
       .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
-      .trim()
       .slice(0, 10000);
 
     const prompt = `
-Du bekommst den extrahierten Text einer deutschen Stellenanzeige.
+Du analysierst eine Stellenanzeige (Text).
 
-Aufgabe 1: Extrahiere:
+Extrahiere:
 - jobTitle
 - company
 - contactPerson
 - email
-- category
 
-Aufgabe 2: Erstelle eine kurze, professionelle Akquise-Mail für den Vertrieb eines Stellenportals.
+Erstelle eine kurze VERTRIEBSMAIL (keine Bewerbung!).
 
-SEHR WICHTIG:
-Diese Mail ist KEINE Bewerbung.
-Sie darf nicht so klingen, als wolle sich der Absender auf die Stelle bewerben.
+WICHTIG:
+- Kein Bewerbungston
+- Fokus: Nutzen
 
-Verboten sind insbesondere:
-- "ich interessiere mich für die Stelle"
-- "ich habe großes Interesse"
-- "ich möchte mich bewerben"
-- "Gesprächstermin"
-- "Bewerbung"
+${buildHintsText(hints)}
 
-Ziel:
-Dem Unternehmen soll angeboten werden, die Stellenanzeige zusätzlich auf jobs-in-berlin-brandenburg.de zu veröffentlichen.
-
-Nutzenargumente:
-- Handwerk / Pflege / Logistik:
-  schwierige Besetzung, passive Kandidaten, regionale Sichtbarkeit
-- IT / Management / Büro / Verwaltung:
-  digitale Reichweite, Sichtbarkeit in Berlin und Brandenburg, zusätzliche Schaltung über Indeed, meinestadt und Stepstone
-- Sonstiges:
-  zusätzliche Reichweite, regionale Präsenz
-
-Stil:
-- kurz
-- klar
-- professionell
-- vertrieblich
-- kein Betreff
-- keine Grußformel am Ende
-- keine Signatur
-- keine Kontaktdaten
-
-Falls kein Ansprechpartner vorhanden ist, beginne neutral mit:
-"Sehr geehrte Damen und Herren,"
-
-Die Mail soll mit diesem Satz enden:
+Ende:
 "Gerne sende ich Ihnen ein unverbindliches Angebot zu."
 
-Antworte ausschließlich als JSON:
-{
-  "jobTitle": "...",
-  "company": "...",
-  "contactPerson": "...",
-  "email": "...",
-  "category": "...",
-  "generatedEmail": "..."
-}
-
-Stellenanzeigentext:
-${textContent}
+Antwort als JSON.
 `;
 
-    const aiResponse = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          max_tokens: 900,
-        }),
-      }
-    );
+    const ai = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 900,
+      }),
+    });
 
-    const aiData = await aiResponse.json();
+    const data = await ai.json();
 
-    if (!aiResponse.ok) {
+    if (!ai.ok) {
       return NextResponse.json(
-        { error: aiData?.error?.message || "KI Fehler" },
+        { error: data?.error?.message || "KI Fehler" },
         { status: 500 }
       );
     }
 
-    const content = aiData?.choices?.[0]?.message?.content;
-
     let parsed;
     try {
-      parsed = JSON.parse(content);
+      parsed = JSON.parse(data.choices[0].message.content);
     } catch {
       return NextResponse.json(
         { error: "JSON Parsing Fehler" },
@@ -141,16 +105,23 @@ ${textContent}
       );
     }
 
+    const fallbackEmail = `Sehr geehrte Damen und Herren,
+
+ich bin auf Ihre Stellenanzeige aufmerksam geworden.
+
+Über jobs-in-berlin-brandenburg.de erreichen Sie gezielt Bewerber aus der Region.
+
+Gerne sende ich Ihnen ein unverbindliches Angebot zu.`;
+
     return NextResponse.json({
       jobTitle: parsed.jobTitle || "",
       company: parsed.company || "",
       contactPerson: parsed.contactPerson || "",
       email: parsed.email || "",
-      generatedEmail: parsed.generatedEmail || "",
+      generatedEmail: parsed.generatedEmail?.trim() || fallbackEmail,
     });
   } catch (error) {
     console.error(error);
-
     return NextResponse.json(
       { error: "Server Fehler" },
       { status: 500 }

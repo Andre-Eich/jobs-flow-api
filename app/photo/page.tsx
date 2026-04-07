@@ -18,10 +18,33 @@ const EMPTY_JOB_DATA: JobData = {
   generatedEmail: "",
 };
 
+const HINT_OPTIONS = [
+  {
+    key: "multiple-jobs",
+    label: "Mehrere Jobs",
+  },
+  {
+    key: "social-media",
+    label: "Social-Media",
+  },
+  {
+    key: "print",
+    label: "Print-Anzeige",
+  },
+  {
+    key: "multiposting",
+    label: "Multiposting",
+  },
+] as const;
+
+type HintKey = (typeof HINT_OPTIONS)[number]["key"];
+
 export default function PhotoToMailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [jobUrl, setJobUrl] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+
+  const [selectedHints, setSelectedHints] = useState<HintKey[]>([]);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -43,85 +66,90 @@ export default function PhotoToMailPage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  async function handleAnalyze() {
-    setError("");
-    setSuccessMessage("");
-
-    if (!selectedFile) {
-      setError("Bitte eine Datei auswählen oder ein Foto aufnehmen.");
-      return;
-    }
-
-    try {
-      setAnalyzing(true);
-
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-
-      const response = await fetch("/api/photo-to-mail", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Fehler bei der Analyse.");
-        return;
-      }
-
-      setJobData({
-        jobTitle: data.jobTitle || "",
-        company: data.company || "",
-        contactPerson: data.contactPerson || "",
-        email: data.email || "",
-        generatedEmail: data.generatedEmail || "",
-      });
-    } catch {
-      setError("Die Anfrage konnte nicht ausgeführt werden.");
-    } finally {
-      setAnalyzing(false);
-    }
+  function toggleHint(hint: HintKey) {
+    setSelectedHints((prev) =>
+      prev.includes(hint)
+        ? prev.filter((item) => item !== hint)
+        : [...prev, hint]
+    );
   }
 
-  async function handleAnalyzeUrl() {
+  async function handleAnalyzeSource() {
     setError("");
     setSuccessMessage("");
 
-    if (!jobUrl.trim()) {
-      setError("Bitte eine Anzeigen-URL eingeben.");
+    const hasUrl = !isMobile && jobUrl.trim().length > 0;
+    const hasFile = !!selectedFile;
+
+    if (!hasUrl && !hasFile) {
+      setError(
+        isMobile
+          ? "Bitte eine Datei auswählen oder ein Foto aufnehmen."
+          : "Bitte eine Anzeigen-URL eingeben oder eine Datei auswählen."
+      );
       return;
     }
 
     try {
       setAnalyzing(true);
 
-      const response = await fetch("/api/photo-to-mail-url", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: jobUrl.trim(),
-        }),
-      });
+      if (hasUrl) {
+        const response = await fetch("/api/photo-to-mail-url", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            url: jobUrl.trim(),
+            hints: selectedHints,
+          }),
+        });
 
-      const data = await response.json();
+        const data = await response.json();
 
-      if (!response.ok) {
-        setError(data.error || "Fehler bei der URL-Analyse.");
+        if (!response.ok) {
+          setError(data.error || "Fehler bei der URL-Analyse.");
+          return;
+        }
+
+        setJobData({
+          jobTitle: data.jobTitle || "",
+          company: data.company || "",
+          contactPerson: data.contactPerson || "",
+          email: data.email || "",
+          generatedEmail: data.generatedEmail || "",
+        });
+
         return;
       }
 
-      setJobData({
-        jobTitle: data.jobTitle || "",
-        company: data.company || "",
-        contactPerson: data.contactPerson || "",
-        email: data.email || "",
-        generatedEmail: data.generatedEmail || "",
-      });
+      if (hasFile) {
+        const formData = new FormData();
+        formData.append("file", selectedFile as File);
+        formData.append("hints", JSON.stringify(selectedHints));
+
+        const response = await fetch("/api/photo-to-mail", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.error || "Fehler bei der Analyse.");
+          return;
+        }
+
+        setJobData({
+          jobTitle: data.jobTitle || "",
+          company: data.company || "",
+          contactPerson: data.contactPerson || "",
+          email: data.email || "",
+          generatedEmail: data.generatedEmail || "",
+        });
+      }
     } catch {
-      setError("Die URL konnte nicht analysiert werden.");
+      setError("Die Anfrage konnte nicht ausgeführt werden.");
     } finally {
       setAnalyzing(false);
     }
@@ -132,7 +160,7 @@ export default function PhotoToMailPage() {
     setSuccessMessage("");
 
     if (!jobData.jobTitle.trim() && !jobData.company.trim()) {
-      setError("Bitte zuerst eine Datei oder URL analysieren.");
+      setError("Bitte zuerst eine Quelle analysieren.");
       return;
     }
 
@@ -148,6 +176,7 @@ export default function PhotoToMailPage() {
           jobTitle: jobData.jobTitle,
           company: jobData.company,
           contactPerson: jobData.contactPerson,
+          hints: selectedHints,
         }),
       });
 
@@ -245,32 +274,12 @@ export default function PhotoToMailPage() {
         }}
       >
         {!isMobile && (
-          <>
-            <Field
-              label="Anzeigen-URL"
-              value={jobUrl}
-              onChange={setJobUrl}
-              placeholder="https://..."
-            />
-
-            <div
-              style={{
-                display: "flex",
-                gap: "10px",
-                flexWrap: "wrap",
-                marginTop: "-4px",
-                marginBottom: "18px",
-              }}
-            >
-              <button
-                onClick={handleAnalyzeUrl}
-                disabled={analyzing}
-                style={secondaryButtonStyle(analyzing)}
-              >
-                {analyzing ? "Wird analysiert..." : "URL analysieren"}
-              </button>
-            </div>
-          </>
+          <Field
+            label="Anzeigen-URL"
+            value={jobUrl}
+            onChange={setJobUrl}
+            placeholder="https://..."
+          />
         )}
 
         <label
@@ -328,8 +337,42 @@ export default function PhotoToMailPage() {
           </div>
         )}
 
+        <div style={{ marginBottom: "8px", fontWeight: 600 }}>Hinweise</div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+            marginBottom: "18px",
+          }}
+        >
+          {HINT_OPTIONS.map((option) => {
+            const active = selectedHints.includes(option.key);
+
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => toggleHint(option.key)}
+                style={{
+                  padding: "8px 12px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "999px",
+                  background: active ? "#111827" : "#ffffff",
+                  color: active ? "#ffffff" : "#111827",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
         <button
-          onClick={handleAnalyze}
+          onClick={handleAnalyzeSource}
           disabled={analyzing}
           style={{
             padding: "10px 16px",
@@ -343,7 +386,7 @@ export default function PhotoToMailPage() {
             marginBottom: "24px",
           }}
         >
-          {analyzing ? "Wird analysiert..." : "Datei analysieren"}
+          {analyzing ? "Wird analysiert..." : "Analysieren und Email generieren"}
         </button>
 
         {error ? (

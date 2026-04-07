@@ -1,106 +1,81 @@
 import { NextResponse } from "next/server";
 
+function buildHintsText(hints: string[] = []) {
+  if (!hints.length) return "";
+
+  const map: Record<string, string> = {
+    "multiple-jobs": "Mehrere Anzeigen gleichzeitig schalten erwähnen.",
+    "social-media": "Facebook & Instagram Reichweite erwähnen.",
+    "print": "Print-Anzeige bei BB CROSS erwähnen.",
+    "multiposting": "Indeed, MeineStadt und Stepstone erwähnen.",
+  };
+
+  return `
+Zusätzliche Hinweise:
+${hints.map((h) => "- " + map[h]).join("\n")}
+`;
+}
+
 export async function POST(req: Request) {
   try {
-    const { jobTitle, company, contactPerson } = await req.json();
-
-    const safeJobTitle =
-      String(jobTitle || "").trim() || "die ausgeschriebene Position";
-    const safeCompany =
-      String(company || "").trim() || "Ihr Unternehmen";
-    const safeContactPerson = String(contactPerson || "").trim();
-
-    const opening = safeContactPerson
-      ? `Nutze als Einstieg natürlich den Ansprechpartner "${safeContactPerson}".`
-      : `Falls kein Ansprechpartner vorhanden ist, beginne mit "Sehr geehrte Damen und Herren,".`;
+    const { jobTitle, company, contactPerson, hints } = await req.json();
 
     const prompt = `
-Erstelle eine kurze, professionelle Akquise-E-Mail auf Deutsch.
+Erstelle eine kurze, professionelle VERTRIEBSMAIL.
 
 Kontext:
-- Stellentitel: ${safeJobTitle}
-- Unternehmen: ${safeCompany}
+- Job: ${jobTitle || "Position"}
+- Firma: ${company || "Unternehmen"}
 
-${opening}
+${buildHintsText(hints)}
 
-Ziel:
-Dem Unternehmen soll angeboten werden, die Stellenanzeige zusätzlich auf jobs-in-berlin-brandenburg.de zu veröffentlichen.
+WICHTIG:
+- KEINE Bewerbung
+- Fokus Nutzen
+- kurz und klar
 
-SEHR WICHTIG:
-Diese Mail ist KEINE Bewerbung.
-Sie darf nicht so klingen, als wolle sich der Absender auf die Stelle bewerben.
-
-Verboten:
-- "ich interessiere mich für die Stelle"
-- "ich habe großes Interesse"
-- "ich möchte mich bewerben"
-- "Bewerbung"
-- "Gesprächstermin"
-- "ich freue mich über Ihre Rückmeldung zu meiner Bewerbung"
-
-Stattdessen:
-- Nutzen für das Unternehmen
-- zusätzliche Reichweite
-- Sichtbarkeit in Berlin und Brandenburg
-- ggf. weitere Ausspielung über Indeed, meinestadt und Stepstone
-- lösungsorientierter, vertrieblicher Ton
-
-Regeln:
-- kurz
-- klar
-- professionell
-- kein "Betreff:"
-- keine Grußformel am Ende
-- keine Signatur
-- keine Kontaktdaten
-
-Die Mail soll mit diesem Satz enden:
+Ende:
 "Gerne sende ich Ihnen ein unverbindliches Angebot zu."
 `;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const ai = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
+        messages: [{ role: "user", content: prompt }],
         max_tokens: 500,
       }),
     });
 
-    const data = await response.json();
+    const data = await ai.json();
 
-    if (!response.ok) {
+    if (!ai.ok) {
       return NextResponse.json(
-        { error: data?.error?.message || "Fehler bei der Textgenerierung." },
+        { error: data?.error?.message || "KI Fehler" },
         { status: 500 }
       );
     }
 
-    const generatedEmail =
-      data?.choices?.[0]?.message?.content?.trim() || "";
+    const text = data?.choices?.[0]?.message?.content?.trim();
 
-    if (!generatedEmail) {
+    if (!text) {
       return NextResponse.json(
-        { error: "Kein Text von der KI erhalten." },
+        { error: "Kein Text erzeugt" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ generatedEmail });
+    return NextResponse.json({
+      generatedEmail: text,
+    });
   } catch (error) {
-    console.error("REGENERATE EMAIL ERROR:", error);
-
+    console.error(error);
     return NextResponse.json(
-      { error: "Serverfehler bei der Neugenerierung." },
+      { error: "Server Fehler" },
       { status: 500 }
     );
   }
