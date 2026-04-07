@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import PhotoToMailPage from "./photo/page";
 
 const DEFAULT_SERVICE_TASK = `Erstelle einen natürlichen deutschen Text mit genau {count} Wörtern.
 
@@ -13,71 +14,52 @@ Vorgaben:
 - Gib nur den finalen Text aus.
 - Genau {count} Wörter.`;
 
+type ToolKey = "service-text" | "text-generator" | "photo-mail";
+
 export default function Home() {
-  const [activeTool, setActiveTool] = useState("service-text");
+  const [activeTool, setActiveTool] = useState<ToolKey>("service-text");
 
   return (
     <div
       style={{
         display: "flex",
-        height: "100vh",
+        minHeight: "100vh",
         background: "#f3f4f6",
         color: "#111827",
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <div
+      <aside
         style={{
           width: "250px",
           borderRight: "1px solid #d1d5db",
           padding: "20px 16px",
           background: "#e5e7eb",
+          flexShrink: 0,
         }}
       >
         <h2 style={{ marginTop: 0, marginBottom: "24px" }}>Jobs-Flow</h2>
 
-        <button
+        <SidebarButton
+          active={activeTool === "service-text"}
           onClick={() => setActiveTool("service-text")}
-          style={{
-            display: "block",
-            width: "100%",
-            textAlign: "left",
-            padding: "10px 12px",
-            marginBottom: "10px",
-            border: "none",
-            borderRadius: "8px",
-            background:
-              activeTool === "service-text" ? "#111827" : "transparent",
-            color: activeTool === "service-text" ? "#ffffff" : "#111827",
-            cursor: "pointer",
-            fontSize: "16px",
-          }}
-        >
-          Service Text
-        </button>
+          label="Service Text"
+        />
 
-        <button
+        <SidebarButton
+          active={activeTool === "text-generator"}
           onClick={() => setActiveTool("text-generator")}
-          style={{
-            display: "block",
-            width: "100%",
-            textAlign: "left",
-            padding: "10px 12px",
-            marginBottom: "10px",
-            border: "none",
-            borderRadius: "8px",
-            background:
-              activeTool === "text-generator" ? "#111827" : "transparent",
-            color: activeTool === "text-generator" ? "#ffffff" : "#111827",
-            cursor: "pointer",
-            fontSize: "16px",
-          }}
-        >
-          Text Generator
-        </button>
-      </div>
+          label="Text Generator"
+        />
 
-      <div
+        <SidebarButton
+          active={activeTool === "photo-mail"}
+          onClick={() => setActiveTool("photo-mail")}
+          label="Photo to Email"
+        />
+      </aside>
+
+      <main
         style={{
           flex: 1,
           padding: "24px 36px",
@@ -87,8 +69,40 @@ export default function Home() {
       >
         {activeTool === "service-text" && <ServiceText />}
         {activeTool === "text-generator" && <TextGeneratorPlaceholder />}
-      </div>
+        {activeTool === "photo-mail" && <PhotoToMailPage />}
+      </main>
     </div>
+  );
+}
+
+function SidebarButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "block",
+        width: "100%",
+        textAlign: "left",
+        padding: "10px 12px",
+        marginBottom: "10px",
+        border: "none",
+        borderRadius: "8px",
+        background: active ? "#111827" : "transparent",
+        color: active ? "#ffffff" : "#111827",
+        cursor: "pointer",
+        fontSize: "16px",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -145,9 +159,6 @@ function ServiceText() {
     setActualCount(0);
     setVariantResults([]);
     setVariantCounts([]);
-    setCopiedSingle(false);
-    setCopiedVariant1(false);
-    setCopiedVariant2(false);
 
     if (!theme.trim()) {
       setError("Bitte ein Thema eingeben.");
@@ -192,9 +203,6 @@ function ServiceText() {
     setActualCount(0);
     setVariantResults([]);
     setVariantCounts([]);
-    setCopiedSingle(false);
-    setCopiedVariant1(false);
-    setCopiedVariant2(false);
 
     if (!theme.trim()) {
       setError("Bitte ein Thema eingeben.");
@@ -207,9 +215,7 @@ function ServiceText() {
       const [res1, res2] = await Promise.all([
         fetch("/api/generate", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             theme,
             properties,
@@ -219,9 +225,7 @@ function ServiceText() {
         }),
         fetch("/api/generate", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             theme,
             properties,
@@ -255,6 +259,7 @@ function ServiceText() {
       setError("Die Aufgabe darf nicht leer sein.");
       return;
     }
+
     setError("");
     setActiveTask(draftTask);
   }
@@ -379,13 +384,7 @@ function ServiceText() {
           maxWidth: "760px",
         }}
       >
-        <label
-          style={{
-            display: "block",
-            marginBottom: "8px",
-            fontWeight: 600,
-          }}
-        >
+        <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
           Thema
         </label>
 
@@ -400,16 +399,11 @@ function ServiceText() {
             width: "100%",
             marginBottom: "20px",
             fontSize: "15px",
+            boxSizing: "border-box",
           }}
         />
 
-        <label
-          style={{
-            display: "block",
-            marginBottom: "8px",
-            fontWeight: 600,
-          }}
-        >
+        <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
           Eigenschaften
         </label>
 
@@ -425,16 +419,11 @@ function ServiceText() {
             width: "100%",
             marginBottom: "20px",
             fontSize: "15px",
+            boxSizing: "border-box",
           }}
         />
 
-        <label
-          style={{
-            display: "block",
-            marginBottom: "8px",
-            fontWeight: 600,
-          }}
-        >
+        <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
           Anzahl Wörter
         </label>
 
@@ -520,13 +509,7 @@ function ServiceText() {
       </div>
 
       {error ? (
-        <div
-          style={{
-            marginTop: "16px",
-            color: "#b91c1c",
-            fontWeight: 600,
-          }}
-        >
+        <div style={{ marginTop: "16px", color: "#b91c1c", fontWeight: 600 }}>
           {error}
         </div>
       ) : null}
@@ -538,150 +521,100 @@ function ServiceText() {
             display: "flex",
             gap: "20px",
             maxWidth: "1100px",
+            flexWrap: "wrap",
           }}
         >
-          <div
-            style={{
-              flex: 1,
-              position: "relative",
-              background: "#ffffff",
-              border: "1px solid #d1d5db",
-              borderRadius: "12px",
-              padding: "16px",
-              minHeight: "140px",
-              lineHeight: 1.6,
-            }}
-          >
-            <button
-              onClick={() => copyToClipboard(variantResults[0], "v1")}
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "10px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "6px",
-                background: "#ffffff",
-                cursor: "pointer",
-                padding: "4px 8px",
-                fontSize: "14px",
-              }}
-              title="Kopieren"
-            >
-              {copiedVariant1 ? "✓" : "📋"}
-            </button>
+          <OutputBox
+            text={variantResults[0]}
+            copied={copiedVariant1}
+            onCopy={() => copyToClipboard(variantResults[0], "v1")}
+            footer={`Ziel: ${count} Wörter${variantCounts[0] > 0 ? ` • Ist: ${variantCounts[0]} Wörter` : ""}`}
+            placeholder="Hier erscheint Variante 1."
+          />
 
-            <div style={{ paddingRight: "40px" }}>
-              {variantResults[0] || "Hier erscheint Variante 1."}
-            </div>
-
-            <div
-              style={{
-                marginTop: "10px",
-                color: "#6b7280",
-                fontSize: "14px",
-              }}
-            >
-              Ziel: {count} Wörter
-              {variantCounts[0] > 0 ? ` • Ist: ${variantCounts[0]} Wörter` : ""}
-            </div>
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              position: "relative",
-              background: "#ffffff",
-              border: "1px solid #d1d5db",
-              borderRadius: "12px",
-              padding: "16px",
-              minHeight: "140px",
-              lineHeight: 1.6,
-            }}
-          >
-            <button
-              onClick={() => copyToClipboard(variantResults[1], "v2")}
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "10px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "6px",
-                background: "#ffffff",
-                cursor: "pointer",
-                padding: "4px 8px",
-                fontSize: "14px",
-              }}
-              title="Kopieren"
-            >
-              {copiedVariant2 ? "✓" : "📋"}
-            </button>
-
-            <div style={{ paddingRight: "40px" }}>
-              {variantResults[1] || "Hier erscheint Variante 2."}
-            </div>
-
-            <div
-              style={{
-                marginTop: "10px",
-                color: "#6b7280",
-                fontSize: "14px",
-              }}
-            >
-              Ziel: {count} Wörter
-              {variantCounts[1] > 0 ? ` • Ist: ${variantCounts[1]} Wörter` : ""}
-            </div>
-          </div>
+          <OutputBox
+            text={variantResults[1]}
+            copied={copiedVariant2}
+            onCopy={() => copyToClipboard(variantResults[1], "v2")}
+            footer={`Ziel: ${count} Wörter${variantCounts[1] > 0 ? ` • Ist: ${variantCounts[1]} Wörter` : ""}`}
+            placeholder="Hier erscheint Variante 2."
+          />
         </div>
       ) : (
         <>
-          <div
-            style={{
-              marginTop: "24px",
-              position: "relative",
-              background: "#ffffff",
-              border: "1px solid #d1d5db",
-              borderRadius: "12px",
-              padding: "16px",
-              minHeight: "140px",
-              maxWidth: "900px",
-              lineHeight: 1.6,
-            }}
-          >
-            <button
-              onClick={() => copyToClipboard(result, "single")}
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "10px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "6px",
-                background: "#ffffff",
-                cursor: "pointer",
-                padding: "4px 8px",
-                fontSize: "14px",
-              }}
-              title="Kopieren"
-            >
-              {copiedSingle ? "✓" : "📋"}
-            </button>
-
-            <div style={{ paddingRight: "40px" }}>
-              {result || "Hier erscheint der generierte Text."}
-            </div>
+          <div style={{ marginTop: "24px", maxWidth: "900px" }}>
+            <OutputBox
+              text={result}
+              copied={copiedSingle}
+              onCopy={() => copyToClipboard(result, "single")}
+              placeholder="Hier erscheint der generierte Text."
+            />
           </div>
 
-          <div
-            style={{
-              marginTop: "10px",
-              color: "#6b7280",
-              fontSize: "14px",
-            }}
-          >
+          <div style={{ marginTop: "10px", color: "#6b7280", fontSize: "14px" }}>
             Ziel: {count} Wörter
             {actualCount > 0 ? ` • Ist: ${actualCount} Wörter` : ""}
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function OutputBox({
+  text,
+  copied,
+  onCopy,
+  placeholder,
+  footer,
+}: {
+  text: string;
+  copied: boolean;
+  onCopy: () => void;
+  placeholder: string;
+  footer?: string;
+}) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        position: "relative",
+        background: "#ffffff",
+        border: "1px solid #d1d5db",
+        borderRadius: "12px",
+        padding: "16px",
+        minHeight: "140px",
+        lineHeight: 1.6,
+        minWidth: "320px",
+      }}
+    >
+      <button
+        onClick={onCopy}
+        style={{
+          position: "absolute",
+          top: "10px",
+          right: "10px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "6px",
+          background: "#ffffff",
+          cursor: "pointer",
+          padding: "4px 8px",
+          fontSize: "14px",
+        }}
+        title="Kopieren"
+      >
+        {copied ? "✓" : "📋"}
+      </button>
+
+      <div style={{ paddingRight: "40px", whiteSpace: "pre-wrap" }}>
+        {text || placeholder}
+      </div>
+
+      {footer ? (
+        <div style={{ marginTop: "10px", color: "#6b7280", fontSize: "14px" }}>
+          {footer}
+        </div>
+      ) : null}
     </div>
   );
 }
