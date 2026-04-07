@@ -16,6 +16,17 @@ function textToHtml(text: string) {
   return escapeHtml(text).replace(/\n/g, "<br/>");
 }
 
+function buildFinalText(text: string) {
+  let cleanedText = text.trim();
+
+  cleanedText = cleanedText.replace(
+    /(mit freundlichen grüßen[,!]?|freundliche grüße[,!]?)\s*$/i,
+    ""
+  ).trim();
+
+  return `${cleanedText}\n\nMit freundlichen Grüßen`;
+}
+
 export async function POST(req: Request) {
   try {
     const { to, subject, text, testMode } = await req.json();
@@ -39,6 +50,8 @@ export async function POST(req: Request) {
       );
     }
 
+    const finalText = buildFinalText(text);
+
     const profileImageUrl = "https://api.jobs-flow.com/andre-eichstaedt.png";
     const footerLogosUrl = "https://api.jobs-flow.com/footer-logos.png";
 
@@ -59,11 +72,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
         <div style="margin-bottom: 24px;">
-          ${textToHtml(
-  text.includes("Mit freundlichen Grüßen")
-    ? text
-    : `${text}\n\nMit freundlichen Grüßen`
-)}
+          ${textToHtml(finalText)}
         </div>
 
         <div style="margin: 20px 0 18px 0;">
@@ -117,11 +126,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
       subject:
         subject || "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de",
       html,
-      const finalText = text.includes("Mit freundlichen Grüßen")
-  ? text
-  : `${text}\n\nMit freundlichen Grüßen`;
-
-text: `${finalText}${plainSignature}`,
+      text: `${finalText}${plainSignature}`,
       bcc: process.env.TEST_RECIPIENT_EMAIL || undefined,
     });
 
