@@ -22,6 +22,7 @@ export default function PhotoToMailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [sending, setSending] = useState(false);
+  const [testMode, setTestMode] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [jobData, setJobData] = useState<JobData>(EMPTY_JOB_DATA);
@@ -71,8 +72,8 @@ export default function PhotoToMailPage() {
     setError("");
     setSuccessMessage("");
 
-    if (!jobData.email.trim()) {
-      setError("Keine E-Mail-Adresse vorhanden.");
+    if (!jobData.email.trim() && !testMode) {
+      setError("Keine E-Mail-Adresse des Unternehmens vorhanden.");
       return;
     }
 
@@ -93,6 +94,7 @@ export default function PhotoToMailPage() {
           to: jobData.email,
           subject: "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de",
           text: jobData.generatedEmail,
+          testMode,
         }),
       });
 
@@ -103,7 +105,11 @@ export default function PhotoToMailPage() {
         return;
       }
 
-      setSuccessMessage("E-Mail erfolgreich gesendet.");
+      setSuccessMessage(
+        testMode
+          ? "Test-E-Mail erfolgreich an dich gesendet."
+          : "E-Mail erfolgreich gesendet."
+      );
     } catch {
       setError("Die E-Mail konnte nicht gesendet werden.");
     } finally {
@@ -310,6 +316,30 @@ export default function PhotoToMailPage() {
                 lineHeight: 1.5,
               }}
             />
+          </div>
+
+          <div style={{ marginBottom: "2px" }}>
+            <label style={{ fontSize: "14px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={testMode}
+                onChange={(e) => setTestMode(e.target.checked)}
+                style={{ marginRight: "6px" }}
+              />
+              Test an mich senden
+            </label>
+          </div>
+
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#6b7280",
+              marginTop: "-4px",
+            }}
+          >
+            {testMode
+              ? "Versand geht an deine Testadresse."
+              : "Versand geht an die erkannte Unternehmens-E-Mail."}
           </div>
 
           <div

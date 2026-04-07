@@ -18,11 +18,23 @@ function textToHtml(text: string) {
 
 export async function POST(req: Request) {
   try {
-    const { to, subject, text } = await req.json();
+    const { to, subject, text, testMode } = await req.json();
 
-    if (!to || !text) {
+    if (!text) {
       return NextResponse.json(
         { error: "Fehlende Daten." },
+        { status: 400 }
+      );
+    }
+
+    const actualRecipient =
+      testMode && process.env.TEST_RECIPIENT_EMAIL
+        ? process.env.TEST_RECIPIENT_EMAIL
+        : to;
+
+    if (!actualRecipient) {
+      return NextResponse.json(
+        { error: "Kein Empfänger vorhanden." },
         { status: 400 }
       );
     }
@@ -30,9 +42,22 @@ export async function POST(req: Request) {
     const profileImageUrl = "https://api.jobs-flow.com/andre-eichstaedt.png";
     const footerLogosUrl = "https://api.jobs-flow.com/footer-logos.png";
 
+    const plainSignature = `
+
+Andre Eichstädt
+Anzeigenberater
+Jobs in Berlin-Brandenburg
+Tel. 0335/629797-38
+a.eichstaedt@jobs-in-berlin-brandenburg.de
+
+Leipziger Str. 56
+15236 Frankfurt (Oder)
+www.jobs-in-berlin-brandenburg.de
+
+Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen, genügt eine kurze Antwort mit "Nein danke".`;
+
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
-        
         <div style="margin-bottom: 24px;">
           ${textToHtml(text)}
         </div>
@@ -41,12 +66,12 @@ export async function POST(req: Request) {
           <img
             src="${profileImageUrl}"
             alt="Andre Eichstädt"
-            style="display:block; width:160px; max-width:100%; height:auto; border-radius: 80px;"
+            style="display:block; width:160px; max-width:100%; height:auto; border-radius:80px;"
           />
         </div>
 
         <div style="margin-bottom: 22px;">
-          <div style="font-weight: 700;">Andre Eichstädt</div>
+          <div style="font-weight:700;">Andre Eichstädt</div>
           <div>Anzeigenberater</div>
           <div>Jobs in Berlin-Brandenburg</div>
           <div>Tel. 0335/629797-38</div>
@@ -67,35 +92,35 @@ export async function POST(req: Request) {
           </div>
         </div>
 
-        <div style="margin: 20px 0 22px 0; font-size: 13px; color: #555555;">
+        <div style="margin:20px 0 22px 0; font-size:13px; color:#555555;">
           Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
           genügt eine kurze Antwort mit „Nein danke“.
         </div>
 
-        <div style="margin-top: 8px;">
+        <div style="margin-top:8px;">
           <img
             src="${footerLogosUrl}"
             alt="Kooperationen"
             style="display:block; width:600px; max-width:100%; height:auto;"
           />
         </div>
-
       </div>
     `;
 
     const data = await resend.emails.send({
-      from: "Andre Eichstädt <onboarding@resend.dev>", // später Domain ersetzen!
-      to,
+      from: "Andre Eichstädt <onboarding@resend.dev>",
+      to: actualRecipient,
       subject:
         subject || "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de",
       html,
-      text, // fallback
-      bcc: process.env.SMTP_USER, // Kopie an dich
+      text: `${text}${plainSignature}`,
+      bcc: process.env.TEST_RECIPIENT_EMAIL || undefined,
     });
 
     return NextResponse.json({
       success: true,
       data,
+      actualRecipient,
     });
   } catch (error: any) {
     console.error("RESEND ERROR:", error);
