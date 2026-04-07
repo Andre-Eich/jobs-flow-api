@@ -20,20 +20,37 @@ export async function POST(req: Request) {
 
     if (!to || !text) {
       return NextResponse.json(
-        { error: "Fehlende Daten" },
+        { error: "Fehlende Daten." },
         { status: 400 }
+      );
+    }
+
+    if (
+      !process.env.SMTP_HOST ||
+      !process.env.SMTP_PORT ||
+      !process.env.SMTP_USER ||
+      !process.env.SMTP_PASS
+    ) {
+      return NextResponse.json(
+        { error: "SMTP Umgebungsvariablen fehlen." },
+        { status: 500 }
       );
     }
 
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT),
-      secure: Number(process.env.SMTP_PORT) === 465,
+      secure: true, // one.com mit Port 465
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
+
+    await transporter.verify();
 
     const profileImageUrl = "https://api.jobs-flow.com/andre-eichstaedt.png";
     const footerLogosUrl = "https://api.jobs-flow.com/footer-logos.png";
@@ -72,10 +89,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
           <div>Jobs in Berlin-Brandenburg</div>
           <div>Tel. 0335/629797-38</div>
           <div>
-            <a
-              href="mailto:a.eichstaedt@jobs-in-berlin-brandenburg.de"
-              style="color:#111111; text-decoration:none;"
-            >
+            <a href="mailto:a.eichstaedt@jobs-in-berlin-brandenburg.de" style="color:#111111; text-decoration:none;">
               a.eichstaedt@jobs-in-berlin-brandenburg.de
             </a>
           </div>
@@ -85,11 +99,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
           <div>Leipziger Str. 56</div>
           <div>15236 Frankfurt (Oder)</div>
           <div>
-            <a
-              href="https://www.jobs-in-berlin-brandenburg.de"
-              target="_blank"
-              style="color:#111111; text-decoration:none;"
-            >
+            <a href="https://www.jobs-in-berlin-brandenburg.de" target="_blank" style="color:#111111; text-decoration:none;">
               www.jobs-in-berlin-brandenburg.de
             </a>
           </div>
@@ -110,7 +120,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
       </div>
     `;
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"Andre Eichstädt" <${process.env.SMTP_USER}>`,
       to,
       bcc: process.env.SMTP_USER,
@@ -120,12 +130,21 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
       html,
     });
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    return NextResponse.json({
+      success: true,
+      message: "E-Mail erfolgreich gesendet.",
+      messageId: info.messageId,
+    });
+  } catch (error: any) {
     console.error("SEND MAIL ERROR:", error);
 
     return NextResponse.json(
-      { error: "Fehler beim Mailversand" },
+      {
+        error:
+          error?.message ||
+          error?.response ||
+          "Fehler beim Mailversand.",
+      },
       { status: 500 }
     );
   }
