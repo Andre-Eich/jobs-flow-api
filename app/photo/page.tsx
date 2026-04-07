@@ -20,12 +20,15 @@ const EMPTY_JOB_DATA: JobData = {
 
 export default function PhotoToMailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [jobData, setJobData] = useState<JobData>(EMPTY_JOB_DATA);
 
   async function handleAnalyze() {
     setError("");
+    setSuccessMessage("");
 
     if (!selectedFile) {
       setError("Bitte ein Bild der Stellenanzeige auswählen.");
@@ -33,7 +36,7 @@ export default function PhotoToMailPage() {
     }
 
     try {
-      setLoading(true);
+      setAnalyzing(true);
 
       const formData = new FormData();
       formData.append("file", selectedFile);
@@ -60,20 +63,52 @@ export default function PhotoToMailPage() {
     } catch {
       setError("Die Anfrage konnte nicht ausgeführt werden.");
     } finally {
-      setLoading(false);
+      setAnalyzing(false);
     }
   }
 
-  function handleSendEmail() {
+  async function handleSendEmail() {
+    setError("");
+    setSuccessMessage("");
+
     if (!jobData.email.trim()) {
       setError("Keine E-Mail-Adresse vorhanden.");
       return;
     }
 
-    const subject = "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de";
-    const body = encodeURIComponent(jobData.generatedEmail);
+    if (!jobData.generatedEmail.trim()) {
+      setError("Kein E-Mail-Text vorhanden.");
+      return;
+    }
 
-    window.location.href = `mailto:${jobData.email}?subject=${encodeURIComponent(subject)}&body=${body}`;
+    try {
+      setSending(true);
+
+      const response = await fetch("/api/send-mail", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: jobData.email,
+          subject: "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de",
+          text: jobData.generatedEmail,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Fehler beim Senden.");
+        return;
+      }
+
+      setSuccessMessage("E-Mail erfolgreich gesendet.");
+    } catch {
+      setError("Die E-Mail konnte nicht gesendet werden.");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -171,20 +206,20 @@ export default function PhotoToMailPage() {
 
         <button
           onClick={handleAnalyze}
-          disabled={loading}
+          disabled={analyzing}
           style={{
             padding: "10px 16px",
             border: "none",
             borderRadius: "8px",
             background: "#111827",
             color: "#ffffff",
-            cursor: loading ? "not-allowed" : "pointer",
+            cursor: analyzing ? "not-allowed" : "pointer",
             fontSize: "15px",
-            opacity: loading ? 0.7 : 1,
+            opacity: analyzing ? 0.7 : 1,
             marginBottom: "24px",
           }}
         >
-          {loading ? "Wird analysiert..." : "Analysieren"}
+          {analyzing ? "Wird analysiert..." : "Analysieren"}
         </button>
 
         {error ? (
@@ -197,6 +232,19 @@ export default function PhotoToMailPage() {
             }}
           >
             {error}
+          </div>
+        ) : null}
+
+        {successMessage ? (
+          <div
+            style={{
+              marginBottom: "20px",
+              color: "#166534",
+              fontWeight: 600,
+              wordBreak: "break-word",
+            }}
+          >
+            {successMessage}
           </div>
         ) : null}
 
@@ -248,7 +296,7 @@ export default function PhotoToMailPage() {
               onChange={(e) =>
                 setJobData({ ...jobData, generatedEmail: e.target.value })
               }
-              rows={14}
+              rows={16}
               style={{
                 width: "100%",
                 padding: "12px",
@@ -274,31 +322,33 @@ export default function PhotoToMailPage() {
           >
             <button
               onClick={handleSendEmail}
+              disabled={sending}
               style={{
                 padding: "10px 16px",
                 border: "none",
                 borderRadius: "8px",
                 background: "#111827",
                 color: "#ffffff",
-                cursor: "pointer",
+                cursor: sending ? "not-allowed" : "pointer",
                 fontSize: "15px",
+                opacity: sending ? 0.7 : 1,
               }}
             >
-              Email senden
+              {sending ? "Wird gesendet..." : "Email senden"}
             </button>
 
             <button
               onClick={handleAnalyze}
-              disabled={loading}
+              disabled={analyzing}
               style={{
                 padding: "10px 16px",
                 border: "1px solid #cbd5e1",
                 borderRadius: "8px",
                 background: "#ffffff",
                 color: "#111827",
-                cursor: loading ? "not-allowed" : "pointer",
+                cursor: analyzing ? "not-allowed" : "pointer",
                 fontSize: "15px",
-                opacity: loading ? 0.7 : 1,
+                opacity: analyzing ? 0.7 : 1,
               }}
             >
               Text neu

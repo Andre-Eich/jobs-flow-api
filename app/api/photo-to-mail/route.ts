@@ -40,23 +40,25 @@ Du analysierst ein Foto oder einen Screenshot einer deutschen Stellenanzeige.
 Ziel:
 https://jobs-in-berlin-brandenburg.de/
 
-Passe Tonalität an:
+Passe Tonalität und Argumente an:
 
 - Handwerk / Pflege:
-→ Fachkräftemangel
-→ Schwierigkeit passende Bewerber
-→ passive Kandidaten + Social Media
+  → Fachkräftemangel
+  → Schwierigkeit passende Bewerber
+  → passive Kandidaten + Social Media
 
 - IT / Management / Büro:
-→ Qualität
-→ Reichweite
-→ Indeed, Stepstone, meinestadt
+  → digitale Reichweite in Berlin & Brandenburg
+  → zusätzlich buchbar über Indeed, meinestadt und Stepstone
 
 Regeln:
 - Deutsch
 - kurz
 - professionell
+- kein "Betreff:" im generierten Text
 - nutze erkannte Daten
+- Ende mit einem kurzen Abschlusssatz, z. B.:
+  "Gerne sende ich Ihnen ein unverbindliches Angebot zu."
 
 Antwort als JSON:
 {
@@ -65,7 +67,7 @@ Antwort als JSON:
   "contactPerson": "...",
   "email": "...",
   "category": "...",
-  "generatedEmail": "komplette Mail"
+  "generatedEmail": "komplette Mail OHNE Betreff-Zeile"
 }
 `;
 
@@ -114,10 +116,7 @@ Antwort als JSON:
     try {
       parsed = JSON.parse(content);
     } catch {
-      return NextResponse.json(
-        { error: "JSON Fehler" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "JSON Fehler" }, { status: 500 });
     }
 
     const jobTitle = parsed.jobTitle?.trim() || DEFAULT_VALUES.jobTitle;
@@ -126,9 +125,7 @@ Antwort als JSON:
       parsed.contactPerson?.trim() || DEFAULT_VALUES.contactPerson;
     const email = parsed.email?.trim() || DEFAULT_VALUES.email;
 
-    const fallbackEmail = `Betreff: Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de
-
-${contactPerson},
+    const fallbackEmail = `${contactPerson},
 
 ich bin auf Ihre Stellenanzeige als "${jobTitle}" bei ${company} aufmerksam geworden.
 
@@ -138,26 +135,25 @@ https://jobs-in-berlin-brandenburg.de/
 
 Damit erreichen Sie gezielt Bewerber aus Berlin & Brandenburg.
 
-Ich freue mich auf Ihre Rückmeldung.
+Gerne sende ich Ihnen ein unverbindliches Angebot zu.
 
 Mit freundlichen Grüßen`;
 
     const signature = `
 
-Andre Eichstädt  
-Anzeigenberater  
-Jobs in Berlin-Brandenburg  
-Tel. 0335/629797-38  
-a.eichstaedt@jobs-in-berlin-brandenburg.de  
+Andre Eichstädt
+Anzeigenberater
+Jobs in Berlin-Brandenburg
+Tel. 0335/629797-38
+a.eichstaedt@jobs-in-berlin-brandenburg.de
 
-Leipziger Str. 56  
-15236 Frankfurt (Oder)  
-www.jobs-in-berlin-brandenburg.de
-`;
+Leipziger Str. 56
+15236 Frankfurt (Oder)
+www.jobs-in-berlin-brandenburg.de`;
 
     const generatedEmail =
-      (parsed.generatedEmail && parsed.generatedEmail.length > 20
-        ? parsed.generatedEmail
+      (parsed.generatedEmail && parsed.generatedEmail.trim().length > 20
+        ? parsed.generatedEmail.trim()
         : fallbackEmail) + signature;
 
     return NextResponse.json({
@@ -170,9 +166,6 @@ www.jobs-in-berlin-brandenburg.de
   } catch (error) {
     console.error(error);
 
-    return NextResponse.json(
-      { error: "Server Fehler" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Server Fehler" }, { status: 500 });
   }
 }
