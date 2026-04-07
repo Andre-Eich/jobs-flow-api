@@ -56,7 +56,14 @@ export default function PhotoToMailPage() {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0, marginBottom: "18px", fontSize: "18px" }}>
+      <h1
+        style={{
+          marginTop: 0,
+          marginBottom: "18px",
+          fontSize: "18px",
+          wordBreak: "break-word",
+        }}
+      >
         Photo to Email
       </h1>
 
@@ -65,8 +72,10 @@ export default function PhotoToMailPage() {
           background: "#ffffff",
           border: "1px solid #d1d5db",
           borderRadius: "12px",
-          padding: "24px",
+          padding: "16px",
           maxWidth: "760px",
+          width: "100%",
+          boxSizing: "border-box",
         }}
       >
         <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
@@ -77,7 +86,10 @@ export default function PhotoToMailPage() {
           type="file"
           accept="image/*"
           onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-          style={{ marginBottom: "20px" }}
+          style={{
+            marginBottom: "20px",
+            width: "100%",
+          }}
         />
 
         <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
@@ -157,6 +169,7 @@ export default function PhotoToMailPage() {
             cursor: loading ? "not-allowed" : "pointer",
             fontSize: "15px",
             opacity: loading ? 0.7 : 1,
+            width: "100%",
           }}
         >
           {loading ? "Wird gesendet..." : "Bild per E-Mail senden"}
@@ -164,13 +177,27 @@ export default function PhotoToMailPage() {
       </div>
 
       {error ? (
-        <div style={{ marginTop: "16px", color: "#b91c1c", fontWeight: 600 }}>
+        <div
+          style={{
+            marginTop: "16px",
+            color: "#b91c1c",
+            fontWeight: 600,
+            wordBreak: "break-word",
+          }}
+        >
           {error}
         </div>
       ) : null}
 
       {result ? (
-        <div style={{ marginTop: "16px", color: "#166534", fontWeight: 600 }}>
+        <div
+          style={{
+            marginTop: "16px",
+            color: "#166534",
+            fontWeight: 600,
+            wordBreak: "break-word",
+          }}
+        >
           {result}
         </div>
       ) : null}

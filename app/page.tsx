@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PhotoToMailPage from "./photo/page";
 
 const DEFAULT_SERVICE_TASK = `Erstelle einen natürlichen deutschen Text mit genau {count} Wörtern.
@@ -18,6 +18,24 @@ type ToolKey = "service-text" | "text-generator" | "photo-mail";
 
 export default function Home() {
   const [activeTool, setActiveTool] = useState<ToolKey>("service-text");
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 900);
+    }
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  function handleSelectTool(tool: ToolKey) {
+    setActiveTool(tool);
+    setMobileMenuOpen(false);
+  }
 
   return (
     <div
@@ -29,46 +47,113 @@ export default function Home() {
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <aside
-        style={{
-          width: "250px",
-          borderRight: "1px solid #d1d5db",
-          padding: "20px 16px",
-          background: "#e5e7eb",
-          flexShrink: 0,
-        }}
-      >
-        <h2 style={{ marginTop: 0, marginBottom: "24px" }}>Jobs-Flow</h2>
+      {!isMobile && (
+        <aside
+          style={{
+            width: "250px",
+            borderRight: "1px solid #d1d5db",
+            padding: "20px 16px",
+            background: "#e5e7eb",
+            flexShrink: 0,
+          }}
+        >
+          <h2 style={{ marginTop: 0, marginBottom: "24px" }}>Jobs-Flow</h2>
 
-        <SidebarButton
-          active={activeTool === "service-text"}
-          onClick={() => setActiveTool("service-text")}
-          label="Service Text"
-        />
+          <SidebarButton
+            active={activeTool === "service-text"}
+            onClick={() => handleSelectTool("service-text")}
+            label="Service Text"
+          />
 
-        <SidebarButton
-          active={activeTool === "text-generator"}
-          onClick={() => setActiveTool("text-generator")}
-          label="Text Generator"
-        />
+          <SidebarButton
+            active={activeTool === "text-generator"}
+            onClick={() => handleSelectTool("text-generator")}
+            label="Text Generator"
+          />
 
-        <SidebarButton
-          active={activeTool === "photo-mail"}
-          onClick={() => setActiveTool("photo-mail")}
-          label="Photo to Email"
-        />
-      </aside>
+          <SidebarButton
+            active={activeTool === "photo-mail"}
+            onClick={() => handleSelectTool("photo-mail")}
+            label="Photo to Email"
+          />
+        </aside>
+      )}
 
       <main
         style={{
           flex: 1,
-          padding: "24px 36px",
+          padding: isMobile ? "16px" : "24px 36px",
           background: "#f9fafb",
           overflowY: "auto",
+          width: "100%",
         }}
       >
-        {activeTool === "service-text" && <ServiceText />}
-        {activeTool === "text-generator" && <TextGeneratorPlaceholder />}
+        {isMobile && (
+          <>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "16px",
+              }}
+            >
+              <h2 style={{ margin: 0 }}>Jobs-Flow</h2>
+
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                style={{
+                  border: "1px solid #cbd5e1",
+                  background: "#ffffff",
+                  borderRadius: "10px",
+                  padding: "10px 14px",
+                  fontSize: "22px",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                }}
+                aria-label="Menü öffnen"
+              >
+                ☰
+              </button>
+            </div>
+
+            {mobileMenuOpen && (
+              <div
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #d1d5db",
+                  borderRadius: "12px",
+                  padding: "12px",
+                  marginBottom: "16px",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+                }}
+              >
+                <SidebarButton
+                  active={activeTool === "service-text"}
+                  onClick={() => handleSelectTool("service-text")}
+                  label="Service Text"
+                />
+
+                <SidebarButton
+                  active={activeTool === "text-generator"}
+                  onClick={() => handleSelectTool("text-generator")}
+                  label="Text Generator"
+                />
+
+                <SidebarButton
+                  active={activeTool === "photo-mail"}
+                  onClick={() => handleSelectTool("photo-mail")}
+                  label="Photo to Email"
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTool === "service-text" && <ServiceText isMobile={isMobile} />}
+        {activeTool === "text-generator" && (
+          <TextGeneratorPlaceholder isMobile={isMobile} />
+        )}
         {activeTool === "photo-mail" && <PhotoToMailPage />}
       </main>
     </div>
@@ -91,10 +176,10 @@ function SidebarButton({
         display: "block",
         width: "100%",
         textAlign: "left",
-        padding: "10px 12px",
+        padding: "12px 14px",
         marginBottom: "10px",
         border: "none",
-        borderRadius: "8px",
+        borderRadius: "10px",
         background: active ? "#111827" : "transparent",
         color: active ? "#ffffff" : "#111827",
         cursor: "pointer",
@@ -106,7 +191,7 @@ function SidebarButton({
   );
 }
 
-function ServiceText() {
+function ServiceText({ isMobile }: { isMobile: boolean }) {
   const [theme, setTheme] = useState("");
   const [properties, setProperties] = useState("");
   const [count, setCount] = useState(30);
@@ -272,10 +357,16 @@ function ServiceText() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-        <h1 style={{ marginTop: 0, marginBottom: "18px", fontSize: "18px" }}>
-          Service Text
-        </h1>
+      <div
+        style={{
+          display: "flex",
+          alignItems: isMobile ? "flex-start" : "center",
+          flexDirection: isMobile ? "column" : "row",
+          gap: "12px",
+          marginBottom: "18px",
+        }}
+      >
+        <h1 style={{ margin: 0, fontSize: "18px" }}>Service Text</h1>
 
         <button
           onClick={() => setShowInfo(!showInfo)}
@@ -285,7 +376,6 @@ function ServiceText() {
             borderRadius: "8px",
             background: "#ffffff",
             cursor: "pointer",
-            marginBottom: "18px",
             fontSize: "14px",
           }}
         >
@@ -297,6 +387,7 @@ function ServiceText() {
         <div
           style={{
             display: "flex",
+            flexDirection: isMobile ? "column" : "row",
             gap: "20px",
             marginBottom: "20px",
             alignItems: "stretch",
@@ -338,8 +429,11 @@ function ServiceText() {
                 padding: "12px",
                 fontFamily: "Arial, sans-serif",
                 fontSize: "14px",
-                resize: "none",
+                resize: "vertical",
+                minHeight: "180px",
                 lineHeight: 1.5,
+                boxSizing: "border-box",
+                width: "100%",
               }}
             />
 
@@ -380,8 +474,10 @@ function ServiceText() {
           background: "#ffffff",
           border: "1px solid #d1d5db",
           borderRadius: "12px",
-          padding: "24px",
+          padding: isMobile ? "16px" : "24px",
           maxWidth: "760px",
+          width: "100%",
+          boxSizing: "border-box",
         }}
       >
         <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>
@@ -449,6 +545,7 @@ function ServiceText() {
               background: "#ffffff",
               width: "100px",
               fontSize: "15px",
+              boxSizing: "border-box",
             }}
           />
 
@@ -519,6 +616,7 @@ function ServiceText() {
           style={{
             marginTop: "24px",
             display: "flex",
+            flexDirection: isMobile ? "column" : "row",
             gap: "20px",
             maxWidth: "1100px",
             flexWrap: "wrap",
@@ -585,7 +683,9 @@ function OutputBox({
         padding: "16px",
         minHeight: "140px",
         lineHeight: 1.6,
-        minWidth: "320px",
+        minWidth: "0",
+        width: "100%",
+        boxSizing: "border-box",
       }}
     >
       <button
@@ -606,7 +706,13 @@ function OutputBox({
         {copied ? "✓" : "📋"}
       </button>
 
-      <div style={{ paddingRight: "40px", whiteSpace: "pre-wrap" }}>
+      <div
+        style={{
+          paddingRight: "40px",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+        }}
+      >
         {text || placeholder}
       </div>
 
@@ -619,7 +725,7 @@ function OutputBox({
   );
 }
 
-function TextGeneratorPlaceholder() {
+function TextGeneratorPlaceholder({ isMobile }: { isMobile: boolean }) {
   return (
     <div>
       <h1 style={{ marginTop: 0 }}>Text Generator</h1>
@@ -628,7 +734,7 @@ function TextGeneratorPlaceholder() {
           background: "#ffffff",
           border: "1px solid #d1d5db",
           borderRadius: "12px",
-          padding: "24px",
+          padding: isMobile ? "16px" : "24px",
           maxWidth: "700px",
         }}
       >
