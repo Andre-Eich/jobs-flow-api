@@ -13,7 +13,6 @@ type AnalyzeResponse = {
   company?: string;
   contactPerson?: string;
   email?: string;
-  generatedEmail?: string;
   jobTitleOptions?: string[];
   companyOptions?: string[];
   contactPersonOptions?: string[];
@@ -96,12 +95,13 @@ export default function PhotoToMailPage() {
   }
 
   function applyAnalyzeData(data: AnalyzeResponse) {
-    setJobData({
+    setJobData((prev) => ({
+      ...prev,
       jobTitle: data.jobTitle || "",
       company: data.company || "",
       contactPerson: data.contactPerson || "",
       email: data.email || "",
-      generatedEmail: data.generatedEmail || "",
+      generatedEmail: "",
       jobTitleOptions: uniqueOptions(data.jobTitle || "", data.jobTitleOptions),
       companyOptions: uniqueOptions(data.company || "", data.companyOptions),
       contactPersonOptions: uniqueOptions(
@@ -109,7 +109,7 @@ export default function PhotoToMailPage() {
         data.contactPersonOptions
       ),
       emailOptions: uniqueOptions(data.email || "", data.emailOptions),
-    });
+    }));
   }
 
   async function handleAnalyzeSource() {
@@ -152,7 +152,7 @@ export default function PhotoToMailPage() {
 
         applyAnalyzeData(data);
         setSuccessMessage(
-          "Quelle analysiert. Prüfe die Felder, wähle ggf. Bausteine und generiere dann die E-Mail."
+          "Quelle analysiert. Bitte Felder prüfen, Hinweise wählen und dann die E-Mail generieren."
         );
         return;
       }
@@ -176,7 +176,7 @@ export default function PhotoToMailPage() {
 
         applyAnalyzeData(data);
         setSuccessMessage(
-          "Quelle analysiert. Prüfe die Felder, wähle ggf. Bausteine und generiere dann die E-Mail."
+          "Quelle analysiert. Bitte Felder prüfen, Hinweise wählen und dann die E-Mail generieren."
         );
       }
     } catch {
@@ -323,7 +323,6 @@ export default function PhotoToMailPage() {
           boxSizing: "border-box",
         }}
       >
-        {/* STUFE 1 */}
         <div
           style={{
             marginBottom: "22px",
@@ -446,7 +445,6 @@ export default function PhotoToMailPage() {
           </div>
         ) : null}
 
-        {/* ERKANNTE FELDER */}
         <div
           style={{
             display: "grid",
@@ -487,7 +485,6 @@ export default function PhotoToMailPage() {
           />
         </div>
 
-        {/* STUFE 2 */}
         <div
           style={{
             marginBottom: "22px",
@@ -549,7 +546,6 @@ export default function PhotoToMailPage() {
           </button>
         </div>
 
-        {/* GENERIERTE EMAIL */}
         <div style={{ marginBottom: "16px" }}>
           <label
             style={{
@@ -585,7 +581,6 @@ export default function PhotoToMailPage() {
           />
         </div>
 
-        {/* TESTMODE */}
         <div style={{ marginBottom: "2px" }}>
           <label style={{ fontSize: "14px", cursor: "pointer" }}>
             <input
@@ -610,7 +605,6 @@ export default function PhotoToMailPage() {
             : "Versand geht an die erkannte Unternehmens-E-Mail."}
         </div>
 
-        {/* CTA UNTEN */}
         <div
           style={{
             display: "flex",

@@ -12,14 +12,29 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
+function normalizeGreeting(text: string) {
+  let normalized = text.trim();
+
+  normalized = normalized.replace(
+    /^(Sehr geehrte Damen und Herren,)\s*/i,
+    "Sehr geehrte Damen und Herren,\n\n"
+  );
+
+  normalized = normalized.replace(
+    /^(Guten Tag [^\n,]+,)\s*/i,
+    "$1\n\n"
+  );
+
+  return normalized.trim();
+}
+
 function textToHtml(text: string) {
   return escapeHtml(text).replace(/\n/g, "<br/>");
 }
 
 function buildFinalText(text: string) {
-  let cleanedText = text.trim();
+  let cleanedText = normalizeGreeting(text);
 
-  // Entfernt am Ende evtl. schon vorhandene Grußformeln
   cleanedText = cleanedText.replace(
     /(mit freundlichen grüßen[,!]?|freundliche grüße[,!]?)\s*$/i,
     ""
@@ -28,9 +43,41 @@ function buildFinalText(text: string) {
   return `${cleanedText}\n\nMit freundlichen Grüßen`;
 }
 
+function buildSubject(jobTitle?: string, hints: string[] = []) {
+  const safeJobTitle = (jobTitle || "").trim();
+
+  if (hints.includes("multiposting")) {
+    return safeJobTitle
+      ? `Ihre ${safeJobTitle}-Anzeige zusätzlich auf Indeed & Stepstone`
+      : "Ihre Anzeige zusätzlich auf Indeed & Stepstone";
+  }
+
+  if (hints.includes("social-media")) {
+    return safeJobTitle
+      ? `Mehr Bewerber für ${safeJobTitle} über Facebook & Instagram`
+      : "Mehr Bewerber über Facebook & Instagram";
+  }
+
+  if (hints.includes("print")) {
+    return safeJobTitle
+      ? `Online + Print: mehr Sichtbarkeit für ${safeJobTitle}`
+      : "Online + Print: mehr Sichtbarkeit für Ihre Anzeige";
+  }
+
+  if (hints.includes("multiple-jobs")) {
+    return "Mehrere Stellen gleichzeitig effizient besetzen";
+  }
+
+  if (safeJobTitle) {
+    return `Zur Position ${safeJobTitle}: mehr passende Bewerber`;
+  }
+
+  return "Mehr Bewerber für Ihre Stellenanzeige";
+}
+
 export async function POST(req: Request) {
   try {
-    const { to, subject, text, testMode } = await req.json();
+    const { to, text, testMode, jobTitle, hints } = await req.json();
 
     if (!text) {
       return NextResponse.json(
@@ -38,6 +85,8 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    const safeHints = Array.isArray(hints) ? hints : [];
 
     const actualRecipient =
       testMode && process.env.TEST_RECIPIENT_EMAIL
@@ -52,6 +101,7 @@ export async function POST(req: Request) {
     }
 
     const finalText = buildFinalText(text);
+    const finalSubject = buildSubject(jobTitle, safeHints);
 
     const profileImageUrl = "https://api.jobs-flow.com/andre-eichstaedt.png";
     const footerLogosUrl = "https://api.jobs-flow.com/footer-logos.png";
@@ -124,8 +174,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
     const data = await resend.emails.send({
       from: "Andre Eichstädt <mail@jobs-in-berlin-brandenburg.de>",
       to: actualRecipient,
-      subject:
-        subject || "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de",
+      subject: finalSubject,
       html,
       text: `${finalText}${plainSignature}`,
       bcc: process.env.TEST_RECIPIENT_EMAIL || undefined,
@@ -135,6 +184,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
       success: true,
       data,
       actualRecipient,
+      subject: finalSubject,
     });
   } catch (error: any) {
     console.error("RESEND ERROR:", error);
