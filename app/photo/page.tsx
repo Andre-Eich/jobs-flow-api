@@ -604,7 +604,7 @@ export default function PhotoToMailPage() {
                         color: "#6b7280",
                       }}
                     >
-                      3 Tage nach 1. Mail
+                      3 Std. nach 1. Mail
                     </div>
                   </button>
                 ))}

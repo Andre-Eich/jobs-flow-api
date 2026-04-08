@@ -105,13 +105,14 @@ export async function GET(req: Request) {
 
     const limited = sorted.slice(0, 25);
 
-    const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+const threeHoursAgo = Date.now() - 3 * 60 * 60 * 1000;
 
     const reminders = limited
-      .filter((mail) => {
-        const mailTime = new Date(mail.createdAt).getTime();
-        return mail.status === "sent" && mailTime <= threeDaysAgo;
-      })
+  .filter((mail) => {
+    const mailTime = new Date(mail.createdAt).getTime();
+    return mail.status === "sent" && mailTime <= threeHoursAgo;
+  })
+  
       .slice(0, 5)
       .map((mail) => ({
         ...mail,
