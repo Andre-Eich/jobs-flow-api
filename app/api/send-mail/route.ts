@@ -18,10 +18,7 @@ function normalizeGreeting(text: string) {
     "Sehr geehrte Damen und Herren,\n\n"
   );
 
-  normalized = normalized.replace(
-    /^(Guten Tag [^\n,]+,)\s*/i,
-    "$1\n\n"
-  );
+  normalized = normalized.replace(/^(Guten Tag [^\n,]+,)\s*/i, "$1\n\n");
 
   return normalized.trim();
 }
@@ -33,15 +30,13 @@ function textToHtml(text: string) {
 function buildFinalText(text: string) {
   let cleanedText = normalizeGreeting(text);
 
-  // alte Grußformeln entfernen
   cleanedText = cleanedText.replace(
     /(mit freundlichen grüßen[,!]?|freundliche grüße[,!]?)\s*$/i,
     ""
   ).trim();
 
-  // 🔥 STABILE ERGÄNZUNG (immer vorhanden)
   const infoBlock =
-    "Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-berlin-brandenburg.de";
+    "Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-in-berlin-brandenburg.de";
 
   if (!cleanedText.includes("Informationen zu unseren Anzeigenpreisen")) {
     cleanedText += `\n\n${infoBlock}`;
@@ -50,8 +45,18 @@ function buildFinalText(text: string) {
   return `${cleanedText}\n\nMit freundlichen Grüßen`;
 }
 
-function buildSubject(jobTitle?: string, hints: string[] = []) {
+function buildSubject(
+  jobTitle?: string,
+  hints: string[] = [],
+  followUp?: boolean
+) {
   const safeJobTitle = (jobTitle || "").trim();
+
+  if (followUp) {
+    return safeJobTitle
+      ? `Erinnerung zu Ihrer ${safeJobTitle}-Anzeige`
+      : "Kurze Erinnerung zu meiner letzten E-Mail";
+  }
 
   if (hints.includes("multiposting")) {
     return safeJobTitle
@@ -95,7 +100,17 @@ export async function POST(req: Request) {
 
     const resend = new Resend(apiKey);
 
-    const { to, text, testMode, jobTitle, hints } = await req.json();
+    const {
+      to,
+      text,
+      testMode,
+      jobTitle,
+      hints,
+      sendCopy,
+      company,
+      contactPerson,
+      followUp,
+    } = await req.json();
 
     if (!text) {
       return NextResponse.json(
@@ -119,12 +134,10 @@ export async function POST(req: Request) {
     }
 
     const finalText = buildFinalText(text);
-    const finalSubject = buildSubject(jobTitle, safeHints);
+    const finalSubject = buildSubject(jobTitle, safeHints, !!followUp);
 
-    const profileImageUrl =
-      "https://api.jobs-flow.com/andre-eichstaedt.png";
-    const footerLogosUrl =
-      "https://api.jobs-flow.com/footer-logos.png";
+    const profileImageUrl = "https://api.jobs-flow.com/andre-eichstaedt.png";
+    const footerLogosUrl = "https://api.jobs-flow.com/footer-logos.png";
 
     const plainSignature = `
 
@@ -147,46 +160,85 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
         </div>
 
         <div style="margin: 20px 0 18px 0;">
-          <img src="${profileImageUrl}" style="width:160px; border-radius:80px;" />
+          <img
+            src="${profileImageUrl}"
+            alt="Andre Eichstädt"
+            style="display:block; width:160px; max-width:100%; height:auto; border-radius:80px;"
+          />
         </div>
 
-        <div>
-          <div style="font-weight:700;">Andre Eichstädt</div>
+        <div style="margin-bottom: 22px;">
+          <div style="font-weight:700;">Andre Eichstädt von Jobs in Berlin-Brandenburg</div>
           <div>Anzeigenberater</div>
           <div>Jobs in Berlin-Brandenburg</div>
           <div>Tel. 0335/629797-38</div>
-          <div>a.eichstaedt@jobs-in-berlin-brandenburg.de</div>
+          <div>
+            <a href="mailto:a.eichstaedt@jobs-in-berlin-brandenburg.de" style="color:#111111; text-decoration:none;">
+              a.eichstaedt@jobs-in-berlin-brandenburg.de
+            </a>
+          </div>
+
+          <div style="height:12px;"></div>
+
+          <div>Leipziger Str. 56</div>
+          <div>15236 Frankfurt (Oder)</div>
+          <div>
+            <a href="https://www.jobs-in-berlin-brandenburg.de" target="_blank" style="color:#111111; text-decoration:none;">
+              www.jobs-in-berlin-brandenburg.de
+            </a>
+          </div>
         </div>
 
-        <div style="margin-top:20px;">
-          <img src="${footerLogosUrl}" style="width:600px; max-width:100%;" />
+        <div style="margin:20px 0 22px 0; font-size:13px; color:#555555;">
+          Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
+          genügt eine kurze Antwort mit „Nein danke“.
+        </div>
+
+        <div style="margin-top:8px;">
+          <img
+            src="${footerLogosUrl}"
+            alt="Kooperationen"
+            style="display:block; width:600px; max-width:100%; height:auto;"
+          />
         </div>
       </div>
     `;
 
     const data = await resend.emails.send({
-      from: "Andre Eichstädt <mail@jobs-in-berlin-brandenburg.de>",
+      from: "Andre Eichstädt von Jobs in Berlin-Brandenburg <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
+      replyTo: "a.eichstaedt@jobs-in-berlin-brandenburg.de",
       to: actualRecipient,
       subject: finalSubject,
       html,
       text: `${finalText}${plainSignature}`,
-      bcc: process.env.TEST_RECIPIENT_EMAIL || undefined,
+      bcc: testMode
+        ? process.env.TEST_RECIPIENT_EMAIL || undefined
+        : sendCopy
+        ? "a.eichstaedt@jobs-in-berlin-brandenburg.de"
+        : undefined,
     });
 
     return NextResponse.json({
       success: true,
       data,
+      actualRecipient,
       subject: finalSubject,
+      savedDraft: {
+        jobTitle: jobTitle || "",
+        company: company || "",
+        contactPerson: contactPerson || "",
+        recipientEmail: actualRecipient,
+        status: testMode ? "test" : "sent",
+        createdAt: new Date().toISOString(),
+        followUp: !!followUp,
+      },
     });
   } catch (error: any) {
     console.error("RESEND ERROR:", error);
 
     return NextResponse.json(
       {
-        error:
-          error?.message ||
-          error?.response ||
-          "Fehler beim Mailversand.",
+        error: error?.message || error?.response || "Fehler beim Mailversand.",
       },
       { status: 500 }
     );

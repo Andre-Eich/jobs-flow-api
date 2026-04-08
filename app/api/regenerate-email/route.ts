@@ -22,18 +22,34 @@ ${hints.map((h) => "- " + map[h]).filter(Boolean).join("\n")}
 
 export async function POST(req: Request) {
   try {
-    const { jobTitle, company, contactPerson, hints } = await req.json();
+    const { jobTitle, company, contactPerson, hints, followUp } =
+      await req.json();
 
     const safeJobTitle =
       String(jobTitle || "").trim() || "die ausgeschriebene Position";
-    const safeCompany =
-      String(company || "").trim() || "Ihr Unternehmen";
-    const safeContactPerson =
-      String(contactPerson || "").trim();
+    const safeCompany = String(company || "").trim() || "Ihr Unternehmen";
+    const safeContactPerson = String(contactPerson || "").trim();
 
     const openingInstruction = safeContactPerson
       ? `Nutze den Ansprechpartner "${safeContactPerson}" natürlich und professionell. Nach der Anrede folgt immer eine Leerzeile.`
       : `Beginne mit "Sehr geehrte Damen und Herren,". Nach der Anrede folgt immer eine Leerzeile.`;
+
+    const followUpInstruction = followUp
+      ? `
+Dies ist eine Erinnerungs-Mail zu einer bereits versendeten ersten Nachricht.
+
+WICHTIG:
+- Der Text muss klar als freundliche Erinnerung formuliert sein.
+- Stelle kurz Bezug zur vorherigen Nachricht her.
+- Formuliere deutlich kürzer als die erste Mail.
+- Freundlich, professionell und unaufdringlich.
+- Kein Bewerbungston.
+- Kein Druck.
+- Kein aggressiver Verkaufston.
+- Nicht dieselben Formulierungen wie in der ersten Mail wiederholen.
+- Die Mail soll wirken wie ein kurzer, höflicher Reminder.
+`
+      : "";
 
     const prompt = `
 Erstelle eine kurze, professionelle Vertriebs-E-Mail auf Deutsch.
@@ -43,6 +59,7 @@ Kontext:
 - Unternehmen: ${safeCompany}
 
 ${openingInstruction}
+${followUpInstruction}
 
 Ziel:
 Dem Unternehmen soll angeboten werden, die Stellenanzeige zusätzlich auf jobs-in-berlin-brandenburg.de zu veröffentlichen.
@@ -57,13 +74,29 @@ WICHTIG:
 - keine Kontaktdaten
 - Nach der Anrede folgt immer ein neuer Absatz
 
+Verboten sind Formulierungen wie:
+- "ich interessiere mich für die Stelle"
+- "ich habe großes Interesse"
+- "ich möchte mich bewerben"
+- "Gesprächstermin"
+- "Bewerbung"
+
 ${buildHintsText(Array.isArray(hints) ? hints : [])}
+
+${
+  followUp
+    ? `
+Die Mail soll sinngemäß als kurze Erinnerung aufgebaut sein.
+Sie darf zum Beispiel mit einer höflichen Erinnerung an die letzte Nachricht beginnen.
+`
+    : ""
+}
 
 Die Mail soll mit diesem Satz enden:
 "Gerne sende ich Ihnen ein unverbindliches Angebot zu."
 
 Danach folgt IMMER ein neuer Absatz mit exakt diesem Text:
-"Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-berlin-brandenburg.de"
+"Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-in-berlin-brandenburg.de"
 `;
 
     const ai = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -75,7 +108,7 @@ Danach folgt IMMER ein neuer Absatz mit exakt diesem Text:
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 600,
+        max_tokens: 700,
       }),
     });
 
@@ -101,10 +134,7 @@ Danach folgt IMMER ein neuer Absatz mit exakt diesem Text:
       generatedEmail: text,
     });
   } catch (error) {
-    console.error(error);
-    return NextResponse.json(
-      { error: "Server Fehler" },
-      { status: 500 }
-    );
+    console.error("REGENERATE EMAIL ERROR:", error);
+    return NextResponse.json({ error: "Server Fehler" }, { status: 500 });
   }
 }

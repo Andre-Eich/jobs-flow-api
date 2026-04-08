@@ -163,6 +163,7 @@ export default function PhotoToMailPage() {
   const [crmView, setCrmView] = useState<"company" | "all">("company");
   const [mailHistory, setMailHistory] = useState<MailRecord[]>([]);
   const [reminders, setReminders] = useState<MailRecord[]>([]);
+  const [completedReminders, setCompletedReminders] = useState<string[]>([]);
   const [selectedMail, setSelectedMail] = useState<MailRecord | null>(null);
   const [selectedMailDetail, setSelectedMailDetail] =
     useState<MailDetail | null>(null);
@@ -476,6 +477,7 @@ export default function PhotoToMailPage() {
           company: item.company || "",
           contactPerson: item.contactPerson || "",
           hints: [],
+          followUp: true,
         }),
       });
 
@@ -485,6 +487,8 @@ export default function PhotoToMailPage() {
         setError(sendData.error || "Erinnerungs-Mail konnte nicht gesendet werden.");
         return;
       }
+
+      setCompletedReminders((prev) => [...prev, item.id]);
 
       setSuccessMessage(
         `Erinnerungs-Mail (Test) für "${item.subject}" wurde an dich gesendet.`
@@ -570,44 +574,75 @@ export default function PhotoToMailPage() {
                   flexWrap: "wrap",
                 }}
               >
-                {reminders.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleReminderQuickSend(item)}
-                    disabled={sendingReminderId === item.id}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: "10px",
-                      background: "#f3f4f6",
-                      border: "1px solid #e5e7eb",
-                      cursor:
-                        sendingReminderId === item.id ? "not-allowed" : "pointer",
-                      lineHeight: 1.2,
-                      minWidth: "220px",
-                      textAlign: "left",
-                      opacity: sendingReminderId === item.id ? 0.7 : 1,
-                    }}
-                  >
-                    <div style={{ fontSize: "13px", fontWeight: 600 }}>
-                      {item.subject || "Ohne Betreff"}
-                    </div>
-                    <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                      {item.company?.trim() ||
-                        item.recipientLabel ||
-                        item.recipientEmail}
-                    </div>
-                    <div
+                {reminders.map((item) => {
+                  const isCompleted = completedReminders.includes(item.id);
+                  const isSending = sendingReminderId === item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      title={item.subject || "Ohne Betreff"}
+                      onClick={() => handleReminderQuickSend(item)}
+                      disabled={isSending || isCompleted}
                       style={{
-                        marginTop: "6px",
-                        fontSize: "11px",
-                        color: "#6b7280",
+                        width: isMobile ? "100%" : "23%",
+                        minWidth: isMobile ? "100%" : "220px",
+                        padding: "8px 10px",
+                        borderRadius: "10px",
+                        background: isCompleted ? "#dcfce7" : "#f9fafb",
+                        border: isCompleted
+                          ? "1px solid #86efac"
+                          : "1px solid #e5e7eb",
+                        cursor:
+                          isSending || isCompleted ? "default" : "pointer",
+                        lineHeight: 1.2,
+                        textAlign: "left",
+                        opacity: isSending ? 0.7 : 1,
                       }}
                     >
-                      3 Std. nach 1. Mail
-                    </div>
-                  </button>
-                ))}
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          lineHeight: 1.25,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                          minHeight: "30px",
+                        }}
+                      >
+                        {item.subject || "Ohne Betreff"}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#6b7280",
+                          marginTop: "4px",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {item.company?.trim() ||
+                          item.recipientLabel ||
+                          item.recipientEmail}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: "6px",
+                          fontSize: "10px",
+                          color: isCompleted ? "#166534" : "#6b7280",
+                        }}
+                      >
+                        {isCompleted ? "Test gesendet" : "3 Std. nach 1. Mail"}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
