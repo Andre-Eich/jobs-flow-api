@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { isReminderSent } from "@/lib/reminderStore";
 
 function getDomain(email: string) {
   return email.split("@")[1]?.toLowerCase().trim() || "";
@@ -18,6 +19,28 @@ function safeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function inferStatus(lastEvent: string): "sent" | "test" | "failed" | "draft" {
+  const normalized = lastEvent.toLowerCase();
+
+  if (normalized === "bounced" || normalized === "complained") {
+    return "failed";
+  }
+
+  if (
+    normalized === "delivered" ||
+    normalized === "opened" ||
+    normalized === "clicked"
+  ) {
+    return "sent";
+  }
+
+  if (normalized) {
+    return "test";
+  }
+
+  return "draft";
+}
+
 export async function GET(req: Request) {
   try {
     const apiKey = process.env.RESEND_CRM_API_KEY || process.env.RESEND_API_KEY;
@@ -32,10 +55,10 @@ export async function GET(req: Request) {
     const resend = new Resend(apiKey);
 
     const { searchParams } = new URL(req.url);
-    const mode = searchParams.get("mode") || "company";
+    const mode = safeString(searchParams.get("mode")) || "all";
     const domain = safeString(searchParams.get("domain")).toLowerCase();
     const company = safeString(searchParams.get("company"));
-    const normalizedCompany = normalizeCompany(company);
+    const normalizedCompanyFilter = normalizeCompany(company);
 
     const result = await resend.emails.list({ limit: 100 });
 
@@ -49,39 +72,27 @@ export async function GET(req: Request) {
     const rawEmails = Array.isArray(result.data?.data) ? result.data.data : [];
 
     const emails = rawEmails.map((item: any) => {
-      const toField = Array.isArray(item?.to) ? item.to[0] || "" : item?.to || "";
-      const recipientEmail = safeString(toField);
+      const toValue = Array.isArray(item?.to) ? item.to[0] || "" : item?.to || "";
+      const recipientEmail = safeString(toValue);
       const subject = safeString(item?.subject) || "Ohne Betreff";
       const createdAt = safeString(item?.created_at) || new Date().toISOString();
-      const lastEvent = safeString(item?.last_event).toLowerCase();
-
-      let status: "sent" | "test" | "failed" | "draft" = "draft";
-
-      if (lastEvent === "bounced" || lastEvent === "complained") {
-        status = "failed";
-      } else if (
-        lastEvent === "delivered" ||
-        lastEvent === "opened" ||
-        lastEvent === "clicked"
-      ) {
-        status = "sent";
-      } else if (lastEvent) {
-        status = "test";
-      }
+      const lastEvent = safeString(item?.last_event);
+      const reminded = isReminderSent(safeString(item?.id));
 
       return {
         id: safeString(item?.id),
         subject,
-        recipientEmail,
-        recipientLabel: recipientEmail,
         company: "",
         normalizedCompany: "",
-        domain: getDomain(recipientEmail),
         contactPerson: "",
+        recipientEmail,
+        recipientLabel: recipientEmail,
+        domain: getDomain(recipientEmail),
         text: "",
-        status,
+        status: inferStatus(lastEvent),
         createdAt,
-        lastEvent,
+        lastEvent: lastEvent.toLowerCase(),
+        reminded,
       };
     });
 
@@ -91,9 +102,9 @@ export async function GET(req: Request) {
         : emails.filter((mail) => {
             const sameDomain = domain && mail.domain === domain;
             const sameCompany =
-              normalizedCompany &&
+              normalizedCompanyFilter &&
               mail.normalizedCompany &&
-              mail.normalizedCompany === normalizedCompany;
+              mail.normalizedCompany === normalizedCompanyFilter;
 
             return sameDomain || sameCompany;
           });
@@ -105,18 +116,23 @@ export async function GET(req: Request) {
 
     const limited = sorted.slice(0, 25);
 
-const threeHoursAgo = Date.now() - 3 * 60 * 60 * 1000;
+    // TESTMODUS aktuell: 3 Stunden
+    const reminderThreshold = Date.now() - 3 * 60 * 60 * 1000;
 
     const reminders = limited
-  .filter((mail) => {
-    const mailTime = new Date(mail.createdAt).getTime();
-    return mail.status === "sent" && mailTime <= threeHoursAgo;
-  })
-  
-      .slice(0, 5)
+      .filter((mail) => {
+        const mailTime = new Date(mail.createdAt).getTime();
+
+        return (
+          mail.status === "sent" &&
+          mailTime <= reminderThreshold &&
+          !mail.reminded
+        );
+      })
+      .slice(0, 8)
       .map((mail) => ({
         ...mail,
-        reminderLabel: "3 Tage nach 1. Mail",
+        reminderLabel: "3 Std. nach 1. Mail",
       }));
 
     return NextResponse.json({
