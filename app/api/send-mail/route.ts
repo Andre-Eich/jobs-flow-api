@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -20,10 +18,7 @@ function normalizeGreeting(text: string) {
     "Sehr geehrte Damen und Herren,\n\n"
   );
 
-  normalized = normalized.replace(
-    /^(Guten Tag [^\n,]+,)\s*/i,
-    "$1\n\n"
-  );
+  normalized = normalized.replace(/^(Guten Tag [^\n,]+,)\s*/i, "$1\n\n");
 
   return normalized.trim();
 }
@@ -77,6 +72,17 @@ function buildSubject(jobTitle?: string, hints: string[] = []) {
 
 export async function POST(req: Request) {
   try {
+    const apiKey = process.env.RESEND_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "RESEND_API_KEY fehlt." },
+        { status: 500 }
+      );
+    }
+
+    const resend = new Resend(apiKey);
+
     const { to, text, testMode, jobTitle, hints } = await req.json();
 
     if (!text) {
