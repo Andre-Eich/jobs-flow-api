@@ -33,13 +33,13 @@ type JobData = {
 
 type MailRecord = {
   id: string;
-  jobTitle: string;
-  company: string;
+  subject: string;
+  company?: string;
   normalizedCompany?: string;
   contactPerson: string;
   recipientEmail: string;
+  recipientLabel?: string;
   domain: string;
-  subject?: string;
   text: string;
   status: "sent" | "test" | "failed" | "draft";
   createdAt: string;
@@ -148,7 +148,9 @@ export default function PhotoToMailPage() {
   const [generatingEmail, setGeneratingEmail] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [loadingCrm, setLoadingCrm] = useState(false);
-  const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(
+    null
+  );
 
   const [testMode, setTestMode] = useState(true);
   const [sendCopy, setSendCopy] = useState(true);
@@ -162,7 +164,8 @@ export default function PhotoToMailPage() {
   const [mailHistory, setMailHistory] = useState<MailRecord[]>([]);
   const [reminders, setReminders] = useState<MailRecord[]>([]);
   const [selectedMail, setSelectedMail] = useState<MailRecord | null>(null);
-  const [selectedMailDetail, setSelectedMailDetail] = useState<MailDetail | null>(null);
+  const [selectedMailDetail, setSelectedMailDetail] =
+    useState<MailDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   useEffect(() => {
@@ -174,6 +177,13 @@ export default function PhotoToMailPage() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  const currentDomain = useMemo(() => getDomain(jobData.email), [jobData.email]);
+
+  const currentCompany = useMemo(
+    () => normalizeCompany(jobData.company),
+    [jobData.company]
+  );
 
   function toggleHint(hint: HintKey) {
     setSelectedHints((prev) =>
@@ -209,12 +219,6 @@ export default function PhotoToMailPage() {
     }));
   }
 
-  const currentDomain = useMemo(() => getDomain(jobData.email), [jobData.email]);
-  const currentCompany = useMemo(
-    () => normalizeCompany(jobData.company),
-    [jobData.company]
-  );
-
   async function loadCrm() {
     try {
       setLoadingCrm(true);
@@ -223,8 +227,13 @@ export default function PhotoToMailPage() {
         mode: crmView,
       });
 
-      if (currentDomain) params.set("domain", currentDomain);
-      if (currentCompany) params.set("company", currentCompany);
+      if (currentDomain) {
+        params.set("domain", currentDomain);
+      }
+
+      if (currentCompany) {
+        params.set("company", currentCompany);
+      }
 
       const response = await fetch(`/api/crm/emails?${params.toString()}`);
       const data = await response.json();
@@ -234,8 +243,8 @@ export default function PhotoToMailPage() {
         return;
       }
 
-      setMailHistory(data.emails || []);
-      setReminders(data.reminders || []);
+      setMailHistory(Array.isArray(data.emails) ? data.emails : []);
+      setReminders(Array.isArray(data.reminders) ? data.reminders : []);
     } catch {
       setError("CRM konnte nicht geladen werden.");
     } finally {
@@ -436,9 +445,9 @@ export default function PhotoToMailPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          jobTitle: item.jobTitle,
-          company: item.company,
-          contactPerson: item.contactPerson,
+          jobTitle: item.subject,
+          company: item.company || "",
+          contactPerson: item.contactPerson || "",
           hints: [],
           followUp: true,
         }),
@@ -447,7 +456,9 @@ export default function PhotoToMailPage() {
       const genData = await genResponse.json();
 
       if (!genResponse.ok) {
-        setError(genData.error || "Erinnerungs-Mail konnte nicht generiert werden.");
+        setError(
+          genData.error || "Erinnerungs-Mail konnte nicht generiert werden."
+        );
         return;
       }
 
@@ -461,9 +472,9 @@ export default function PhotoToMailPage() {
           text: genData.generatedEmail,
           testMode: true,
           sendCopy: true,
-          jobTitle: item.jobTitle,
-          company: item.company,
-          contactPerson: item.contactPerson,
+          jobTitle: item.subject,
+          company: item.company || "",
+          contactPerson: item.contactPerson || "",
           hints: [],
         }),
       });
@@ -476,7 +487,7 @@ export default function PhotoToMailPage() {
       }
 
       setSuccessMessage(
-        `Erinnerungs-Mail (Test) für "${item.jobTitle}" wurde an dich gesendet.`
+        `Erinnerungs-Mail (Test) für "${item.subject}" wurde an dich gesendet.`
       );
 
       await loadCrm();
@@ -539,7 +550,6 @@ export default function PhotoToMailPage() {
           width: "100%",
         }}
       >
-        {/* LINKE SEITE */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {reminders.length > 0 && (
             <div style={{ marginBottom: "16px" }}>
@@ -580,10 +590,12 @@ export default function PhotoToMailPage() {
                     }}
                   >
                     <div style={{ fontSize: "13px", fontWeight: 600 }}>
-                      {item.jobTitle}
+                      {item.subject || "Ohne Betreff"}
                     </div>
                     <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                      {item.company}
+                      {item.company?.trim() ||
+                        item.recipientLabel ||
+                        item.recipientEmail}
                     </div>
                     <div
                       style={{
@@ -938,7 +950,6 @@ export default function PhotoToMailPage() {
           </div>
         </div>
 
-        {/* RECHTE CRM-SPALTE */}
         <div
           style={{
             width: isMobile ? "100%" : "340px",
@@ -1048,9 +1059,11 @@ export default function PhotoToMailPage() {
                         fontWeight: 600,
                         fontSize: "13px",
                         marginBottom: "4px",
+                        lineHeight: 1.3,
+                        wordBreak: "break-word",
                       }}
                     >
-                      {mail.jobTitle || "Ohne Betreff"}
+                      {mail.subject || "Ohne Betreff"}
                     </div>
 
                     <div
@@ -1059,9 +1072,12 @@ export default function PhotoToMailPage() {
                         color: "#374151",
                         marginBottom: "4px",
                         wordBreak: "break-word",
+                        lineHeight: 1.3,
                       }}
                     >
-                      {mail.recipientEmail}
+                      {mail.company?.trim() ||
+                        mail.recipientLabel ||
+                        mail.recipientEmail}
                     </div>
 
                     <div
@@ -1088,7 +1104,7 @@ export default function PhotoToMailPage() {
                           color: statusColor(mail.status),
                         }}
                       >
-                        {statusLabel(mail.status)}
+                        {mail.lastEvent || statusLabel(mail.status)}
                       </div>
                     </div>
                   </button>
@@ -1142,7 +1158,7 @@ export default function PhotoToMailPage() {
                     marginBottom: "4px",
                   }}
                 >
-                  {selectedMail.jobTitle || "Ohne Betreff"}
+                  {selectedMail.subject || "Ohne Betreff"}
                 </div>
 
                 <div
@@ -1151,7 +1167,9 @@ export default function PhotoToMailPage() {
                     fontSize: "14px",
                   }}
                 >
-                  {selectedMail.recipientEmail}
+                  {selectedMail.company?.trim() ||
+                    selectedMail.recipientLabel ||
+                    selectedMail.recipientEmail}
                 </div>
               </div>
 
