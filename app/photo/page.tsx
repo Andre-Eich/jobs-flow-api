@@ -45,6 +45,7 @@ type MailRecord = {
   createdAt: string;
   lastEvent?: string;
   reminderLabel?: string;
+  reminded?: boolean;
 };
 
 type MailDetail = {
@@ -151,6 +152,7 @@ export default function PhotoToMailPage() {
   const [sendingReminderId, setSendingReminderId] = useState<string | null>(
     null
   );
+  const [sendingAllReminders, setSendingAllReminders] = useState(false);
 
   const [testMode, setTestMode] = useState(true);
   const [sendCopy, setSendCopy] = useState(true);
@@ -160,7 +162,7 @@ export default function PhotoToMailPage() {
 
   const [jobData, setJobData] = useState<JobData>(EMPTY_JOB_DATA);
 
-  const [crmView, setCrmView] = useState<"company" | "all">("company");
+  const [crmView, setCrmView] = useState<"company" | "all">("all");
   const [mailHistory, setMailHistory] = useState<MailRecord[]>([]);
   const [reminders, setReminders] = useState<MailRecord[]>([]);
   const [completedReminders, setCompletedReminders] = useState<string[]>([]);
@@ -180,7 +182,6 @@ export default function PhotoToMailPage() {
   }, []);
 
   const currentDomain = useMemo(() => getDomain(jobData.email), [jobData.email]);
-
   const currentCompany = useMemo(
     () => normalizeCompany(jobData.company),
     [jobData.company]
@@ -228,13 +229,8 @@ export default function PhotoToMailPage() {
         mode: crmView,
       });
 
-      if (currentDomain) {
-        params.set("domain", currentDomain);
-      }
-
-      if (currentCompany) {
-        params.set("company", currentCompany);
-      }
+      if (currentDomain) params.set("domain", currentDomain);
+      if (currentCompany) params.set("company", currentCompany);
 
       const response = await fetch(`/api/crm/emails?${params.toString()}`);
       const data = await response.json();
@@ -244,8 +240,17 @@ export default function PhotoToMailPage() {
         return;
       }
 
-      setMailHistory(Array.isArray(data.emails) ? data.emails : []);
-      setReminders(Array.isArray(data.reminders) ? data.reminders : []);
+      const loadedEmails = Array.isArray(data.emails) ? data.emails : [];
+      const loadedReminders = Array.isArray(data.reminders) ? data.reminders : [];
+
+      setMailHistory(loadedEmails);
+      setReminders(loadedReminders);
+
+      const preCompleted = loadedEmails
+        .filter((mail: MailRecord) => mail.reminded)
+        .map((mail: MailRecord) => mail.id);
+
+      setCompletedReminders((prev) => Array.from(new Set([...prev, ...preCompleted])));
     } catch {
       setError("CRM konnte nicht geladen werden.");
     } finally {
@@ -488,7 +493,16 @@ export default function PhotoToMailPage() {
         return;
       }
 
+      await fetch("/api/reminder/mark-sent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ emailId: item.id }),
+      });
+
       setCompletedReminders((prev) => [...prev, item.id]);
+      setReminders((prev) => prev.filter((r) => r.id !== item.id));
 
       setSuccessMessage(
         `Erinnerungs-Mail (Test) für "${item.subject}" wurde an dich gesendet.`
@@ -499,6 +513,31 @@ export default function PhotoToMailPage() {
       setError("Erinnerungs-Mail konnte nicht gesendet werden.");
     } finally {
       setSendingReminderId(null);
+    }
+  }
+
+  async function handleSendAllReminders() {
+    if (!reminders.length) return;
+
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      setSendingAllReminders(true);
+
+      const openReminders = reminders.filter(
+        (item) => !completedReminders.includes(item.id)
+      );
+
+      for (const item of openReminders) {
+        await handleReminderQuickSend(item);
+      }
+
+      setSuccessMessage("Alle offenen Erinnerungen wurden als Test verschickt.");
+    } catch {
+      setError("Nicht alle Erinnerungen konnten verschickt werden.");
+    } finally {
+      setSendingAllReminders(false);
     }
   }
 
@@ -559,12 +598,46 @@ export default function PhotoToMailPage() {
             <div style={{ marginBottom: "16px" }}>
               <div
                 style={{
-                  fontWeight: 700,
-                  fontSize: "14px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  alignItems: "center",
                   marginBottom: "8px",
+                  flexWrap: "wrap",
                 }}
               >
-                Erinnerungen (Test)
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14px",
+                  }}
+                >
+                  Erinnerungen (Test)
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSendAllReminders}
+                  disabled={sendingAllReminders || reminders.length === 0}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#111827",
+                    color: "#ffffff",
+                    cursor:
+                      sendingAllReminders || reminders.length === 0
+                        ? "not-allowed"
+                        : "pointer",
+                    fontSize: "12px",
+                    opacity:
+                      sendingAllReminders || reminders.length === 0 ? 0.7 : 1,
+                  }}
+                >
+                  {sendingAllReminders
+                    ? "Wird gesendet..."
+                    : "Alle Erinnerungen abschicken"}
+                </button>
               </div>
 
               <div
@@ -654,7 +727,7 @@ export default function PhotoToMailPage() {
               fontSize: "18px",
             }}
           >
-            Photo to Email
+            Kaltakquise-Mails
           </h1>
 
           <div
@@ -693,11 +766,7 @@ export default function PhotoToMailPage() {
                 />
               )}
 
-              <div
-                style={{
-                  marginTop: !isMobile ? "4px" : 0,
-                }}
-              >
+              <div style={{ marginTop: !isMobile ? "4px" : 0 }}>
                 <label
                   style={{
                     display: "block",
@@ -1114,6 +1183,19 @@ export default function PhotoToMailPage() {
                         mail.recipientLabel ||
                         mail.recipientEmail}
                     </div>
+
+                    {mail.reminded && (
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#166534",
+                          fontWeight: 600,
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Erinnert
+                      </div>
+                    )}
 
                     <div
                       style={{
