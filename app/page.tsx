@@ -74,7 +74,7 @@ export default function Home() {
           <SidebarButton
             active={activeTool === "photo-mail"}
             onClick={() => handleSelectTool("photo-mail")}
-            label="Photo to Email"
+            label="Kaltakquise-Mails"
           />
         </aside>
       )}
@@ -143,7 +143,7 @@ export default function Home() {
                 <SidebarButton
                   active={activeTool === "photo-mail"}
                   onClick={() => handleSelectTool("photo-mail")}
-                  label="Photo to Email"
+                  label="Kaltakquise-Mails"
                 />
               </div>
             )}
