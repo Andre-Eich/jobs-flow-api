@@ -2,12 +2,34 @@
 
 import { useEffect, useState } from "react";
 
+type HintKey =
+  | "multiple-jobs"
+  | "social-media"
+  | "print"
+  | "multiposting";
+
+type AnalyzeResponse = {
+  jobTitle?: string;
+  company?: string;
+  contactPerson?: string;
+  email?: string;
+  generatedEmail?: string;
+  jobTitleOptions?: string[];
+  companyOptions?: string[];
+  contactPersonOptions?: string[];
+  emailOptions?: string[];
+};
+
 type JobData = {
   jobTitle: string;
   company: string;
   contactPerson: string;
   email: string;
   generatedEmail: string;
+  jobTitleOptions: string[];
+  companyOptions: string[];
+  contactPersonOptions: string[];
+  emailOptions: string[];
 };
 
 const EMPTY_JOB_DATA: JobData = {
@@ -16,28 +38,18 @@ const EMPTY_JOB_DATA: JobData = {
   contactPerson: "",
   email: "",
   generatedEmail: "",
+  jobTitleOptions: [],
+  companyOptions: [],
+  contactPersonOptions: [],
+  emailOptions: [],
 };
 
-const HINT_OPTIONS = [
-  {
-    key: "multiple-jobs",
-    label: "Mehrere Jobs",
-  },
-  {
-    key: "social-media",
-    label: "Social-Media",
-  },
-  {
-    key: "print",
-    label: "Print-Anzeige",
-  },
-  {
-    key: "multiposting",
-    label: "Multiposting",
-  },
-] as const;
-
-type HintKey = (typeof HINT_OPTIONS)[number]["key"];
+const HINT_OPTIONS: { key: HintKey; label: string }[] = [
+  { key: "multiple-jobs", label: "Mehrere Jobs" },
+  { key: "social-media", label: "Social-Media" },
+  { key: "print", label: "Print-Anzeige" },
+  { key: "multiposting", label: "Multiposting" },
+];
 
 export default function PhotoToMailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -46,13 +58,15 @@ export default function PhotoToMailPage() {
 
   const [selectedHints, setSelectedHints] = useState<HintKey[]>([]);
 
-  const [analyzing, setAnalyzing] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
+  const [analyzingSource, setAnalyzingSource] = useState(false);
+  const [generatingEmail, setGeneratingEmail] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+
   const [testMode, setTestMode] = useState(true);
 
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
   const [jobData, setJobData] = useState<JobData>(EMPTY_JOB_DATA);
 
   useEffect(() => {
@@ -62,7 +76,6 @@ export default function PhotoToMailPage() {
 
     handleResize();
     window.addEventListener("resize", handleResize);
-
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
@@ -72,6 +85,31 @@ export default function PhotoToMailPage() {
         ? prev.filter((item) => item !== hint)
         : [...prev, hint]
     );
+  }
+
+  function uniqueOptions(primary: string, options?: string[]) {
+    const values = [primary, ...(options || [])]
+      .map((v) => (v || "").trim())
+      .filter(Boolean);
+
+    return Array.from(new Set(values));
+  }
+
+  function applyAnalyzeData(data: AnalyzeResponse) {
+    setJobData({
+      jobTitle: data.jobTitle || "",
+      company: data.company || "",
+      contactPerson: data.contactPerson || "",
+      email: data.email || "",
+      generatedEmail: data.generatedEmail || "",
+      jobTitleOptions: uniqueOptions(data.jobTitle || "", data.jobTitleOptions),
+      companyOptions: uniqueOptions(data.company || "", data.companyOptions),
+      contactPersonOptions: uniqueOptions(
+        data.contactPerson || "",
+        data.contactPersonOptions
+      ),
+      emailOptions: uniqueOptions(data.email || "", data.emailOptions),
+    });
   }
 
   async function handleAnalyzeSource() {
@@ -91,7 +129,7 @@ export default function PhotoToMailPage() {
     }
 
     try {
-      setAnalyzing(true);
+      setAnalyzingSource(true);
 
       if (hasUrl) {
         const response = await fetch("/api/photo-to-mail-url", {
@@ -112,14 +150,10 @@ export default function PhotoToMailPage() {
           return;
         }
 
-        setJobData({
-          jobTitle: data.jobTitle || "",
-          company: data.company || "",
-          contactPerson: data.contactPerson || "",
-          email: data.email || "",
-          generatedEmail: data.generatedEmail || "",
-        });
-
+        applyAnalyzeData(data);
+        setSuccessMessage(
+          "Quelle analysiert. Prüfe die Felder, wähle ggf. Bausteine und generiere dann die E-Mail."
+        );
         return;
       }
 
@@ -140,22 +174,19 @@ export default function PhotoToMailPage() {
           return;
         }
 
-        setJobData({
-          jobTitle: data.jobTitle || "",
-          company: data.company || "",
-          contactPerson: data.contactPerson || "",
-          email: data.email || "",
-          generatedEmail: data.generatedEmail || "",
-        });
+        applyAnalyzeData(data);
+        setSuccessMessage(
+          "Quelle analysiert. Prüfe die Felder, wähle ggf. Bausteine und generiere dann die E-Mail."
+        );
       }
     } catch {
-      setError("Die Anfrage konnte nicht ausgeführt werden.");
+      setError("Die Quelle konnte nicht analysiert werden.");
     } finally {
-      setAnalyzing(false);
+      setAnalyzingSource(false);
     }
   }
 
-  async function handleRegenerateEmail() {
+  async function handleGenerateEmail() {
     setError("");
     setSuccessMessage("");
 
@@ -165,7 +196,7 @@ export default function PhotoToMailPage() {
     }
 
     try {
-      setRegenerating(true);
+      setGeneratingEmail(true);
 
       const response = await fetch("/api/regenerate-email", {
         method: "POST",
@@ -176,6 +207,7 @@ export default function PhotoToMailPage() {
           jobTitle: jobData.jobTitle,
           company: jobData.company,
           contactPerson: jobData.contactPerson,
+          email: jobData.email,
           hints: selectedHints,
         }),
       });
@@ -183,20 +215,20 @@ export default function PhotoToMailPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || "Fehler bei der Neugenerierung.");
+        setError(data.error || "Fehler bei der E-Mail-Generierung.");
         return;
       }
 
       setJobData((prev) => ({
         ...prev,
-        generatedEmail: data.generatedEmail || prev.generatedEmail,
+        generatedEmail: data.generatedEmail || "",
       }));
 
-      setSuccessMessage("E-Mail-Text neu generiert.");
+      setSuccessMessage("E-Mail erfolgreich generiert.");
     } catch {
-      setError("Der E-Mail-Text konnte nicht neu generiert werden.");
+      setError("Die E-Mail konnte nicht generiert werden.");
     } finally {
-      setRegenerating(false);
+      setGeneratingEmail(false);
     }
   }
 
@@ -204,18 +236,18 @@ export default function PhotoToMailPage() {
     setError("");
     setSuccessMessage("");
 
-    if (!jobData.email.trim() && !testMode) {
+    if (!jobData.generatedEmail.trim()) {
+      setError("Bitte zuerst eine E-Mail generieren.");
+      return;
+    }
+
+    if (!testMode && !jobData.email.trim()) {
       setError("Keine E-Mail-Adresse des Unternehmens vorhanden.");
       return;
     }
 
-    if (!jobData.generatedEmail.trim()) {
-      setError("Kein E-Mail-Text vorhanden.");
-      return;
-    }
-
     try {
-      setSending(true);
+      setSendingEmail(true);
 
       const response = await fetch("/api/send-mail", {
         method: "POST",
@@ -224,9 +256,10 @@ export default function PhotoToMailPage() {
         },
         body: JSON.stringify({
           to: jobData.email,
-          subject: "Ihre Stellenanzeige auf jobs-in-berlin-brandenburg.de",
           text: jobData.generatedEmail,
           testMode,
+          jobTitle: jobData.jobTitle,
+          hints: selectedHints,
         }),
       });
 
@@ -245,9 +278,27 @@ export default function PhotoToMailPage() {
     } catch {
       setError("Die E-Mail konnte nicht gesendet werden.");
     } finally {
-      setSending(false);
+      setSendingEmail(false);
     }
   }
+
+  function setFieldValue<
+    K extends keyof Pick<
+      JobData,
+      "jobTitle" | "company" | "contactPerson" | "email"
+    >
+  >(key: K, value: string) {
+    setJobData((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  }
+
+  const hasAnalyzedSource =
+    !!jobData.jobTitle ||
+    !!jobData.company ||
+    !!jobData.contactPerson ||
+    !!jobData.email;
 
   return (
     <div style={{ width: "100%" }}>
@@ -256,7 +307,6 @@ export default function PhotoToMailPage() {
           marginTop: 0,
           marginBottom: "18px",
           fontSize: "18px",
-          wordBreak: "break-word",
         }}
       >
         Photo to Email
@@ -266,133 +316,114 @@ export default function PhotoToMailPage() {
         style={{
           background: "#ffffff",
           border: "1px solid #d1d5db",
-          borderRadius: "12px",
-          padding: "16px",
-          maxWidth: "760px",
+          borderRadius: "14px",
+          padding: "20px",
+          maxWidth: isMobile ? "100%" : "1180px",
           width: "100%",
           boxSizing: "border-box",
         }}
       >
-        {!isMobile && (
-          <Field
-            label="Anzeigen-URL"
-            value={jobUrl}
-            onChange={setJobUrl}
-            placeholder="https://..."
-          />
-        )}
-
-        <label
-          style={{
-            display: "block",
-            marginBottom: "8px",
-            fontWeight: 600,
-          }}
-        >
-          {isMobile ? "Datei oder Foto" : "Datei"}
-        </label>
-
+        {/* STUFE 1 */}
         <div
           style={{
-            display: "flex",
-            gap: "10px",
-            marginBottom: "14px",
-            flexWrap: "wrap",
+            marginBottom: "22px",
+            paddingBottom: "18px",
+            borderBottom: "1px solid #e5e7eb",
           }}
         >
-          <label style={uploadLabelStyle}>
-            📁 Datei
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-              style={{ display: "none" }}
-            />
-          </label>
-
-          {isMobile && (
-            <label style={uploadLabelStyle}>
-              📷 Foto
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                style={{ display: "none" }}
-              />
-            </label>
-          )}
-        </div>
-
-        {selectedFile && (
           <div
             style={{
-              marginBottom: "18px",
-              fontSize: "14px",
-              color: "#374151",
-              wordBreak: "break-word",
+              fontSize: "16px",
+              fontWeight: 700,
+              marginBottom: "14px",
             }}
           >
-            Ausgewählt: {selectedFile.name}
+            1. Quelle analysieren
           </div>
-        )}
 
-        <div style={{ marginBottom: "8px", fontWeight: 600 }}>Hinweise</div>
+          {!isMobile && (
+            <Field
+              label="Anzeigen-URL"
+              value={jobUrl}
+              onChange={setJobUrl}
+              placeholder="https://..."
+            />
+          )}
 
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            flexWrap: "wrap",
-            marginBottom: "18px",
-          }}
-        >
-          {HINT_OPTIONS.map((option) => {
-            const active = selectedHints.includes(option.key);
+          <div
+            style={{
+              marginTop: !isMobile ? "4px" : 0,
+            }}
+          >
+            <label
+              style={{
+                display: "block",
+                marginBottom: "8px",
+                fontWeight: 600,
+              }}
+            >
+              {isMobile ? "Datei oder Foto" : "Datei"}
+            </label>
 
-            return (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => toggleHint(option.key)}
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                marginBottom: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <label style={uploadLabelStyle}>
+                📁 Datei
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  style={{ display: "none" }}
+                />
+              </label>
+
+              {isMobile && (
+                <label style={uploadLabelStyle}>
+                  📷 Foto
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              )}
+            </div>
+
+            {selectedFile && (
+              <div
                 style={{
-                  padding: "8px 12px",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "999px",
-                  background: active ? "#111827" : "#ffffff",
-                  color: active ? "#ffffff" : "#111827",
-                  cursor: "pointer",
+                  marginBottom: "12px",
                   fontSize: "14px",
+                  color: "#374151",
+                  wordBreak: "break-word",
                 }}
               >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
+                Ausgewählt: {selectedFile.name}
+              </div>
+            )}
+          </div>
 
-        <button
-          onClick={handleAnalyzeSource}
-          disabled={analyzing}
-          style={{
-            padding: "10px 16px",
-            border: "none",
-            borderRadius: "8px",
-            background: "#111827",
-            color: "#ffffff",
-            cursor: analyzing ? "not-allowed" : "pointer",
-            fontSize: "15px",
-            opacity: analyzing ? 0.7 : 1,
-            marginBottom: "24px",
-          }}
-        >
-          {analyzing ? "Wird analysiert..." : "Analysieren und Email generieren"}
-        </button>
+          <button
+            onClick={handleAnalyzeSource}
+            disabled={analyzingSource}
+            style={primaryButtonStyle(analyzingSource)}
+          >
+            {analyzingSource ? "Wird analysiert..." : "Quelle analysieren"}
+          </button>
+        </div>
 
         {error ? (
           <div
             style={{
-              marginBottom: "20px",
+              marginBottom: "18px",
               color: "#b91c1c",
               fontWeight: 600,
               wordBreak: "break-word",
@@ -405,7 +436,7 @@ export default function PhotoToMailPage() {
         {successMessage ? (
           <div
             style={{
-              marginBottom: "20px",
+              marginBottom: "18px",
               color: "#166534",
               fontWeight: 600,
               wordBreak: "break-word",
@@ -415,127 +446,185 @@ export default function PhotoToMailPage() {
           </div>
         ) : null}
 
+        {/* ERKANNTE FELDER */}
         <div
           style={{
             display: "grid",
             gap: "16px",
+            marginBottom: "24px",
           }}
         >
-          <Field
+          <FieldWithOptions
             label="Jobtitel"
             value={jobData.jobTitle}
-            onChange={(value) => setJobData({ ...jobData, jobTitle: value })}
+            onChange={(value) => setFieldValue("jobTitle", value)}
+            options={jobData.jobTitleOptions}
+            onSelectOption={(value) => setFieldValue("jobTitle", value)}
           />
 
-          <Field
+          <FieldWithOptions
             label="Firma"
             value={jobData.company}
-            onChange={(value) => setJobData({ ...jobData, company: value })}
+            onChange={(value) => setFieldValue("company", value)}
+            options={jobData.companyOptions}
+            onSelectOption={(value) => setFieldValue("company", value)}
           />
 
-          <Field
+          <FieldWithOptions
             label="Ansprechpartner"
             value={jobData.contactPerson}
-            onChange={(value) =>
-              setJobData({ ...jobData, contactPerson: value })
-            }
+            onChange={(value) => setFieldValue("contactPerson", value)}
+            options={jobData.contactPersonOptions}
+            onSelectOption={(value) => setFieldValue("contactPerson", value)}
           />
 
-          <Field
+          <FieldWithOptions
             label="Email"
             value={jobData.email}
-            onChange={(value) => setJobData({ ...jobData, email: value })}
+            onChange={(value) => setFieldValue("email", value)}
+            options={jobData.emailOptions}
+            onSelectOption={(value) => setFieldValue("email", value)}
           />
+        </div>
 
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "8px",
-                fontWeight: 600,
-              }}
-            >
-              Generierte E-Mail
-            </label>
-
-            <textarea
-              value={jobData.generatedEmail}
-              onChange={(e) =>
-                setJobData({ ...jobData, generatedEmail: e.target.value })
-              }
-              rows={16}
-              style={{
-                width: "100%",
-                padding: "12px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "8px",
-                background: "#ffffff",
-                fontSize: "15px",
-                boxSizing: "border-box",
-                resize: "vertical",
-                fontFamily: "Arial, sans-serif",
-                lineHeight: 1.5,
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: "2px" }}>
-            <label style={{ fontSize: "14px", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={testMode}
-                onChange={(e) => setTestMode(e.target.checked)}
-                style={{ marginRight: "6px" }}
-              />
-              Test an mich senden
-            </label>
-          </div>
-
+        {/* STUFE 2 */}
+        <div
+          style={{
+            marginBottom: "22px",
+            paddingTop: "2px",
+            paddingBottom: "18px",
+            borderBottom: "1px solid #e5e7eb",
+          }}
+        >
           <div
             style={{
-              fontSize: "13px",
-              color: "#6b7280",
-              marginTop: "-4px",
+              fontSize: "16px",
+              fontWeight: 700,
+              marginBottom: "14px",
             }}
           >
-            {testMode
-              ? "Versand geht an deine Testadresse."
-              : "Versand geht an die erkannte Unternehmens-E-Mail."}
+            2. Email gestalten
           </div>
+
+          <div style={{ marginBottom: "8px", fontWeight: 600 }}>Hinweise</div>
 
           <div
             style={{
               display: "flex",
               gap: "10px",
               flexWrap: "wrap",
-              marginTop: "4px",
+              marginBottom: "16px",
             }}
           >
-            <button
-              onClick={handleSendEmail}
-              disabled={sending}
-              style={{
-                padding: "10px 16px",
-                border: "none",
-                borderRadius: "8px",
-                background: "#111827",
-                color: "#ffffff",
-                cursor: sending ? "not-allowed" : "pointer",
-                fontSize: "15px",
-                opacity: sending ? 0.7 : 1,
-              }}
-            >
-              {sending ? "Wird gesendet..." : "Email senden"}
-            </button>
+            {HINT_OPTIONS.map((option) => {
+              const active = selectedHints.includes(option.key);
 
-            <button
-              onClick={handleRegenerateEmail}
-              disabled={regenerating}
-              style={secondaryButtonStyle(regenerating)}
-            >
-              {regenerating ? "Wird neu erstellt..." : "Text neu"}
-            </button>
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => toggleHint(option.key)}
+                  style={{
+                    padding: "8px 12px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "999px",
+                    background: active ? "#111827" : "#ffffff",
+                    color: active ? "#ffffff" : "#111827",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
           </div>
+
+          <button
+            onClick={handleGenerateEmail}
+            disabled={generatingEmail || !hasAnalyzedSource}
+            style={primaryButtonStyle(generatingEmail || !hasAnalyzedSource)}
+          >
+            {generatingEmail ? "Wird generiert..." : "Email generieren"}
+          </button>
+        </div>
+
+        {/* GENERIERTE EMAIL */}
+        <div style={{ marginBottom: "16px" }}>
+          <label
+            style={{
+              display: "block",
+              marginBottom: "8px",
+              fontWeight: 600,
+            }}
+          >
+            Generierte E-Mail
+          </label>
+
+          <textarea
+            value={jobData.generatedEmail}
+            onChange={(e) =>
+              setJobData((prev) => ({
+                ...prev,
+                generatedEmail: e.target.value,
+              }))
+            }
+            rows={16}
+            style={{
+              width: "100%",
+              padding: "12px",
+              border: "1px solid #cbd5e1",
+              borderRadius: "8px",
+              background: "#ffffff",
+              fontSize: "15px",
+              boxSizing: "border-box",
+              resize: "vertical",
+              fontFamily: "Arial, sans-serif",
+              lineHeight: 1.5,
+            }}
+          />
+        </div>
+
+        {/* TESTMODE */}
+        <div style={{ marginBottom: "2px" }}>
+          <label style={{ fontSize: "14px", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={testMode}
+              onChange={(e) => setTestMode(e.target.checked)}
+              style={{ marginRight: "6px" }}
+            />
+            Test an mich senden
+          </label>
+        </div>
+
+        <div
+          style={{
+            fontSize: "13px",
+            color: "#6b7280",
+            marginBottom: "18px",
+          }}
+        >
+          {testMode
+            ? "Versand geht an deine Testadresse."
+            : "Versand geht an die erkannte Unternehmens-E-Mail."}
+        </div>
+
+        {/* CTA UNTEN */}
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            onClick={handleSendEmail}
+            disabled={sendingEmail}
+            style={primaryButtonStyle(sendingEmail)}
+          >
+            {sendingEmail ? "Wird gesendet..." : "Email senden"}
+          </button>
         </div>
       </div>
     </div>
@@ -554,7 +643,7 @@ function Field({
   placeholder?: string;
 }) {
   return (
-    <div>
+    <div style={{ marginBottom: "16px" }}>
       <label
         style={{
           display: "block",
@@ -583,6 +672,82 @@ function Field({
   );
 }
 
+function FieldWithOptions({
+  label,
+  value,
+  onChange,
+  options,
+  onSelectOption,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  onSelectOption: (value: string) => void;
+}) {
+  const alternativeOptions = options.filter(
+    (option) => option && option !== value
+  );
+
+  return (
+    <div>
+      <label
+        style={{
+          display: "block",
+          marginBottom: "8px",
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </label>
+
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "8px",
+          background: "#ffffff",
+          fontSize: "15px",
+          boxSizing: "border-box",
+        }}
+      />
+
+      {alternativeOptions.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "8px",
+          }}
+        >
+          {alternativeOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onSelectOption(option)}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid #cbd5e1",
+                borderRadius: "999px",
+                background: "#ffffff",
+                color: "#111827",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const uploadLabelStyle: React.CSSProperties = {
   padding: "10px 14px",
   border: "1px solid #cbd5e1",
@@ -591,13 +756,13 @@ const uploadLabelStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-function secondaryButtonStyle(disabled: boolean): React.CSSProperties {
+function primaryButtonStyle(disabled: boolean): React.CSSProperties {
   return {
     padding: "10px 16px",
-    border: "1px solid #cbd5e1",
+    border: "none",
     borderRadius: "8px",
-    background: "#ffffff",
-    color: "#111827",
+    background: "#111827",
+    color: "#ffffff",
     cursor: disabled ? "not-allowed" : "pointer",
     fontSize: "15px",
     opacity: disabled ? 0.7 : 1,
