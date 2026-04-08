@@ -96,7 +96,7 @@ Die Mail soll mit diesem Satz enden:
 "Gerne sende ich Ihnen ein unverbindliches Angebot zu."
 
 Danach folgt IMMER ein neuer Absatz mit exakt diesem Text:
-"Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-in-berlin-brandenburg.de"
+"Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-berlin-brandenburg.de"
 `;
 
     const ai = await fetch("https://api.openai.com/v1/chat/completions", {

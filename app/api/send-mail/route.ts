@@ -36,7 +36,7 @@ function buildFinalText(text: string) {
   ).trim();
 
   const infoBlock =
-    "Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-in-berlin-brandenburg.de";
+    "Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-berlin-brandenburg.de";
 
   if (!cleanedText.includes("Informationen zu unseren Anzeigenpreisen")) {
     cleanedText += `\n\n${infoBlock}`;
