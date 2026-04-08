@@ -31,21 +31,34 @@ type JobData = {
   emailOptions: string[];
 };
 
-type MailStatus = "sent" | "test" | "failed" | "draft";
-
 type MailRecord = {
   id: string;
   jobTitle: string;
   company: string;
-  normalizedCompany: string;
+  normalizedCompany?: string;
   contactPerson: string;
   recipientEmail: string;
   domain: string;
+  subject?: string;
   text: string;
-  status: MailStatus;
+  status: "sent" | "test" | "failed" | "draft";
   createdAt: string;
-  hints: HintKey[];
-  followupSent?: boolean;
+  lastEvent?: string;
+  reminderLabel?: string;
+};
+
+type MailDetail = {
+  id: string;
+  to: string[];
+  from: string;
+  subject: string;
+  createdAt: string;
+  html: string;
+  text: string;
+  lastEvent: string;
+  cc: string[];
+  bcc: string[];
+  replyTo: string[];
 };
 
 const EMPTY_JOB_DATA: JobData = {
@@ -94,7 +107,7 @@ function formatDate(dateString: string) {
   }
 }
 
-function statusLabel(status: MailStatus) {
+function statusLabel(status: MailRecord["status"]) {
   switch (status) {
     case "sent":
       return "Gesendet";
@@ -109,7 +122,7 @@ function statusLabel(status: MailStatus) {
   }
 }
 
-function statusColor(status: MailStatus) {
+function statusColor(status: MailRecord["status"]) {
   switch (status) {
     case "sent":
       return "#166534";
@@ -134,6 +147,8 @@ export default function PhotoToMailPage() {
   const [analyzingSource, setAnalyzingSource] = useState(false);
   const [generatingEmail, setGeneratingEmail] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [loadingCrm, setLoadingCrm] = useState(false);
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
 
   const [testMode, setTestMode] = useState(true);
   const [sendCopy, setSendCopy] = useState(true);
@@ -144,38 +159,11 @@ export default function PhotoToMailPage() {
   const [jobData, setJobData] = useState<JobData>(EMPTY_JOB_DATA);
 
   const [crmView, setCrmView] = useState<"company" | "all">("company");
+  const [mailHistory, setMailHistory] = useState<MailRecord[]>([]);
+  const [reminders, setReminders] = useState<MailRecord[]>([]);
   const [selectedMail, setSelectedMail] = useState<MailRecord | null>(null);
-
-  const [mailHistory, setMailHistory] = useState<MailRecord[]>([
-    {
-      id: "1",
-      jobTitle: "Sachbearbeiter Finanzbuchhaltung",
-      company: "Oder-Spree Krankenhaus GmbH",
-      normalizedCompany: normalizeCompany("Oder-Spree Krankenhaus GmbH"),
-      contactPerson: "",
-      recipientEmail: "bewerbung@os-kh.de",
-      domain: "os-kh.de",
-      text: "Beispieltext 1",
-      status: "sent",
-      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000).toISOString(),
-      hints: ["multiposting"],
-      followupSent: false,
-    },
-    {
-      id: "2",
-      jobTitle: "Pflegefachkraft",
-      company: "Klinikum Frankfurt (Oder)",
-      normalizedCompany: normalizeCompany("Klinikum Frankfurt (Oder)"),
-      contactPerson: "",
-      recipientEmail: "jobs@klinikum-ffo.de",
-      domain: "klinikum-ffo.de",
-      text: "Beispieltext 2",
-      status: "test",
-      createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      hints: ["social-media"],
-      followupSent: false,
-    },
-  ]);
+  const [selectedMailDetail, setSelectedMailDetail] = useState<MailDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   useEffect(() => {
     function handleResize() {
@@ -220,6 +208,45 @@ export default function PhotoToMailPage() {
       emailOptions: uniqueOptions(data.email || "", data.emailOptions),
     }));
   }
+
+  const currentDomain = useMemo(() => getDomain(jobData.email), [jobData.email]);
+  const currentCompany = useMemo(
+    () => normalizeCompany(jobData.company),
+    [jobData.company]
+  );
+
+  async function loadCrm() {
+    try {
+      setLoadingCrm(true);
+
+      const params = new URLSearchParams({
+        mode: crmView,
+      });
+
+      if (currentDomain) params.set("domain", currentDomain);
+      if (currentCompany) params.set("company", currentCompany);
+
+      const response = await fetch(`/api/crm/emails?${params.toString()}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "CRM konnte nicht geladen werden.");
+        return;
+      }
+
+      setMailHistory(data.emails || []);
+      setReminders(data.reminders || []);
+    } catch {
+      setError("CRM konnte nicht geladen werden.");
+    } finally {
+      setLoadingCrm(false);
+    }
+  }
+
+  useEffect(() => {
+    loadCrm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crmView, currentDomain, currentCompany]);
 
   async function handleAnalyzeSource() {
     setError("");
@@ -382,28 +409,13 @@ export default function PhotoToMailPage() {
         return;
       }
 
-      const newRecord: MailRecord = {
-        id: crypto.randomUUID(),
-        jobTitle: jobData.jobTitle,
-        company: jobData.company,
-        normalizedCompany: normalizeCompany(jobData.company),
-        contactPerson: jobData.contactPerson,
-        recipientEmail: data.actualRecipient || jobData.email,
-        domain: getDomain(data.actualRecipient || jobData.email),
-        text: jobData.generatedEmail,
-        status: testMode ? "test" : "sent",
-        createdAt: new Date().toISOString(),
-        hints: selectedHints,
-        followupSent: false,
-      };
-
-      setMailHistory((prev) => [newRecord, ...prev].slice(0, 100));
-
       setSuccessMessage(
         testMode
           ? "Test-E-Mail erfolgreich an dich gesendet."
           : "E-Mail erfolgreich gesendet."
       );
+
+      await loadCrm();
     } catch {
       setError("Die E-Mail konnte nicht gesendet werden.");
     } finally {
@@ -411,14 +423,14 @@ export default function PhotoToMailPage() {
     }
   }
 
-  async function handleReminderClick(item: MailRecord) {
+  async function handleReminderQuickSend(item: MailRecord) {
     setError("");
     setSuccessMessage("");
 
     try {
-      setGeneratingEmail(true);
+      setSendingReminderId(item.id);
 
-      const response = await fetch("/api/regenerate-email", {
+      const genResponse = await fetch("/api/regenerate-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -427,33 +439,74 @@ export default function PhotoToMailPage() {
           jobTitle: item.jobTitle,
           company: item.company,
           contactPerson: item.contactPerson,
-          hints: item.hints,
+          hints: [],
           followUp: true,
         }),
       });
 
-      const data = await response.json();
+      const genData = await genResponse.json();
 
-      if (!response.ok) {
-        setError(data.error || "Fehler bei der Erinnerungs-Mail.");
+      if (!genResponse.ok) {
+        setError(genData.error || "Erinnerungs-Mail konnte nicht generiert werden.");
         return;
       }
 
-      setJobData((prev) => ({
-        ...prev,
-        jobTitle: item.jobTitle,
-        company: item.company,
-        contactPerson: item.contactPerson,
-        email: item.recipientEmail,
-        generatedEmail: data.generatedEmail || "",
-      }));
+      const sendResponse = await fetch("/api/send-mail", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: item.recipientEmail,
+          text: genData.generatedEmail,
+          testMode: true,
+          sendCopy: true,
+          jobTitle: item.jobTitle,
+          company: item.company,
+          contactPerson: item.contactPerson,
+          hints: [],
+        }),
+      });
 
-      setSelectedHints(item.hints || []);
-      setSuccessMessage("Erinnerungs-Mail wurde generiert.");
+      const sendData = await sendResponse.json();
+
+      if (!sendResponse.ok) {
+        setError(sendData.error || "Erinnerungs-Mail konnte nicht gesendet werden.");
+        return;
+      }
+
+      setSuccessMessage(
+        `Erinnerungs-Mail (Test) für "${item.jobTitle}" wurde an dich gesendet.`
+      );
+
+      await loadCrm();
     } catch {
-      setError("Die Erinnerungs-Mail konnte nicht generiert werden.");
+      setError("Erinnerungs-Mail konnte nicht gesendet werden.");
     } finally {
-      setGeneratingEmail(false);
+      setSendingReminderId(null);
+    }
+  }
+
+  async function handleOpenMailDetail(mail: MailRecord) {
+    setSelectedMail(mail);
+    setSelectedMailDetail(null);
+
+    try {
+      setLoadingDetail(true);
+
+      const response = await fetch(`/api/crm/email/${mail.id}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Details konnten nicht geladen werden.");
+        return;
+      }
+
+      setSelectedMailDetail(data);
+    } catch {
+      setError("Details konnten nicht geladen werden.");
+    } finally {
+      setLoadingDetail(false);
     }
   }
 
@@ -475,49 +528,6 @@ export default function PhotoToMailPage() {
     !!jobData.contactPerson ||
     !!jobData.email;
 
-  const currentDomain = getDomain(jobData.email);
-  const currentCompany = normalizeCompany(jobData.company);
-
-  const filteredHistory = useMemo(() => {
-    const sorted = [...mailHistory].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-
-    if (crmView === "all") {
-      return sorted.slice(0, 25);
-    }
-
-    return sorted
-      .filter((mail) => {
-        const sameDomain =
-          currentDomain && mail.domain && mail.domain === currentDomain;
-        const sameCompany =
-          currentCompany &&
-          mail.normalizedCompany &&
-          mail.normalizedCompany === currentCompany;
-
-        return sameDomain || sameCompany;
-      })
-      .slice(0, 25);
-  }, [mailHistory, crmView, currentDomain, currentCompany]);
-
-  const reminders = useMemo(() => {
-    const now = Date.now();
-
-    return mailHistory.filter((mail) => {
-      const threeDaysPassed =
-        new Date(mail.createdAt).getTime() <=
-        now - 3 * 24 * 60 * 60 * 1000;
-
-      return (
-        mail.status === "sent" &&
-        !mail.followupSent &&
-        threeDaysPassed
-      );
-    });
-  }, [mailHistory]);
-
   return (
     <>
       <div
@@ -531,7 +541,6 @@ export default function PhotoToMailPage() {
       >
         {/* LINKE SEITE */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* REMINDERS */}
           {reminders.length > 0 && (
             <div style={{ marginBottom: "16px" }}>
               <div
@@ -541,7 +550,7 @@ export default function PhotoToMailPage() {
                   marginBottom: "8px",
                 }}
               >
-                Erinnerungen ({reminders.length})
+                Erinnerungen (Test)
               </div>
 
               <div
@@ -551,20 +560,23 @@ export default function PhotoToMailPage() {
                   flexWrap: "wrap",
                 }}
               >
-                {reminders.slice(0, 5).map((item) => (
+                {reminders.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => handleReminderClick(item)}
+                    onClick={() => handleReminderQuickSend(item)}
+                    disabled={sendingReminderId === item.id}
                     style={{
                       padding: "8px 12px",
                       borderRadius: "10px",
                       background: "#f3f4f6",
                       border: "1px solid #e5e7eb",
-                      cursor: "pointer",
+                      cursor:
+                        sendingReminderId === item.id ? "not-allowed" : "pointer",
                       lineHeight: 1.2,
-                      minWidth: "200px",
+                      minWidth: "220px",
                       textAlign: "left",
+                      opacity: sendingReminderId === item.id ? 0.7 : 1,
                     }}
                   >
                     <div style={{ fontSize: "13px", fontWeight: 600 }}>
@@ -573,21 +585,17 @@ export default function PhotoToMailPage() {
                     <div style={{ fontSize: "12px", color: "#6b7280" }}>
                       {item.company}
                     </div>
+                    <div
+                      style={{
+                        marginTop: "6px",
+                        fontSize: "11px",
+                        color: "#6b7280",
+                      }}
+                    >
+                      3 Tage nach 1. Mail
+                    </div>
                   </button>
                 ))}
-
-                {reminders.length > 5 && (
-                  <div
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: "10px",
-                      background: "#e5e7eb",
-                      fontSize: "12px",
-                    }}
-                  >
-                    +{reminders.length - 5} weitere
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -612,7 +620,6 @@ export default function PhotoToMailPage() {
               boxSizing: "border-box",
             }}
           >
-            {/* STUFE 1 */}
             <div
               style={{
                 marginBottom: "22px",
@@ -739,7 +746,6 @@ export default function PhotoToMailPage() {
               </div>
             ) : null}
 
-            {/* ERKANNTE FELDER */}
             <div
               style={{
                 display: "grid",
@@ -780,7 +786,6 @@ export default function PhotoToMailPage() {
               />
             </div>
 
-            {/* STUFE 2 */}
             <div
               style={{
                 marginBottom: "22px",
@@ -844,7 +849,6 @@ export default function PhotoToMailPage() {
               </button>
             </div>
 
-            {/* GENERIERTE EMAIL */}
             <div style={{ marginBottom: "16px" }}>
               <label
                 style={{
@@ -880,7 +884,6 @@ export default function PhotoToMailPage() {
               />
             </div>
 
-            {/* OPTIONEN */}
             <div style={{ marginBottom: "2px" }}>
               <label style={{ fontSize: "14px", cursor: "pointer" }}>
                 <input
@@ -1001,99 +1004,107 @@ export default function PhotoToMailPage() {
             </button>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "10px",
-              maxHeight: isMobile ? "none" : "70vh",
-              overflowY: "auto",
-              paddingRight: "2px",
-            }}
-          >
-            {filteredHistory.length === 0 ? (
-              <div
-                style={{
-                  fontSize: "13px",
-                  color: "#6b7280",
-                }}
-              >
-                Noch keine passenden Einträge vorhanden.
-              </div>
-            ) : (
-              filteredHistory.map((mail) => (
-                <button
-                  key={mail.id}
-                  type="button"
-                  onClick={() => setSelectedMail(mail)}
+          {loadingCrm ? (
+            <div style={{ fontSize: "13px", color: "#6b7280" }}>
+              CRM wird geladen...
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+                maxHeight: isMobile ? "none" : "70vh",
+                overflowY: "auto",
+                paddingRight: "2px",
+              }}
+            >
+              {mailHistory.length === 0 ? (
+                <div
                   style={{
-                    textAlign: "left",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "10px",
-                    padding: "10px",
-                    background: "#ffffff",
-                    cursor: "pointer",
+                    fontSize: "13px",
+                    color: "#6b7280",
                   }}
                 >
-                  <div
+                  Noch keine passenden Einträge vorhanden.
+                </div>
+              ) : (
+                mailHistory.map((mail) => (
+                  <button
+                    key={mail.id}
+                    type="button"
+                    onClick={() => handleOpenMailDetail(mail)}
                     style={{
-                      fontWeight: 600,
-                      fontSize: "13px",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    {mail.jobTitle}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#374151",
-                      marginBottom: "4px",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {mail.recipientEmail}
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "8px",
-                      alignItems: "center",
+                      textAlign: "left",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "10px",
+                      padding: "10px",
+                      background: "#ffffff",
+                      cursor: "pointer",
                     }}
                   >
                     <div
                       style={{
-                        fontSize: "11px",
-                        color: "#6b7280",
-                      }}
-                    >
-                      {formatDate(mail.createdAt)}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: "11px",
                         fontWeight: 600,
-                        color: statusColor(mail.status),
+                        fontSize: "13px",
+                        marginBottom: "4px",
                       }}
                     >
-                      {statusLabel(mail.status)}
+                      {mail.jobTitle || "Ohne Betreff"}
                     </div>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
+
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "#374151",
+                        marginBottom: "4px",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {mail.recipientEmail}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "8px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#6b7280",
+                        }}
+                      >
+                        {formatDate(mail.createdAt)}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: statusColor(mail.status),
+                        }}
+                      >
+                        {statusLabel(mail.status)}
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* MODAL */}
       {selectedMail && (
         <div
-          onClick={() => setSelectedMail(null)}
+          onClick={() => {
+            setSelectedMail(null);
+            setSelectedMailDetail(null);
+          }}
           style={{
             position: "fixed",
             inset: 0,
@@ -1131,7 +1142,7 @@ export default function PhotoToMailPage() {
                     marginBottom: "4px",
                   }}
                 >
-                  {selectedMail.jobTitle}
+                  {selectedMail.jobTitle || "Ohne Betreff"}
                 </div>
 
                 <div
@@ -1140,13 +1151,16 @@ export default function PhotoToMailPage() {
                     fontSize: "14px",
                   }}
                 >
-                  {selectedMail.company}
+                  {selectedMail.recipientEmail}
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => setSelectedMail(null)}
+                onClick={() => {
+                  setSelectedMail(null);
+                  setSelectedMailDetail(null);
+                }}
                 style={{
                   border: "1px solid #cbd5e1",
                   background: "#ffffff",
@@ -1159,57 +1173,72 @@ export default function PhotoToMailPage() {
               </button>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gap: "10px",
-                marginBottom: "16px",
-                fontSize: "14px",
-              }}
-            >
-              <DetailRow label="Empfänger" value={selectedMail.recipientEmail} />
-              <DetailRow label="Ansprechpartner" value={selectedMail.contactPerson || "-"} />
-              <DetailRow label="Datum" value={formatDate(selectedMail.createdAt)} />
-              <DetailRow
-                label="Status"
-                value={statusLabel(selectedMail.status)}
-                valueColor={statusColor(selectedMail.status)}
-              />
-              <DetailRow label="Domain" value={selectedMail.domain || "-"} />
-              <DetailRow
-                label="Hinweise"
-                value={
-                  selectedMail.hints.length > 0
-                    ? selectedMail.hints.join(", ")
-                    : "-"
-                }
-              />
-            </div>
-
-            <div>
-              <div
-                style={{
-                  fontWeight: 600,
-                  marginBottom: "8px",
-                }}
-              >
-                Mailtext
+            {loadingDetail ? (
+              <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                Details werden geladen...
               </div>
+            ) : selectedMailDetail ? (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    marginBottom: "16px",
+                    fontSize: "14px",
+                  }}
+                >
+                  <DetailRow label="Von" value={selectedMailDetail.from || "-"} />
+                  <DetailRow
+                    label="Empfänger"
+                    value={(selectedMailDetail.to || []).join(", ") || "-"}
+                  />
+                  <DetailRow
+                    label="Datum"
+                    value={formatDate(selectedMailDetail.createdAt)}
+                  />
+                  <DetailRow
+                    label="Status"
+                    value={selectedMailDetail.lastEvent || "-"}
+                  />
+                  <DetailRow
+                    label="Betreff"
+                    value={selectedMailDetail.subject || "-"}
+                  />
+                </div>
 
-              <div
-                style={{
-                  whiteSpace: "pre-wrap",
-                  background: "#f9fafb",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "10px",
-                  padding: "12px",
-                  fontSize: "14px",
-                  lineHeight: 1.5,
-                }}
-              >
-                {selectedMail.text || "-"}
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Mailtext
+                  </div>
+
+                  <div
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      background: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      fontSize: "14px",
+                      lineHeight: 1.5,
+                      maxHeight: "400px",
+                      overflowY: "auto",
+                    }}
+                  >
+                    {selectedMailDetail.text ||
+                      "Kein Plain-Text vorhanden. HTML liegt vor."}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                Keine Details geladen.
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -1337,24 +1366,20 @@ function FieldWithOptions({
 function DetailRow({
   label,
   value,
-  valueColor,
 }: {
   label: string;
   value: string;
-  valueColor?: string;
 }) {
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "140px 1fr",
+        gridTemplateColumns: "120px 1fr",
         gap: "12px",
       }}
     >
       <div style={{ color: "#6b7280" }}>{label}</div>
-      <div style={{ color: valueColor || "#111827", wordBreak: "break-word" }}>
-        {value}
-      </div>
+      <div style={{ wordBreak: "break-word" }}>{value}</div>
     </div>
   );
 }
