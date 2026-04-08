@@ -35,7 +35,11 @@ function buildFinalText(text: string) {
     ""
   ).trim();
 
-  return `${cleanedText}\n\nMit freundlichen Grüßen`;
+  return `${cleanedText}
+
+Informationen zu unseren Anzeigenpreisen und weitere Details zur Stellenbörse für Berlin und Brandenburg finden Sie hier: www.jobs-in-berlin-brandenburg.de
+
+Mit freundlichen Grüßen`;
 }
 
 function buildSubject(jobTitle?: string, hints: string[] = []) {

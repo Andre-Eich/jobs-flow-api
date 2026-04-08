@@ -65,6 +65,7 @@ ${buildHintsText(Array.isArray(hints) ? hints : [])}
 
 Die Mail soll mit diesem Satz enden:
 "Gerne sende ich Ihnen ein unverbindliches Angebot zu."
+
 `;
 
     const ai = await fetch("https://api.openai.com/v1/chat/completions", {
