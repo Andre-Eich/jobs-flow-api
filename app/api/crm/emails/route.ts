@@ -3,7 +3,7 @@ import { Resend } from "resend";
 
 export async function GET(req: Request) {
   try {
-    const apiKey = process.env.RESEND_API_KEY;
+    const apiKey = process.env.RESEND_CRM_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
