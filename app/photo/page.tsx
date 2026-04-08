@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type HintKey =
   | "multiple-jobs"
@@ -31,6 +31,23 @@ type JobData = {
   emailOptions: string[];
 };
 
+type MailStatus = "sent" | "test" | "failed" | "draft";
+
+type MailRecord = {
+  id: string;
+  jobTitle: string;
+  company: string;
+  normalizedCompany: string;
+  contactPerson: string;
+  recipientEmail: string;
+  domain: string;
+  text: string;
+  status: MailStatus;
+  createdAt: string;
+  hints: HintKey[];
+  followupSent?: boolean;
+};
+
 const EMPTY_JOB_DATA: JobData = {
   jobTitle: "",
   company: "",
@@ -50,6 +67,63 @@ const HINT_OPTIONS: { key: HintKey; label: string }[] = [
   { key: "multiposting", label: "Multiposting" },
 ];
 
+function getDomain(email: string) {
+  return email.split("@")[1]?.toLowerCase().trim() || "";
+}
+
+function normalizeCompany(company: string) {
+  return company
+    .toLowerCase()
+    .replace(/\b(gmbh|mbh|ag|ug|kg|e\.v\.|ev)\b/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatDate(dateString: string) {
+  try {
+    return new Date(dateString).toLocaleString("de-DE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return dateString;
+  }
+}
+
+function statusLabel(status: MailStatus) {
+  switch (status) {
+    case "sent":
+      return "Gesendet";
+    case "test":
+      return "Test";
+    case "failed":
+      return "Fehler";
+    case "draft":
+      return "Entwurf";
+    default:
+      return status;
+  }
+}
+
+function statusColor(status: MailStatus) {
+  switch (status) {
+    case "sent":
+      return "#166534";
+    case "test":
+      return "#1d4ed8";
+    case "failed":
+      return "#b91c1c";
+    case "draft":
+      return "#6b7280";
+    default:
+      return "#6b7280";
+  }
+}
+
 export default function PhotoToMailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [jobUrl, setJobUrl] = useState("");
@@ -62,15 +136,50 @@ export default function PhotoToMailPage() {
   const [sendingEmail, setSendingEmail] = useState(false);
 
   const [testMode, setTestMode] = useState(true);
+  const [sendCopy, setSendCopy] = useState(true);
 
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
   const [jobData, setJobData] = useState<JobData>(EMPTY_JOB_DATA);
 
+  const [crmView, setCrmView] = useState<"company" | "all">("company");
+  const [selectedMail, setSelectedMail] = useState<MailRecord | null>(null);
+
+  const [mailHistory, setMailHistory] = useState<MailRecord[]>([
+    {
+      id: "1",
+      jobTitle: "Sachbearbeiter Finanzbuchhaltung",
+      company: "Oder-Spree Krankenhaus GmbH",
+      normalizedCompany: normalizeCompany("Oder-Spree Krankenhaus GmbH"),
+      contactPerson: "",
+      recipientEmail: "bewerbung@os-kh.de",
+      domain: "os-kh.de",
+      text: "Beispieltext 1",
+      status: "sent",
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000).toISOString(),
+      hints: ["multiposting"],
+      followupSent: false,
+    },
+    {
+      id: "2",
+      jobTitle: "Pflegefachkraft",
+      company: "Klinikum Frankfurt (Oder)",
+      normalizedCompany: normalizeCompany("Klinikum Frankfurt (Oder)"),
+      contactPerson: "",
+      recipientEmail: "jobs@klinikum-ffo.de",
+      domain: "klinikum-ffo.de",
+      text: "Beispieltext 2",
+      status: "test",
+      createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      hints: ["social-media"],
+      followupSent: false,
+    },
+  ]);
+
   useEffect(() => {
     function handleResize() {
-      setIsMobile(window.innerWidth < 768);
+      setIsMobile(window.innerWidth < 980);
     }
 
     handleResize();
@@ -258,7 +367,10 @@ export default function PhotoToMailPage() {
           to: jobData.email,
           text: jobData.generatedEmail,
           testMode,
+          sendCopy,
           jobTitle: jobData.jobTitle,
+          company: jobData.company,
+          contactPerson: jobData.contactPerson,
           hints: selectedHints,
         }),
       });
@@ -270,6 +382,23 @@ export default function PhotoToMailPage() {
         return;
       }
 
+      const newRecord: MailRecord = {
+        id: crypto.randomUUID(),
+        jobTitle: jobData.jobTitle,
+        company: jobData.company,
+        normalizedCompany: normalizeCompany(jobData.company),
+        contactPerson: jobData.contactPerson,
+        recipientEmail: data.actualRecipient || jobData.email,
+        domain: getDomain(data.actualRecipient || jobData.email),
+        text: jobData.generatedEmail,
+        status: testMode ? "test" : "sent",
+        createdAt: new Date().toISOString(),
+        hints: selectedHints,
+        followupSent: false,
+      };
+
+      setMailHistory((prev) => [newRecord, ...prev].slice(0, 100));
+
       setSuccessMessage(
         testMode
           ? "Test-E-Mail erfolgreich an dich gesendet."
@@ -279,6 +408,52 @@ export default function PhotoToMailPage() {
       setError("Die E-Mail konnte nicht gesendet werden.");
     } finally {
       setSendingEmail(false);
+    }
+  }
+
+  async function handleReminderClick(item: MailRecord) {
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      setGeneratingEmail(true);
+
+      const response = await fetch("/api/regenerate-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jobTitle: item.jobTitle,
+          company: item.company,
+          contactPerson: item.contactPerson,
+          hints: item.hints,
+          followUp: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Fehler bei der Erinnerungs-Mail.");
+        return;
+      }
+
+      setJobData((prev) => ({
+        ...prev,
+        jobTitle: item.jobTitle,
+        company: item.company,
+        contactPerson: item.contactPerson,
+        email: item.recipientEmail,
+        generatedEmail: data.generatedEmail || "",
+      }));
+
+      setSelectedHints(item.hints || []);
+      setSuccessMessage("Erinnerungs-Mail wurde generiert.");
+    } catch {
+      setError("Die Erinnerungs-Mail konnte nicht generiert werden.");
+    } finally {
+      setGeneratingEmail(false);
     }
   }
 
@@ -300,328 +475,745 @@ export default function PhotoToMailPage() {
     !!jobData.contactPerson ||
     !!jobData.email;
 
-  return (
-    <div style={{ width: "100%" }}>
-      <h1
-        style={{
-          marginTop: 0,
-          marginBottom: "18px",
-          fontSize: "18px",
-        }}
-      >
-        Photo to Email
-      </h1>
+  const currentDomain = getDomain(jobData.email);
+  const currentCompany = normalizeCompany(jobData.company);
 
+  const filteredHistory = useMemo(() => {
+    const sorted = [...mailHistory].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    if (crmView === "all") {
+      return sorted.slice(0, 25);
+    }
+
+    return sorted
+      .filter((mail) => {
+        const sameDomain =
+          currentDomain && mail.domain && mail.domain === currentDomain;
+        const sameCompany =
+          currentCompany &&
+          mail.normalizedCompany &&
+          mail.normalizedCompany === currentCompany;
+
+        return sameDomain || sameCompany;
+      })
+      .slice(0, 25);
+  }, [mailHistory, crmView, currentDomain, currentCompany]);
+
+  const reminders = useMemo(() => {
+    const now = Date.now();
+
+    return mailHistory.filter((mail) => {
+      const threeDaysPassed =
+        new Date(mail.createdAt).getTime() <=
+        now - 3 * 24 * 60 * 60 * 1000;
+
+      return (
+        mail.status === "sent" &&
+        !mail.followupSent &&
+        threeDaysPassed
+      );
+    });
+  }, [mailHistory]);
+
+  return (
+    <>
       <div
         style={{
-          background: "#ffffff",
-          border: "1px solid #d1d5db",
-          borderRadius: "14px",
-          padding: "20px",
-          maxWidth: isMobile ? "100%" : "1180px",
+          display: "flex",
+          gap: "24px",
+          alignItems: "flex-start",
+          flexDirection: isMobile ? "column" : "row",
           width: "100%",
-          boxSizing: "border-box",
         }}
       >
-        <div
-          style={{
-            marginBottom: "22px",
-            paddingBottom: "18px",
-            borderBottom: "1px solid #e5e7eb",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "16px",
-              fontWeight: 700,
-              marginBottom: "14px",
-            }}
-          >
-            1. Quelle analysieren
-          </div>
+        {/* LINKE SEITE */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* REMINDERS */}
+          {reminders.length > 0 && (
+            <div style={{ marginBottom: "16px" }}>
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: "14px",
+                  marginBottom: "8px",
+                }}
+              >
+                Erinnerungen ({reminders.length})
+              </div>
 
-          {!isMobile && (
-            <Field
-              label="Anzeigen-URL"
-              value={jobUrl}
-              onChange={setJobUrl}
-              placeholder="https://..."
-            />
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                }}
+              >
+                {reminders.slice(0, 5).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleReminderClick(item)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: "10px",
+                      background: "#f3f4f6",
+                      border: "1px solid #e5e7eb",
+                      cursor: "pointer",
+                      lineHeight: 1.2,
+                      minWidth: "200px",
+                      textAlign: "left",
+                    }}
+                  >
+                    <div style={{ fontSize: "13px", fontWeight: 600 }}>
+                      {item.jobTitle}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                      {item.company}
+                    </div>
+                  </button>
+                ))}
+
+                {reminders.length > 5 && (
+                  <div
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: "10px",
+                      background: "#e5e7eb",
+                      fontSize: "12px",
+                    }}
+                  >
+                    +{reminders.length - 5} weitere
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
-          <div
+          <h1
             style={{
-              marginTop: !isMobile ? "4px" : 0,
+              marginTop: 0,
+              marginBottom: "18px",
+              fontSize: "18px",
             }}
           >
-            <label
+            Photo to Email
+          </h1>
+
+          <div
+            style={{
+              background: "#ffffff",
+              border: "1px solid #d1d5db",
+              borderRadius: "14px",
+              padding: "20px",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            {/* STUFE 1 */}
+            <div
               style={{
-                display: "block",
-                marginBottom: "8px",
-                fontWeight: 600,
+                marginBottom: "22px",
+                paddingBottom: "18px",
+                borderBottom: "1px solid #e5e7eb",
               }}
             >
-              {isMobile ? "Datei oder Foto" : "Datei"}
-            </label>
+              <div
+                style={{
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  marginBottom: "14px",
+                }}
+              >
+                1. Quelle analysieren
+              </div>
+
+              {!isMobile && (
+                <Field
+                  label="Anzeigen-URL"
+                  value={jobUrl}
+                  onChange={setJobUrl}
+                  placeholder="https://..."
+                />
+              )}
+
+              <div
+                style={{
+                  marginTop: !isMobile ? "4px" : 0,
+                }}
+              >
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "8px",
+                    fontWeight: 600,
+                  }}
+                >
+                  {isMobile ? "Datei oder Foto" : "Datei"}
+                </label>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    marginBottom: "12px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <label style={uploadLabelStyle}>
+                    📁 Datei
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) =>
+                        setSelectedFile(e.target.files?.[0] || null)
+                      }
+                      style={{ display: "none" }}
+                    />
+                  </label>
+
+                  {isMobile && (
+                    <label style={uploadLabelStyle}>
+                      📷 Foto
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(e) =>
+                          setSelectedFile(e.target.files?.[0] || null)
+                        }
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {selectedFile && (
+                  <div
+                    style={{
+                      marginBottom: "12px",
+                      fontSize: "14px",
+                      color: "#374151",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    Ausgewählt: {selectedFile.name}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={handleAnalyzeSource}
+                disabled={analyzingSource}
+                style={primaryButtonStyle(analyzingSource)}
+              >
+                {analyzingSource ? "Wird analysiert..." : "Quelle analysieren"}
+              </button>
+            </div>
+
+            {error ? (
+              <div
+                style={{
+                  marginBottom: "18px",
+                  color: "#b91c1c",
+                  fontWeight: 600,
+                  wordBreak: "break-word",
+                }}
+              >
+                {error}
+              </div>
+            ) : null}
+
+            {successMessage ? (
+              <div
+                style={{
+                  marginBottom: "18px",
+                  color: "#166534",
+                  fontWeight: 600,
+                  wordBreak: "break-word",
+                }}
+              >
+                {successMessage}
+              </div>
+            ) : null}
+
+            {/* ERKANNTE FELDER */}
+            <div
+              style={{
+                display: "grid",
+                gap: "16px",
+                marginBottom: "24px",
+              }}
+            >
+              <FieldWithOptions
+                label="Jobtitel"
+                value={jobData.jobTitle}
+                onChange={(value) => setFieldValue("jobTitle", value)}
+                options={jobData.jobTitleOptions}
+                onSelectOption={(value) => setFieldValue("jobTitle", value)}
+              />
+
+              <FieldWithOptions
+                label="Firma"
+                value={jobData.company}
+                onChange={(value) => setFieldValue("company", value)}
+                options={jobData.companyOptions}
+                onSelectOption={(value) => setFieldValue("company", value)}
+              />
+
+              <FieldWithOptions
+                label="Ansprechpartner"
+                value={jobData.contactPerson}
+                onChange={(value) => setFieldValue("contactPerson", value)}
+                options={jobData.contactPersonOptions}
+                onSelectOption={(value) => setFieldValue("contactPerson", value)}
+              />
+
+              <FieldWithOptions
+                label="Email"
+                value={jobData.email}
+                onChange={(value) => setFieldValue("email", value)}
+                options={jobData.emailOptions}
+                onSelectOption={(value) => setFieldValue("email", value)}
+              />
+            </div>
+
+            {/* STUFE 2 */}
+            <div
+              style={{
+                marginBottom: "22px",
+                paddingTop: "2px",
+                paddingBottom: "18px",
+                borderBottom: "1px solid #e5e7eb",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  marginBottom: "14px",
+                }}
+              >
+                2. Email gestalten
+              </div>
+
+              <div style={{ marginBottom: "8px", fontWeight: 600 }}>
+                Hinweise
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                  marginBottom: "16px",
+                }}
+              >
+                {HINT_OPTIONS.map((option) => {
+                  const active = selectedHints.includes(option.key);
+
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => toggleHint(option.key)}
+                      style={{
+                        padding: "8px 12px",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "999px",
+                        background: active ? "#111827" : "#ffffff",
+                        color: active ? "#ffffff" : "#111827",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={handleGenerateEmail}
+                disabled={generatingEmail || !hasAnalyzedSource}
+                style={primaryButtonStyle(generatingEmail || !hasAnalyzedSource)}
+              >
+                {generatingEmail ? "Wird generiert..." : "Email generieren"}
+              </button>
+            </div>
+
+            {/* GENERIERTE EMAIL */}
+            <div style={{ marginBottom: "16px" }}>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "8px",
+                  fontWeight: 600,
+                }}
+              >
+                Generierte E-Mail
+              </label>
+
+              <textarea
+                value={jobData.generatedEmail}
+                onChange={(e) =>
+                  setJobData((prev) => ({
+                    ...prev,
+                    generatedEmail: e.target.value,
+                  }))
+                }
+                rows={16}
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  background: "#ffffff",
+                  fontSize: "15px",
+                  boxSizing: "border-box",
+                  resize: "vertical",
+                  fontFamily: "Arial, sans-serif",
+                  lineHeight: 1.5,
+                }}
+              />
+            </div>
+
+            {/* OPTIONEN */}
+            <div style={{ marginBottom: "2px" }}>
+              <label style={{ fontSize: "14px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={testMode}
+                  onChange={(e) => setTestMode(e.target.checked)}
+                  style={{ marginRight: "6px" }}
+                />
+                Test an mich senden
+              </label>
+            </div>
+
+            <div style={{ marginBottom: "2px" }}>
+              <label style={{ fontSize: "14px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={sendCopy}
+                  onChange={(e) => setSendCopy(e.target.checked)}
+                  style={{ marginRight: "6px" }}
+                />
+                Kopie an mich senden
+              </label>
+            </div>
+
+            <div
+              style={{
+                fontSize: "13px",
+                color: "#6b7280",
+                marginBottom: "18px",
+              }}
+            >
+              {testMode
+                ? "Versand geht an deine Testadresse."
+                : "Versand geht an die erkannte Unternehmens-E-Mail."}
+            </div>
 
             <div
               style={{
                 display: "flex",
                 gap: "10px",
-                marginBottom: "12px",
                 flexWrap: "wrap",
               }}
             >
-              <label style={uploadLabelStyle}>
-                📁 Datei
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  style={{ display: "none" }}
-                />
-              </label>
-
-              {isMobile && (
-                <label style={uploadLabelStyle}>
-                  📷 Foto
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                    style={{ display: "none" }}
-                  />
-                </label>
-              )}
-            </div>
-
-            {selectedFile && (
-              <div
-                style={{
-                  marginBottom: "12px",
-                  fontSize: "14px",
-                  color: "#374151",
-                  wordBreak: "break-word",
-                }}
+              <button
+                onClick={handleSendEmail}
+                disabled={sendingEmail}
+                style={primaryButtonStyle(sendingEmail)}
               >
-                Ausgewählt: {selectedFile.name}
-              </div>
-            )}
+                {sendingEmail ? "Wird gesendet..." : "Email senden"}
+              </button>
+            </div>
           </div>
-
-          <button
-            onClick={handleAnalyzeSource}
-            disabled={analyzingSource}
-            style={primaryButtonStyle(analyzingSource)}
-          >
-            {analyzingSource ? "Wird analysiert..." : "Quelle analysieren"}
-          </button>
         </div>
 
-        {error ? (
-          <div
-            style={{
-              marginBottom: "18px",
-              color: "#b91c1c",
-              fontWeight: 600,
-              wordBreak: "break-word",
-            }}
-          >
-            {error}
-          </div>
-        ) : null}
-
-        {successMessage ? (
-          <div
-            style={{
-              marginBottom: "18px",
-              color: "#166534",
-              fontWeight: 600,
-              wordBreak: "break-word",
-            }}
-          >
-            {successMessage}
-          </div>
-        ) : null}
-
+        {/* RECHTE CRM-SPALTE */}
         <div
           style={{
-            display: "grid",
-            gap: "16px",
-            marginBottom: "24px",
-          }}
-        >
-          <FieldWithOptions
-            label="Jobtitel"
-            value={jobData.jobTitle}
-            onChange={(value) => setFieldValue("jobTitle", value)}
-            options={jobData.jobTitleOptions}
-            onSelectOption={(value) => setFieldValue("jobTitle", value)}
-          />
-
-          <FieldWithOptions
-            label="Firma"
-            value={jobData.company}
-            onChange={(value) => setFieldValue("company", value)}
-            options={jobData.companyOptions}
-            onSelectOption={(value) => setFieldValue("company", value)}
-          />
-
-          <FieldWithOptions
-            label="Ansprechpartner"
-            value={jobData.contactPerson}
-            onChange={(value) => setFieldValue("contactPerson", value)}
-            options={jobData.contactPersonOptions}
-            onSelectOption={(value) => setFieldValue("contactPerson", value)}
-          />
-
-          <FieldWithOptions
-            label="Email"
-            value={jobData.email}
-            onChange={(value) => setFieldValue("email", value)}
-            options={jobData.emailOptions}
-            onSelectOption={(value) => setFieldValue("email", value)}
-          />
-        </div>
-
-        <div
-          style={{
-            marginBottom: "22px",
-            paddingTop: "2px",
-            paddingBottom: "18px",
-            borderBottom: "1px solid #e5e7eb",
+            width: isMobile ? "100%" : "340px",
+            minWidth: isMobile ? "100%" : "340px",
+            background: "#ffffff",
+            border: "1px solid #d1d5db",
+            borderRadius: "14px",
+            padding: "16px",
+            boxSizing: "border-box",
+            position: isMobile ? "static" : "sticky",
+            top: "20px",
           }}
         >
           <div
             style={{
-              fontSize: "16px",
               fontWeight: 700,
-              marginBottom: "14px",
+              fontSize: "16px",
+              marginBottom: "12px",
             }}
           >
-            2. Email gestalten
+            CRM
           </div>
-
-          <div style={{ marginBottom: "8px", fontWeight: 600 }}>Hinweise</div>
 
           <div
             style={{
               display: "flex",
-              gap: "10px",
-              flexWrap: "wrap",
-              marginBottom: "16px",
+              gap: "8px",
+              marginBottom: "14px",
             }}
           >
-            {HINT_OPTIONS.map((option) => {
-              const active = selectedHints.includes(option.key);
+            <button
+              type="button"
+              onClick={() => setCrmView("company")}
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                borderRadius: "8px",
+                border: "1px solid #cbd5e1",
+                background: crmView === "company" ? "#111827" : "#ffffff",
+                color: crmView === "company" ? "#ffffff" : "#111827",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              Emails an dieses Unternehmen
+            </button>
 
-              return (
+            <button
+              type="button"
+              onClick={() => setCrmView("all")}
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                borderRadius: "8px",
+                border: "1px solid #cbd5e1",
+                background: crmView === "all" ? "#111827" : "#ffffff",
+                color: crmView === "all" ? "#ffffff" : "#111827",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              Alle Emails
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              maxHeight: isMobile ? "none" : "70vh",
+              overflowY: "auto",
+              paddingRight: "2px",
+            }}
+          >
+            {filteredHistory.length === 0 ? (
+              <div
+                style={{
+                  fontSize: "13px",
+                  color: "#6b7280",
+                }}
+              >
+                Noch keine passenden Einträge vorhanden.
+              </div>
+            ) : (
+              filteredHistory.map((mail) => (
                 <button
-                  key={option.key}
+                  key={mail.id}
                   type="button"
-                  onClick={() => toggleHint(option.key)}
+                  onClick={() => setSelectedMail(mail)}
                   style={{
-                    padding: "8px 12px",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: "999px",
-                    background: active ? "#111827" : "#ffffff",
-                    color: active ? "#ffffff" : "#111827",
+                    textAlign: "left",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "10px",
+                    padding: "10px",
+                    background: "#ffffff",
                     cursor: "pointer",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    {mail.jobTitle}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "#374151",
+                      marginBottom: "4px",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {mail.recipientEmail}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "8px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#6b7280",
+                      }}
+                    >
+                      {formatDate(mail.createdAt)}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: statusColor(mail.status),
+                      }}
+                    >
+                      {statusLabel(mail.status)}
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* MODAL */}
+      {selectedMail && (
+        <div
+          onClick={() => setSelectedMail(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(17, 24, 39, 0.45)",
+            zIndex: 50,
+            padding: "24px",
+            overflowY: "auto",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "720px",
+              margin: "40px auto",
+              background: "#ffffff",
+              borderRadius: "14px",
+              padding: "20px",
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "16px",
+                alignItems: "flex-start",
+                marginBottom: "16px",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    marginBottom: "4px",
+                  }}
+                >
+                  {selectedMail.jobTitle}
+                </div>
+
+                <div
+                  style={{
+                    color: "#374151",
                     fontSize: "14px",
                   }}
                 >
-                  {option.label}
-                </button>
-              );
-            })}
+                  {selectedMail.company}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedMail(null)}
+                style={{
+                  border: "1px solid #cbd5e1",
+                  background: "#ffffff",
+                  borderRadius: "8px",
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                }}
+              >
+                Schließen
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gap: "10px",
+                marginBottom: "16px",
+                fontSize: "14px",
+              }}
+            >
+              <DetailRow label="Empfänger" value={selectedMail.recipientEmail} />
+              <DetailRow label="Ansprechpartner" value={selectedMail.contactPerson || "-"} />
+              <DetailRow label="Datum" value={formatDate(selectedMail.createdAt)} />
+              <DetailRow
+                label="Status"
+                value={statusLabel(selectedMail.status)}
+                valueColor={statusColor(selectedMail.status)}
+              />
+              <DetailRow label="Domain" value={selectedMail.domain || "-"} />
+              <DetailRow
+                label="Hinweise"
+                value={
+                  selectedMail.hints.length > 0
+                    ? selectedMail.hints.join(", ")
+                    : "-"
+                }
+              />
+            </div>
+
+            <div>
+              <div
+                style={{
+                  fontWeight: 600,
+                  marginBottom: "8px",
+                }}
+              >
+                Mailtext
+              </div>
+
+              <div
+                style={{
+                  whiteSpace: "pre-wrap",
+                  background: "#f9fafb",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "10px",
+                  padding: "12px",
+                  fontSize: "14px",
+                  lineHeight: 1.5,
+                }}
+              >
+                {selectedMail.text || "-"}
+              </div>
+            </div>
           </div>
-
-          <button
-            onClick={handleGenerateEmail}
-            disabled={generatingEmail || !hasAnalyzedSource}
-            style={primaryButtonStyle(generatingEmail || !hasAnalyzedSource)}
-          >
-            {generatingEmail ? "Wird generiert..." : "Email generieren"}
-          </button>
         </div>
-
-        <div style={{ marginBottom: "16px" }}>
-          <label
-            style={{
-              display: "block",
-              marginBottom: "8px",
-              fontWeight: 600,
-            }}
-          >
-            Generierte E-Mail
-          </label>
-
-          <textarea
-            value={jobData.generatedEmail}
-            onChange={(e) =>
-              setJobData((prev) => ({
-                ...prev,
-                generatedEmail: e.target.value,
-              }))
-            }
-            rows={16}
-            style={{
-              width: "100%",
-              padding: "12px",
-              border: "1px solid #cbd5e1",
-              borderRadius: "8px",
-              background: "#ffffff",
-              fontSize: "15px",
-              boxSizing: "border-box",
-              resize: "vertical",
-              fontFamily: "Arial, sans-serif",
-              lineHeight: 1.5,
-            }}
-          />
-        </div>
-
-        <div style={{ marginBottom: "2px" }}>
-          <label style={{ fontSize: "14px", cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={testMode}
-              onChange={(e) => setTestMode(e.target.checked)}
-              style={{ marginRight: "6px" }}
-            />
-            Test an mich senden
-          </label>
-        </div>
-
-        <div
-          style={{
-            fontSize: "13px",
-            color: "#6b7280",
-            marginBottom: "18px",
-          }}
-        >
-          {testMode
-            ? "Versand geht an deine Testadresse."
-            : "Versand geht an die erkannte Unternehmens-E-Mail."}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            flexWrap: "wrap",
-          }}
-        >
-          <button
-            onClick={handleSendEmail}
-            disabled={sendingEmail}
-            style={primaryButtonStyle(sendingEmail)}
-          >
-            {sendingEmail ? "Wird gesendet..." : "Email senden"}
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
 
@@ -738,6 +1330,31 @@ function FieldWithOptions({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "140px 1fr",
+        gap: "12px",
+      }}
+    >
+      <div style={{ color: "#6b7280" }}>{label}</div>
+      <div style={{ color: valueColor || "#111827", wordBreak: "break-word" }}>
+        {value}
+      </div>
     </div>
   );
 }
