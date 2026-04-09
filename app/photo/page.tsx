@@ -8,6 +8,19 @@ type HintKey =
   | "print"
   | "multiposting";
 
+type HookBaseId =
+  | "auto"
+  | "hybrid"
+  | "punch"
+  | "soft-personal"
+  | "problem-focus"
+  | "regional"
+  | "reach"
+  | "competition"
+  | "social-proof"
+  | "minimal"
+  | "consultative";
+
 type AnalyzeResponse = {
   jobTitle?: string;
   company?: string;
@@ -29,6 +42,10 @@ type JobData = {
   companyOptions: string[];
   contactPersonOptions: string[];
   emailOptions: string[];
+  hookBaseId?: string;
+  hookBaseLabel?: string;
+  hookVariantId?: string;
+  hookText?: string;
 };
 
 type MailRecord = {
@@ -75,6 +92,10 @@ const EMPTY_JOB_DATA: JobData = {
   companyOptions: [],
   contactPersonOptions: [],
   emailOptions: [],
+  hookBaseId: "",
+  hookBaseLabel: "",
+  hookVariantId: "",
+  hookText: "",
 };
 
 const HINT_OPTIONS: { key: HintKey; label: string }[] = [
@@ -82,6 +103,20 @@ const HINT_OPTIONS: { key: HintKey; label: string }[] = [
   { key: "social-media", label: "Social-Media" },
   { key: "print", label: "Print-Anzeige" },
   { key: "multiposting", label: "Multiposting" },
+];
+
+const HOOK_OPTIONS: { value: HookBaseId; label: string }[] = [
+  { value: "auto", label: "Automatisch" },
+  { value: "hybrid", label: "Hybrid" },
+  { value: "punch", label: "Punch" },
+  { value: "soft-personal", label: "Soft Personal" },
+  { value: "problem-focus", label: "Problem-Fokus" },
+  { value: "regional", label: "Regional" },
+  { value: "reach", label: "Reichweite" },
+  { value: "competition", label: "Wettbewerb" },
+  { value: "social-proof", label: "Kundenbeweis" },
+  { value: "minimal", label: "Minimal" },
+  { value: "consultative", label: "Beratend" },
 ];
 
 function getDomain(email: string) {
@@ -151,6 +186,8 @@ export default function PhotoToMailPage() {
   const [isMobile, setIsMobile] = useState(false);
 
   const [selectedHints, setSelectedHints] = useState<HintKey[]>([]);
+  const [selectedHookBaseId, setSelectedHookBaseId] =
+    useState<HookBaseId>("auto");
 
   const [analyzingSource, setAnalyzingSource] = useState(false);
   const [generatingEmail, setGeneratingEmail] = useState(false);
@@ -440,6 +477,7 @@ export default function PhotoToMailPage() {
           contactPerson: jobData.contactPerson,
           email: jobData.email,
           hints: selectedHints,
+          selectedHookBaseId,
         }),
       });
 
@@ -453,6 +491,10 @@ export default function PhotoToMailPage() {
       setJobData((prev) => ({
         ...prev,
         generatedEmail: data.generatedEmail || "",
+        hookBaseId: data.hookBaseId || "",
+        hookBaseLabel: data.hookBaseLabel || "",
+        hookVariantId: data.hookVariantId || "",
+        hookText: data.hookText || "",
       }));
 
       setSuccessMessage("E-Mail erfolgreich generiert.");
@@ -494,6 +536,14 @@ export default function PhotoToMailPage() {
           company: jobData.company,
           contactPerson: jobData.contactPerson,
           hints: selectedHints,
+          hookBaseId: jobData.hookBaseId || selectedHookBaseId,
+          hookBaseLabel:
+            jobData.hookBaseLabel ||
+            HOOK_OPTIONS.find((item) => item.value === selectedHookBaseId)
+              ?.label ||
+            "Automatisch",
+          hookVariantId: jobData.hookVariantId || "",
+          hookText: jobData.hookText || "",
         }),
       });
 
@@ -567,6 +617,10 @@ export default function PhotoToMailPage() {
           hints: [],
           followUp: true,
           originalEmailId: item.id,
+          hookBaseId: "followup",
+          hookBaseLabel: "Follow-up",
+          hookVariantId: "followup_default",
+          hookText: genData.generatedEmail || "",
         }),
       });
 
@@ -1065,40 +1119,86 @@ export default function PhotoToMailPage() {
                 2. Email gestalten
               </div>
 
-              <div style={{ marginBottom: "8px", fontWeight: 600 }}>
-                Hinweise
-              </div>
-
               <div
                 style={{
                   display: "flex",
-                  gap: "10px",
+                  justifyContent: "space-between",
+                  gap: "16px",
+                  alignItems: "flex-start",
                   flexWrap: "wrap",
                   marginBottom: "16px",
                 }}
               >
-                {HINT_OPTIONS.map((option) => {
-                  const active = selectedHints.includes(option.key);
+                <div style={{ flex: 1, minWidth: "280px" }}>
+                  <div style={{ marginBottom: "8px", fontWeight: 600 }}>
+                    Hinweise
+                  </div>
 
-                  return (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => toggleHint(option.key)}
-                      style={{
-                        padding: "8px 12px",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "999px",
-                        background: active ? "#111827" : "#ffffff",
-                        color: active ? "#ffffff" : "#111827",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {HINT_OPTIONS.map((option) => {
+                      const active = selectedHints.includes(option.key);
+
+                      return (
+                        <button
+                          key={option.key}
+                          type="button"
+                          onClick={() => toggleHint(option.key)}
+                          style={{
+                            padding: "8px 12px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: "999px",
+                            background: active ? "#111827" : "#ffffff",
+                            color: active ? "#ffffff" : "#111827",
+                            cursor: "pointer",
+                            fontSize: "14px",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ minWidth: "220px" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Einstieg
+                  </label>
+
+                  <select
+                    value={selectedHookBaseId}
+                    onChange={(e) =>
+                      setSelectedHookBaseId(e.target.value as HookBaseId)
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "8px",
+                      background: "#ffffff",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {HOOK_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <button
@@ -1144,6 +1244,20 @@ export default function PhotoToMailPage() {
                 }}
               />
             </div>
+
+            {jobData.hookBaseLabel && (
+              <div
+                style={{
+                  marginTop: "-6px",
+                  marginBottom: "16px",
+                  fontSize: "13px",
+                  color: "#6b7280",
+                }}
+              >
+                Verwendeter Einstieg: {jobData.hookBaseLabel}
+                {jobData.hookVariantId ? ` · ${jobData.hookVariantId}` : ""}
+              </div>
+            )}
 
             <div style={{ marginBottom: "2px" }}>
               <label style={{ fontSize: "14px", cursor: "pointer" }}>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { saveTextControllingEntry } from "@/lib/textControllingStore";
 
 function escapeHtml(value: string) {
   return value
@@ -85,9 +86,14 @@ export async function POST(req: Request) {
       text,
       testMode,
       jobTitle,
+      company,
       sendCopy,
       followUp,
       originalEmailId,
+      hookBaseId,
+      hookBaseLabel,
+      hookVariantId,
+      hookText,
     } = await req.json();
 
     if (!text) {
@@ -152,7 +158,7 @@ export async function POST(req: Request) {
       </div>
     `;
 
-    const data = await resend.emails.send({
+    const result = await resend.emails.send({
       from: "Andre Eichstädt <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
       replyTo: "a.eichstaedt@jobs-in-berlin-brandenburg.de",
       to: actualRecipient,
@@ -166,11 +172,35 @@ export async function POST(req: Request) {
         : undefined,
     });
 
+    const emailId =
+      (result as any)?.data?.id ||
+      (result as any)?.id ||
+      "";
+
+    saveTextControllingEntry({
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      emailId: String(emailId || ""),
+      jobTitle: String(jobTitle || "").trim(),
+      company: String(company || "").trim(),
+      recipientEmail: actualRecipient,
+      subject: finalSubject,
+      hookBaseId: String(hookBaseId || "unknown"),
+      hookBaseLabel: String(hookBaseLabel || "Unbekannt"),
+      hookVariantId: String(hookVariantId || "unknown"),
+      hookText: String(hookText || "").trim(),
+      followUp: Boolean(followUp),
+      opened: false,
+      lastEvent: "",
+      reminderSent: false,
+    });
+
     return NextResponse.json({
       success: true,
-      data,
+      data: result,
       actualRecipient,
       subject: finalSubject,
+      emailId,
     });
   } catch (error: any) {
     console.error("RESEND ERROR:", error);
