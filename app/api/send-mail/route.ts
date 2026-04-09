@@ -44,7 +44,6 @@ function buildFinalText(text: string, hiddenMarker?: string) {
 
   let final = `${cleanedText}\n\nMit freundlichen Grüßen`;
 
-  // 👇 UNSICHTBARER MARKER
   if (hiddenMarker) {
     final += `\n\n<!-- ${hiddenMarker} -->`;
   }
@@ -98,18 +97,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🚨 HARD SAFETY
-    let actualRecipient = to;
+    let actualRecipient = String(to || "").trim();
+    const isTestMode = Boolean(testMode);
+    const testRecipient = String(process.env.TEST_RECIPIENT_EMAIL || "").trim();
 
-    if (testMode) {
-      if (!process.env.TEST_RECIPIENT_EMAIL) {
+    if (isTestMode) {
+      if (!testRecipient) {
         return NextResponse.json(
           { error: "TEST_RECIPIENT_EMAIL fehlt." },
           { status: 500 }
         );
       }
 
-      actualRecipient = process.env.TEST_RECIPIENT_EMAIL;
+      actualRecipient = testRecipient;
     }
 
     if (!actualRecipient) {
@@ -120,28 +120,47 @@ export async function POST(req: Request) {
     }
 
     const hiddenMarker =
-      followUp && originalEmailId
-        ? `REMINDER:${originalEmailId}`
-        : undefined;
+      followUp && originalEmailId ? `REMINDER:${originalEmailId}` : undefined;
 
     const finalText = buildFinalText(text, hiddenMarker);
     const finalSubject = buildSubject(jobTitle, followUp);
 
     const html = `
-      <div style="font-family: Arial, sans-serif;">
-        ${textToHtml(finalText)}
+      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
+        <div style="margin-bottom: 24px;">
+          ${textToHtml(finalText)}
+        </div>
+
+        <div style="margin-top: 28px;">
+          <div style="font-weight: 700;">Andre Eichstädt</div>
+          <div>Anzeigenberater</div>
+          <div>Jobs in Berlin-Brandenburg</div>
+          <div>Tel. 0335/629797-38</div>
+          <div>
+            <a href="mailto:a.eichstaedt@jobs-in-berlin-brandenburg.de" style="color:#111111; text-decoration:none;">
+              a.eichstaedt@jobs-in-berlin-brandenburg.de
+            </a>
+          </div>
+          <div style="margin-top: 12px;">Leipziger Str. 56</div>
+          <div>15236 Frankfurt (Oder)</div>
+          <div>
+            <a href="https://www.jobs-in-berlin-brandenburg.de" target="_blank" style="color:#111111; text-decoration:none;">
+              www.jobs-in-berlin-brandenburg.de
+            </a>
+          </div>
+        </div>
       </div>
     `;
 
     const data = await resend.emails.send({
-      from: "Jobs in Berlin-Brandenburg <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
+      from: "Andre Eichstädt <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
       replyTo: "a.eichstaedt@jobs-in-berlin-brandenburg.de",
       to: actualRecipient,
       subject: finalSubject,
       html,
       text: finalText,
-      bcc: testMode
-        ? process.env.TEST_RECIPIENT_EMAIL
+      bcc: isTestMode
+        ? testRecipient || undefined
         : sendCopy
         ? "a.eichstaedt@jobs-in-berlin-brandenburg.de"
         : undefined,
@@ -150,9 +169,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       data,
+      actualRecipient,
+      subject: finalSubject,
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("RESEND ERROR:", error);
 
     return NextResponse.json(
       { error: error?.message || "Fehler beim Mailversand." },

@@ -193,6 +193,31 @@ export default function PhotoToMailPage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("dismissedReminderIds");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setDismissedReminderIds(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "dismissedReminderIds",
+        JSON.stringify(dismissedReminderIds)
+      );
+    } catch {
+      // ignore
+    }
+  }, [dismissedReminderIds]);
+
   const currentDomain = useMemo(() => getDomain(jobData.email), [jobData.email]);
   const currentCompany = useMemo(
     () => normalizeCompany(jobData.company),
@@ -578,9 +603,7 @@ export default function PhotoToMailPage() {
     try {
       setSendingAllReminders(true);
 
-      const openReminders = visibleReminders;
-
-      for (const item of openReminders) {
+      for (const item of visibleReminders) {
         await handleReminderQuickSend(item, false);
       }
 
