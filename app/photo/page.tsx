@@ -253,6 +253,246 @@ function StatBar({
   );
 }
 
+function StatCard({
+  label,
+  value,
+  subValue,
+}: {
+  label: string;
+  value: string;
+  subValue?: string;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: "12px",
+        padding: "14px",
+        background: "#ffffff",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "12px",
+          color: "#6b7280",
+          marginBottom: "6px",
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: "20px",
+          fontWeight: 700,
+          lineHeight: 1.2,
+          wordBreak: "break-word",
+        }}
+      >
+        {value}
+      </div>
+
+      {subValue ? (
+        <div
+          style={{
+            marginTop: "6px",
+            fontSize: "12px",
+            color: "#6b7280",
+          }}
+        >
+          {subValue}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <label
+        style={{
+          display: "block",
+          marginBottom: "8px",
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </label>
+
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "8px",
+          background: "#ffffff",
+          fontSize: "15px",
+          boxSizing: "border-box",
+        }}
+      />
+    </div>
+  );
+}
+
+function FieldWithOptions({
+  label,
+  value,
+  onChange,
+  options,
+  onSelectOption,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  onSelectOption: (value: string) => void;
+}) {
+  const alternativeOptions = options.filter(
+    (option) => option && option !== value
+  );
+
+  return (
+    <div>
+      <label
+        style={{
+          display: "block",
+          marginBottom: "8px",
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </label>
+
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "8px",
+          background: "#ffffff",
+          fontSize: "15px",
+          boxSizing: "border-box",
+        }}
+      />
+
+      {alternativeOptions.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            marginTop: "8px",
+          }}
+        >
+          {alternativeOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onSelectOption(option)}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid #cbd5e1",
+                borderRadius: "999px",
+                background: "#ffffff",
+                color: "#111827",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "120px 1fr",
+        gap: "12px",
+      }}
+    >
+      <div style={{ color: "#6b7280" }}>{label}</div>
+      <div style={{ wordBreak: "break-word" }}>{value}</div>
+    </div>
+  );
+}
+
+const uploadLabelStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "8px",
+  background: "#ffffff",
+  cursor: "pointer",
+};
+
+const tableHeadStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  fontSize: "13px",
+  fontWeight: 700,
+  color: "#111827",
+  borderBottom: "1px solid #e5e7eb",
+};
+
+const tableCellStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  verticalAlign: "top",
+  borderBottom: "1px solid #f3f4f6",
+};
+
+function primaryButtonStyle(disabled: boolean): React.CSSProperties {
+  return {
+    padding: "10px 16px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#111827",
+    color: "#ffffff",
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontSize: "15px",
+    opacity: disabled ? 0.7 : 1,
+  };
+}
+
+function topMenuButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: "999px",
+    border: "1px solid #cbd5e1",
+    background: active ? "#111827" : "#ffffff",
+    color: active ? "#ffffff" : "#111827",
+    cursor: "pointer",
+    fontSize: "14px",
+    fontWeight: 600,
+  };
+}
+
 export default function PhotoToMailPage() {
   const [mainView, setMainView] = useState<MainView>("mails");
 
@@ -874,27 +1114,17 @@ export default function PhotoToMailPage() {
         </button>
       </div>
 
-      {mainView === "mails" && (
-        <div
-          style={{
-            display: "flex",
-            gap: "24px",
-            alignItems: "flex-start",
-            flexDirection: isMobile ? "column" : "row",
-            width: "100%",
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h1
-              style={{
-                marginTop: 0,
-                marginBottom: "18px",
-                fontSize: "18px",
-              }}
-            >
-              Kaltakquise-Mails
-            </h1>
-
+      <div
+        style={{
+          display: "flex",
+          gap: "24px",
+          alignItems: "flex-start",
+          flexDirection: isMobile ? "column" : "row",
+          width: "100%",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {mainView === "mails" && (
             <div
               style={{
                 background: "#ffffff",
@@ -905,6 +1135,16 @@ export default function PhotoToMailPage() {
                 boxSizing: "border-box",
               }}
             >
+              <h1
+                style={{
+                  marginTop: 0,
+                  marginBottom: "18px",
+                  fontSize: "18px",
+                }}
+              >
+                Kaltakquise-Mails
+              </h1>
+
               <div
                 style={{
                   marginBottom: "22px",
@@ -1304,643 +1544,645 @@ export default function PhotoToMailPage() {
                 </button>
               </div>
             </div>
-          </div>
+          )}
 
-          <div
-            style={{
-              width: isMobile ? "100%" : "340px",
-              minWidth: isMobile ? "100%" : "340px",
-              background: "#ffffff",
-              border: "1px solid #d1d5db",
-              borderRadius: "14px",
-              padding: "16px",
-              boxSizing: "border-box",
-              position: isMobile ? "static" : "sticky",
-              top: "20px",
-            }}
-          >
+          {mainView === "reminders" && (
             <div
               style={{
-                fontWeight: 700,
-                fontSize: "16px",
-                marginBottom: "12px",
+                background: "#ffffff",
+                border: "1px solid #d1d5db",
+                borderRadius: "14px",
+                padding: "20px",
+                boxSizing: "border-box",
               }}
             >
-              CRM
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                marginBottom: "14px",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setCrmView("company")}
-                style={{
-                  flex: 1,
-                  padding: "8px 10px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                  background: crmView === "company" ? "#111827" : "#ffffff",
-                  color: crmView === "company" ? "#ffffff" : "#111827",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                }}
-              >
-                Emails an dieses Unternehmen
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setCrmView("all")}
-                style={{
-                  flex: 1,
-                  padding: "8px 10px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                  background: crmView === "all" ? "#111827" : "#ffffff",
-                  color: crmView === "all" ? "#ffffff" : "#111827",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                }}
-              >
-                Alle Emails
-              </button>
-            </div>
-
-            {loadingCrm ? (
-              <div style={{ fontSize: "13px", color: "#6b7280" }}>
-                CRM wird geladen...
-              </div>
-            ) : (
               <div
                 style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "10px",
-                  maxHeight: isMobile ? "none" : "70vh",
-                  overflowY: "auto",
-                  paddingRight: "2px",
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  marginBottom: "18px",
                 }}
               >
-                {mailHistory.length === 0 ? (
+                Erinnerungen
+              </div>
+
+              {visibleReminders.length === 0 ? (
+                <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                  Aktuell sind keine offenen Erinnerungen vorhanden.
+                </div>
+              ) : (
+                <>
                   <div
                     style={{
-                      fontSize: "13px",
-                      color: "#6b7280",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "12px",
+                      alignItems: "center",
+                      marginBottom: "16px",
+                      flexWrap: "wrap",
                     }}
                   >
-                    Noch keine passenden Einträge vorhanden.
-                  </div>
-                ) : (
-                  mailHistory.map((mail) => (
                     <button
-                      key={mail.id}
                       type="button"
-                      onClick={() => handleOpenMailDetail(mail)}
+                      onClick={() => setRemindersCollapsed((prev) => !prev)}
                       style={{
-                        textAlign: "left",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "10px",
-                        padding: "10px",
-                        background: "#ffffff",
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
                         cursor: "pointer",
+                        fontWeight: 700,
+                        fontSize: "14px",
+                        color: "#111827",
                       }}
                     >
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          fontSize: "13px",
-                          marginBottom: "4px",
-                          lineHeight: 1.3,
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {displayMailTitle(mail)}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          color: "#374151",
-                          marginBottom: "4px",
-                          wordBreak: "break-word",
-                          lineHeight: 1.3,
-                        }}
-                      >
-                        {mail.company?.trim() ||
-                          mail.recipientLabel ||
-                          mail.recipientEmail}
-                      </div>
-
-                      {mail.reminded && (
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            color: "#166534",
-                            fontWeight: 600,
-                            marginBottom: "4px",
-                          }}
-                        >
-                          Erinnerung gesendet
-                          {mail.reminderSentAt
-                            ? ` · ${formatDate(mail.reminderSentAt)}`
-                            : ""}
-                        </div>
-                      )}
-
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: "8px",
-                          alignItems: "center",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            color: "#6b7280",
-                          }}
-                        >
-                          {formatDate(mail.createdAt)}
-                        </div>
-
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            color: statusColor(mail.status),
-                          }}
-                        >
-                          {mail.lastEvent || statusLabel(mail.status)}
-                        </div>
-                      </div>
+                      {remindersCollapsed ? "▶" : "▼"} Offene Erinnerungen
                     </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {mainView === "reminders" && (
-        <div
-          style={{
-            background: "#ffffff",
-            border: "1px solid #d1d5db",
-            borderRadius: "14px",
-            padding: "20px",
-            boxSizing: "border-box",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "18px",
-              fontWeight: 700,
-              marginBottom: "18px",
-            }}
-          >
-            Erinnerungen
-          </div>
+                    <button
+                      type="button"
+                      onClick={handleSendAllReminders}
+                      disabled={sendingAllReminders || visibleReminders.length === 0}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        background: "#111827",
+                        color: "#ffffff",
+                        cursor:
+                          sendingAllReminders || visibleReminders.length === 0
+                            ? "not-allowed"
+                            : "pointer",
+                        fontSize: "12px",
+                        opacity:
+                          sendingAllReminders || visibleReminders.length === 0
+                            ? 0.7
+                            : 1,
+                      }}
+                    >
+                      {sendingAllReminders
+                        ? "Wird gesendet..."
+                        : "Alle Erinnerungen abschicken"}
+                    </button>
+                  </div>
 
-          {visibleReminders.length === 0 ? (
-            <div style={{ fontSize: "14px", color: "#6b7280" }}>
-              Aktuell sind keine offenen Erinnerungen vorhanden.
+                  {!remindersCollapsed && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "10px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {visibleReminders.map((item) => {
+                        const isCompleted = completedReminders.includes(item.id);
+                        const isSending = sendingReminderId === item.id;
+
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            title={displayMailTitle(item)}
+                            onClick={() => handleReminderQuickSend(item)}
+                            disabled={isSending || isCompleted}
+                            style={{
+                              width: isMobile ? "100%" : "24%",
+                              minWidth: isMobile ? "100%" : "240px",
+                              padding: "10px 12px",
+                              borderRadius: "10px",
+                              background: isCompleted ? "#dcfce7" : "#f9fafb",
+                              border: isCompleted
+                                ? "1px solid #86efac"
+                                : "1px solid #e5e7eb",
+                              cursor:
+                                isSending || isCompleted ? "default" : "pointer",
+                              lineHeight: 1.2,
+                              textAlign: "left",
+                              opacity: isSending ? 0.7 : 1,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "flex-start",
+                                gap: "8px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: "13px",
+                                  fontWeight: 600,
+                                  lineHeight: 1.25,
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: "vertical",
+                                  overflow: "hidden",
+                                  minHeight: "34px",
+                                  flex: 1,
+                                }}
+                              >
+                                {displayMailTitle(item)}
+                              </div>
+
+                              {!isCompleted && !isSending && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    dismissReminder(item.id);
+                                  }}
+                                  title="Reminder ausblenden"
+                                  style={{
+                                    border: "none",
+                                    background: "transparent",
+                                    cursor: "pointer",
+                                    fontSize: "14px",
+                                    color: "#6b7280",
+                                    padding: 0,
+                                    lineHeight: 1,
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+
+                            <div
+                              style={{
+                                fontSize: "11px",
+                                color: "#6b7280",
+                                marginTop: "6px",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {item.company?.trim() ||
+                                item.recipientLabel ||
+                                item.recipientEmail}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: "8px",
+                                fontSize: "11px",
+                                color: isCompleted ? "#166534" : "#6b7280",
+                              }}
+                            >
+                              {isCompleted ? "Test gesendet" : "3 Std. nach 1. Mail"}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          ) : (
-            <>
+          )}
+
+          {mainView === "analytics" && (
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #d1d5db",
+                borderRadius: "14px",
+                padding: "20px",
+                boxSizing: "border-box",
+              }}
+            >
               <div
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                  alignItems: "center",
-                  marginBottom: "16px",
-                  flexWrap: "wrap",
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  marginBottom: "18px",
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => setRemindersCollapsed((prev) => !prev)}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    padding: 0,
-                    cursor: "pointer",
-                    fontWeight: 700,
-                    fontSize: "14px",
-                    color: "#111827",
-                  }}
-                >
-                  {remindersCollapsed ? "▶" : "▼"} Offene Erinnerungen
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSendAllReminders}
-                  disabled={sendingAllReminders || visibleReminders.length === 0}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #cbd5e1",
-                    background: "#111827",
-                    color: "#ffffff",
-                    cursor:
-                      sendingAllReminders || visibleReminders.length === 0
-                        ? "not-allowed"
-                        : "pointer",
-                    fontSize: "12px",
-                    opacity:
-                      sendingAllReminders || visibleReminders.length === 0
-                        ? 0.7
-                        : 1,
-                  }}
-                >
-                  {sendingAllReminders
-                    ? "Wird gesendet..."
-                    : "Alle Erinnerungen abschicken"}
-                </button>
+                Texte & Auswertungen
               </div>
 
-              {!remindersCollapsed && (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  {visibleReminders.map((item) => {
-                    const isCompleted = completedReminders.includes(item.id);
-                    const isSending = sendingReminderId === item.id;
+              {loadingTextStats ? (
+                <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                  Auswertungen werden geladen...
+                </div>
+              ) : textStats.length === 0 ? (
+                <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                  Noch keine Textdaten vorhanden.
+                </div>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "10px",
+                      flexWrap: "wrap",
+                      marginBottom: "20px",
+                    }}
+                  >
+                    {textStats.map((hook) => {
+                      const active = selectedAnalyticsHookId === hook.hookBaseId;
 
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        title={displayMailTitle(item)}
-                        onClick={() => handleReminderQuickSend(item)}
-                        disabled={isSending || isCompleted}
+                      return (
+                        <button
+                          key={hook.hookBaseId}
+                          type="button"
+                          onClick={() =>
+                            setSelectedAnalyticsHookId(hook.hookBaseId)
+                          }
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: "999px",
+                            border: "1px solid #cbd5e1",
+                            background: active ? "#111827" : "#ffffff",
+                            color: active ? "#ffffff" : "#111827",
+                            cursor: "pointer",
+                            fontSize: "14px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {hook.hookBaseLabel}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {selectedHookStats && (
+                    <>
+                      <div
                         style={{
-                          width: isMobile ? "100%" : "24%",
-                          minWidth: isMobile ? "100%" : "240px",
-                          padding: "10px 12px",
-                          borderRadius: "10px",
-                          background: isCompleted ? "#dcfce7" : "#f9fafb",
-                          border: isCompleted
-                            ? "1px solid #86efac"
-                            : "1px solid #e5e7eb",
-                          cursor:
-                            isSending || isCompleted ? "default" : "pointer",
-                          lineHeight: 1.2,
-                          textAlign: "left",
-                          opacity: isSending ? 0.7 : 1,
+                          display: "grid",
+                          gridTemplateColumns: isMobile
+                            ? "1fr"
+                            : "repeat(5, minmax(0, 1fr))",
+                          gap: "12px",
+                          marginBottom: "20px",
+                        }}
+                      >
+                        <StatCard
+                          label="Gesendet"
+                          value={String(selectedHookStats.sent)}
+                        />
+                        <StatCard
+                          label="Geöffnet"
+                          value={String(selectedHookStats.opened)}
+                        />
+                        <StatCard
+                          label="Öffnungsrate"
+                          value={formatPercent(selectedHookStats.openRate)}
+                        />
+                        <StatCard
+                          label="Reminder-Quote"
+                          value={formatPercent(selectedHookStats.reminderRate)}
+                        />
+                        <StatCard
+                          label="Beste Variante"
+                          value={selectedHookStats.bestVariantId || "-"}
+                          subValue={formatPercent(
+                            selectedHookStats.bestVariantOpenRate
+                          )}
+                        />
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: isMobile ? "1fr" : "1.1fr 1fr",
+                          gap: "20px",
+                          marginBottom: "24px",
                         }}
                       >
                         <div
                           style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                            gap: "8px",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "12px",
+                            padding: "16px",
                           }}
                         >
                           <div
                             style={{
-                              fontSize: "13px",
-                              fontWeight: 600,
-                              lineHeight: 1.25,
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                              minHeight: "34px",
-                              flex: 1,
+                              fontWeight: 700,
+                              marginBottom: "14px",
                             }}
                           >
-                            {displayMailTitle(item)}
+                            Kennzahlen
                           </div>
 
-                          {!isCompleted && !isSending && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                dismissReminder(item.id);
-                              }}
-                              title="Reminder ausblenden"
-                              style={{
-                                border: "none",
-                                background: "transparent",
-                                cursor: "pointer",
-                                fontSize: "14px",
-                                color: "#6b7280",
-                                padding: 0,
-                                lineHeight: 1,
-                              }}
-                            >
-                              ✕
-                            </button>
-                          )}
+                          <StatBar
+                            label="Öffnungsrate"
+                            value={selectedHookStats.openRate}
+                          />
+                          <StatBar
+                            label="Reminder-Quote"
+                            value={selectedHookStats.reminderRate}
+                          />
+                          <StatBar
+                            label="Beste Variantenrate"
+                            value={selectedHookStats.bestVariantOpenRate}
+                          />
                         </div>
 
                         <div
                           style={{
-                            fontSize: "11px",
-                            color: "#6b7280",
-                            marginTop: "6px",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "12px",
+                            padding: "16px",
                           }}
                         >
-                          {item.company?.trim() ||
-                            item.recipientLabel ||
-                            item.recipientEmail}
-                        </div>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              marginBottom: "10px",
+                            }}
+                          >
+                            Hook-Überblick
+                          </div>
 
+                          <div
+                            style={{
+                              fontSize: "14px",
+                              color: "#374151",
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            <div style={{ marginBottom: "10px" }}>
+                              Basehook:{" "}
+                              <strong>{selectedHookStats.hookBaseLabel}</strong>
+                            </div>
+                            <div style={{ marginBottom: "10px" }}>
+                              Varianten:{" "}
+                              <strong>{selectedHookStats.variants.length}</strong>
+                            </div>
+                            <div>
+                              Bestperformer:{" "}
+                              <strong>{selectedHookStats.bestVariantId}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "12px",
+                          overflow: "hidden",
+                        }}
+                      >
                         <div
                           style={{
-                            marginTop: "8px",
-                            fontSize: "11px",
-                            color: isCompleted ? "#166534" : "#6b7280",
+                            padding: "14px 16px",
+                            borderBottom: "1px solid #e5e7eb",
+                            fontWeight: 700,
                           }}
                         >
-                          {isCompleted ? "Test gesendet" : "3 Std. nach 1. Mail"}
+                          Varianten
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
+
+                        <div style={{ overflowX: "auto" }}>
+                          <table
+                            style={{
+                              width: "100%",
+                              borderCollapse: "collapse",
+                              fontSize: "14px",
+                            }}
+                          >
+                            <thead>
+                              <tr
+                                style={{
+                                  background: "#f9fafb",
+                                  textAlign: "left",
+                                }}
+                              >
+                                <th style={tableHeadStyle}>Variante</th>
+                                <th style={tableHeadStyle}>Gesendet</th>
+                                <th style={tableHeadStyle}>Geöffnet</th>
+                                <th style={tableHeadStyle}>Öffnungsrate</th>
+                                <th style={tableHeadStyle}>Reminder-Quote</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedHookStats.variants.map((variant) => (
+                                <tr key={variant.hookVariantId}>
+                                  <td style={tableCellStyle}>
+                                    <div
+                                      style={{
+                                        fontWeight: 600,
+                                        marginBottom: "4px",
+                                      }}
+                                    >
+                                      {variant.hookVariantId}
+                                    </div>
+                                    <div
+                                      style={{
+                                        fontSize: "12px",
+                                        color: "#6b7280",
+                                        lineHeight: 1.4,
+                                      }}
+                                    >
+                                      {variant.hookText}
+                                    </div>
+                                  </td>
+                                  <td style={tableCellStyle}>{variant.sent}</td>
+                                  <td style={tableCellStyle}>{variant.opened}</td>
+                                  <td style={tableCellStyle}>
+                                    {formatPercent(variant.openRate)}
+                                  </td>
+                                  <td style={tableCellStyle}>
+                                    {formatPercent(variant.reminderRate)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
               )}
-            </>
+            </div>
           )}
         </div>
-      )}
 
-      {mainView === "analytics" && (
         <div
           style={{
+            width: isMobile ? "100%" : "340px",
+            minWidth: isMobile ? "100%" : "340px",
             background: "#ffffff",
             border: "1px solid #d1d5db",
             borderRadius: "14px",
-            padding: "20px",
+            padding: "16px",
             boxSizing: "border-box",
+            position: isMobile ? "static" : "sticky",
+            top: "20px",
           }}
         >
           <div
             style={{
-              fontSize: "18px",
               fontWeight: 700,
-              marginBottom: "18px",
+              fontSize: "16px",
+              marginBottom: "12px",
             }}
           >
-            Texte & Auswertungen
+            CRM
           </div>
 
-          {loadingTextStats ? (
-            <div style={{ fontSize: "14px", color: "#6b7280" }}>
-              Auswertungen werden geladen...
-            </div>
-          ) : textStats.length === 0 ? (
-            <div style={{ fontSize: "14px", color: "#6b7280" }}>
-              Noch keine Textdaten vorhanden.
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              marginBottom: "14px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setCrmView("company")}
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                borderRadius: "8px",
+                border: "1px solid #cbd5e1",
+                background: crmView === "company" ? "#111827" : "#ffffff",
+                color: crmView === "company" ? "#ffffff" : "#111827",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              Emails an dieses Unternehmen
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCrmView("all")}
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                borderRadius: "8px",
+                border: "1px solid #cbd5e1",
+                background: crmView === "all" ? "#111827" : "#ffffff",
+                color: crmView === "all" ? "#ffffff" : "#111827",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              Alle Emails
+            </button>
+          </div>
+
+          {loadingCrm ? (
+            <div style={{ fontSize: "13px", color: "#6b7280" }}>
+              CRM wird geladen...
             </div>
           ) : (
-            <>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "10px",
-                  flexWrap: "wrap",
-                  marginBottom: "20px",
-                }}
-              >
-                {textStats.map((hook) => {
-                  const active = selectedAnalyticsHookId === hook.hookBaseId;
-
-                  return (
-                    <button
-                      key={hook.hookBaseId}
-                      type="button"
-                      onClick={() => setSelectedAnalyticsHookId(hook.hookBaseId)}
-                      style={{
-                        padding: "10px 14px",
-                        borderRadius: "999px",
-                        border: "1px solid #cbd5e1",
-                        background: active ? "#111827" : "#ffffff",
-                        color: active ? "#ffffff" : "#111827",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {hook.hookBaseLabel}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {selectedHookStats && (
-                <>
-                  <div
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+                maxHeight: isMobile ? "none" : "70vh",
+                overflowY: "auto",
+                paddingRight: "2px",
+              }}
+            >
+              {mailHistory.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "#6b7280",
+                  }}
+                >
+                  Noch keine passenden Einträge vorhanden.
+                </div>
+              ) : (
+                mailHistory.map((mail) => (
+                  <button
+                    key={mail.id}
+                    type="button"
+                    onClick={() => handleOpenMailDetail(mail)}
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: isMobile
-                        ? "1fr"
-                        : "repeat(5, minmax(0, 1fr))",
-                      gap: "12px",
-                      marginBottom: "20px",
-                    }}
-                  >
-                    <StatCard
-                      label="Gesendet"
-                      value={String(selectedHookStats.sent)}
-                    />
-                    <StatCard
-                      label="Geöffnet"
-                      value={String(selectedHookStats.opened)}
-                    />
-                    <StatCard
-                      label="Öffnungsrate"
-                      value={formatPercent(selectedHookStats.openRate)}
-                    />
-                    <StatCard
-                      label="Reminder-Quote"
-                      value={formatPercent(selectedHookStats.reminderRate)}
-                    />
-                    <StatCard
-                      label="Beste Variante"
-                      value={selectedHookStats.bestVariantId || "-"}
-                      subValue={formatPercent(
-                        selectedHookStats.bestVariantOpenRate
-                      )}
-                    />
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: isMobile ? "1fr" : "1.1fr 1fr",
-                      gap: "20px",
-                      marginBottom: "24px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "12px",
-                        padding: "16px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          marginBottom: "14px",
-                        }}
-                      >
-                        Kennzahlen
-                      </div>
-
-                      <StatBar
-                        label="Öffnungsrate"
-                        value={selectedHookStats.openRate}
-                      />
-                      <StatBar
-                        label="Reminder-Quote"
-                        value={selectedHookStats.reminderRate}
-                      />
-                      <StatBar
-                        label="Beste Variantenrate"
-                        value={selectedHookStats.bestVariantOpenRate}
-                      />
-                    </div>
-
-                    <div
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "12px",
-                        padding: "16px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          marginBottom: "10px",
-                        }}
-                      >
-                        Hook-Überblick
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: "14px",
-                          color: "#374151",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        <div style={{ marginBottom: "10px" }}>
-                          Basehook:{" "}
-                          <strong>{selectedHookStats.hookBaseLabel}</strong>
-                        </div>
-                        <div style={{ marginBottom: "10px" }}>
-                          Varianten:{" "}
-                          <strong>{selectedHookStats.variants.length}</strong>
-                        </div>
-                        <div>
-                          Bestperformer:{" "}
-                          <strong>{selectedHookStats.bestVariantId}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
+                      textAlign: "left",
                       border: "1px solid #e5e7eb",
-                      borderRadius: "12px",
-                      overflow: "hidden",
+                      borderRadius: "10px",
+                      padding: "10px",
+                      background: "#ffffff",
+                      cursor: "pointer",
                     }}
                   >
                     <div
                       style={{
-                        padding: "14px 16px",
-                        borderBottom: "1px solid #e5e7eb",
-                        fontWeight: 700,
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        marginBottom: "4px",
+                        lineHeight: 1.3,
+                        wordBreak: "break-word",
                       }}
                     >
-                      Varianten
+                      {displayMailTitle(mail)}
                     </div>
 
-                    <div style={{ overflowX: "auto" }}>
-                      <table
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "#374151",
+                        marginBottom: "4px",
+                        wordBreak: "break-word",
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {mail.company?.trim() ||
+                        mail.recipientLabel ||
+                        mail.recipientEmail}
+                    </div>
+
+                    {mail.reminded && (
+                      <div
                         style={{
-                          width: "100%",
-                          borderCollapse: "collapse",
-                          fontSize: "14px",
+                          fontSize: "11px",
+                          color: "#166534",
+                          fontWeight: 600,
+                          marginBottom: "4px",
                         }}
                       >
-                        <thead>
-                          <tr
-                            style={{
-                              background: "#f9fafb",
-                              textAlign: "left",
-                            }}
-                          >
-                            <th style={tableHeadStyle}>Variante</th>
-                            <th style={tableHeadStyle}>Gesendet</th>
-                            <th style={tableHeadStyle}>Geöffnet</th>
-                            <th style={tableHeadStyle}>Öffnungsrate</th>
-                            <th style={tableHeadStyle}>Reminder-Quote</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedHookStats.variants.map((variant) => (
-                            <tr key={variant.hookVariantId}>
-                              <td style={tableCellStyle}>
-                                <div
-                                  style={{
-                                    fontWeight: 600,
-                                    marginBottom: "4px",
-                                  }}
-                                >
-                                  {variant.hookVariantId}
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: "12px",
-                                    color: "#6b7280",
-                                    lineHeight: 1.4,
-                                  }}
-                                >
-                                  {variant.hookText}
-                                </div>
-                              </td>
-                              <td style={tableCellStyle}>{variant.sent}</td>
-                              <td style={tableCellStyle}>{variant.opened}</td>
-                              <td style={tableCellStyle}>
-                                {formatPercent(variant.openRate)}
-                              </td>
-                              <td style={tableCellStyle}>
-                                {formatPercent(variant.reminderRate)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                        Erinnerung gesendet
+                        {mail.reminderSentAt
+                          ? ` · ${formatDate(mail.reminderSentAt)}`
+                          : ""}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "8px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "#6b7280",
+                        }}
+                      >
+                        {formatDate(mail.createdAt)}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: statusColor(mail.status),
+                        }}
+                      >
+                        {mail.lastEvent || statusLabel(mail.status)}
+                      </div>
                     </div>
-                  </div>
-                </>
+                  </button>
+                ))
               )}
-            </>
+            </div>
           )}
         </div>
-      )}
+      </div>
 
       {selectedMail && (
         <div
@@ -2089,244 +2331,4 @@ export default function PhotoToMailPage() {
       )}
     </>
   );
-}
-
-function StatCard({
-  label,
-  value,
-  subValue,
-}: {
-  label: string;
-  value: string;
-  subValue?: string;
-}) {
-  return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: "12px",
-        padding: "14px",
-        background: "#ffffff",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "12px",
-          color: "#6b7280",
-          marginBottom: "6px",
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          fontSize: "20px",
-          fontWeight: 700,
-          lineHeight: 1.2,
-          wordBreak: "break-word",
-        }}
-      >
-        {value}
-      </div>
-
-      {subValue ? (
-        <div
-          style={{
-            marginTop: "6px",
-            fontSize: "12px",
-            color: "#6b7280",
-          }}
-        >
-          {subValue}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <div style={{ marginBottom: "16px" }}>
-      <label
-        style={{
-          display: "block",
-          marginBottom: "8px",
-          fontWeight: 600,
-        }}
-      >
-        {label}
-      </label>
-
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          border: "1px solid #cbd5e1",
-          borderRadius: "8px",
-          background: "#ffffff",
-          fontSize: "15px",
-          boxSizing: "border-box",
-        }}
-      />
-    </div>
-  );
-}
-
-function FieldWithOptions({
-  label,
-  value,
-  onChange,
-  options,
-  onSelectOption,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-  onSelectOption: (value: string) => void;
-}) {
-  const alternativeOptions = options.filter(
-    (option) => option && option !== value
-  );
-
-  return (
-    <div>
-      <label
-        style={{
-          display: "block",
-          marginBottom: "8px",
-          fontWeight: 600,
-        }}
-      >
-        {label}
-      </label>
-
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          border: "1px solid #cbd5e1",
-          borderRadius: "8px",
-          background: "#ffffff",
-          fontSize: "15px",
-          boxSizing: "border-box",
-        }}
-      />
-
-      {alternativeOptions.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            marginTop: "8px",
-          }}
-        >
-          {alternativeOptions.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => onSelectOption(option)}
-              style={{
-                padding: "6px 10px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "999px",
-                background: "#ffffff",
-                color: "#111827",
-                cursor: "pointer",
-                fontSize: "13px",
-              }}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DetailRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "120px 1fr",
-        gap: "12px",
-      }}
-    >
-      <div style={{ color: "#6b7280" }}>{label}</div>
-      <div style={{ wordBreak: "break-word" }}>{value}</div>
-    </div>
-  );
-}
-
-const uploadLabelStyle: React.CSSProperties = {
-  padding: "10px 14px",
-  border: "1px solid #cbd5e1",
-  borderRadius: "8px",
-  background: "#ffffff",
-  cursor: "pointer",
-};
-
-const tableHeadStyle: React.CSSProperties = {
-  padding: "12px 14px",
-  fontSize: "13px",
-  fontWeight: 700,
-  color: "#111827",
-  borderBottom: "1px solid #e5e7eb",
-};
-
-const tableCellStyle: React.CSSProperties = {
-  padding: "12px 14px",
-  verticalAlign: "top",
-  borderBottom: "1px solid #f3f4f6",
-};
-
-function primaryButtonStyle(disabled: boolean): React.CSSProperties {
-  return {
-    padding: "10px 16px",
-    border: "none",
-    borderRadius: "8px",
-    background: "#111827",
-    color: "#ffffff",
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontSize: "15px",
-    opacity: disabled ? 0.7 : 1,
-  };
-}
-
-function topMenuButtonStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "10px 14px",
-    borderRadius: "999px",
-    border: "1px solid #cbd5e1",
-    background: active ? "#111827" : "#ffffff",
-    color: active ? "#ffffff" : "#111827",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: 600,
-  };
 }
