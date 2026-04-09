@@ -52,20 +52,46 @@ function buildFinalText(text: string, hiddenMarker?: string) {
   return final;
 }
 
+function getRandomItem<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
 function buildSubject(jobTitle?: string, followUp?: boolean) {
   const safe = (jobTitle || "").trim();
 
   if (followUp) {
-    return safe
-      ? `Erinnerung zu Ihrer ${safe}-Anzeige`
-      : "Kurze Erinnerung zu meiner letzten E-Mail";
+    const followUpSubjects = safe
+      ? [
+          `Erinnerung zu Ihrer ${safe}-Anzeige`,
+          `Noch einmal zu Ihrer ${safe}-Anzeige`,
+          `Kurzes Follow-up zur ${safe}-Anzeige`,
+        ]
+      : [
+          "Kurze Erinnerung zu meiner letzten E-Mail",
+          "Noch einmal zu meiner letzten Nachricht",
+          "Kurzes Follow-up zu meiner letzten E-Mail",
+        ];
+
+    return getRandomItem(followUpSubjects);
   }
 
-  if (safe) {
-    return `Zur Position ${safe}: mehr passende Bewerber`;
-  }
+  const subjectVariants = safe
+    ? [
+        `Zur Position ${safe}: mehr passende Bewerber`,
+        `${safe}: zusätzliche Bewerber erreichen`,
+        `Ihre ${safe}-Anzeige: mehr Reichweite möglich`,
+        `Kurze Idee zu Ihrer ${safe}-Anzeige`,
+        `Mehr passende Bewerbungen für ${safe}`,
+      ]
+    : [
+        "Mehr Bewerber für Ihre Stellenanzeige",
+        "Zusätzliche Bewerber für Ihre Anzeige",
+        "Ihre Stellenanzeige: mehr Reichweite möglich",
+        "Kurze Idee zu Ihrer Stellenanzeige",
+        "Mehr passende Bewerbungen für Ihre Anzeige",
+      ];
 
-  return "Mehr Bewerber für Ihre Stellenanzeige";
+  return getRandomItem(subjectVariants);
 }
 
 export async function POST(req: Request) {
