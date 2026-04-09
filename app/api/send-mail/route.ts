@@ -45,7 +45,7 @@ function buildFinalText(text: string) {
   return `${cleanedText}\n\nMit freundlichen Grüßen`;
 }
 
-function buildSubject(
+function buildBaseSubject(
   jobTitle?: string,
   hints: string[] = [],
   followUp?: boolean
@@ -87,6 +87,39 @@ function buildSubject(
   return "Mehr Bewerber für Ihre Stellenanzeige";
 }
 
+function sanitizeSubjectValue(value: string) {
+  return value.replace(/[\[\]]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function buildTaggedSubject({
+  jobTitle,
+  hints,
+  followUp,
+  originalEmailId,
+}: {
+  jobTitle?: string;
+  hints?: string[];
+  followUp?: boolean;
+  originalEmailId?: string;
+}) {
+  const baseSubject = buildBaseSubject(jobTitle, hints || [], !!followUp);
+  const safeJobTitle = sanitizeSubjectValue(jobTitle || "");
+
+  const parts: string[] = [];
+
+  if (followUp && originalEmailId) {
+    parts.push(`[REMINDER:${sanitizeSubjectValue(originalEmailId)}]`);
+  }
+
+  if (safeJobTitle) {
+    parts.push(`[JOB:${safeJobTitle}]`);
+  }
+
+  parts.push(baseSubject);
+
+  return parts.join(" ");
+}
+
 export async function POST(req: Request) {
   try {
     const apiKey = process.env.RESEND_API_KEY;
@@ -110,6 +143,7 @@ export async function POST(req: Request) {
       company,
       contactPerson,
       followUp,
+      originalEmailId,
     } = await req.json();
 
     if (!text) {
@@ -134,7 +168,12 @@ export async function POST(req: Request) {
     }
 
     const finalText = buildFinalText(text);
-    const finalSubject = buildSubject(jobTitle, safeHints, !!followUp);
+    const finalSubject = buildTaggedSubject({
+      jobTitle,
+      hints: safeHints,
+      followUp: !!followUp,
+      originalEmailId: String(originalEmailId || "").trim(),
+    });
 
     const profileImageUrl = "https://api.jobs-flow.com/andre-eichstaedt.png";
     const footerLogosUrl = "https://api.jobs-flow.com/footer-logos.png";
@@ -231,6 +270,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
         status: testMode ? "test" : "sent",
         createdAt: new Date().toISOString(),
         followUp: !!followUp,
+        originalEmailId: String(originalEmailId || "").trim(),
       },
     });
   } catch (error: any) {

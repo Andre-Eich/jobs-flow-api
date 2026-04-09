@@ -34,6 +34,7 @@ type JobData = {
 type MailRecord = {
   id: string;
   subject: string;
+  jobTitle?: string;
   company?: string;
   normalizedCompany?: string;
   contactPerson: string;
@@ -136,6 +137,10 @@ function statusColor(status: MailRecord["status"]) {
     default:
       return "#6b7280";
   }
+}
+
+function displayMailTitle(mail: Pick<MailRecord, "jobTitle" | "subject">) {
+  return mail.jobTitle?.trim() || mail.subject || "Ohne Betreff";
 }
 
 export default function PhotoToMailPage() {
@@ -250,7 +255,9 @@ export default function PhotoToMailPage() {
         .filter((mail: MailRecord) => mail.reminded)
         .map((mail: MailRecord) => mail.id);
 
-      setCompletedReminders((prev) => Array.from(new Set([...prev, ...preCompleted])));
+      setCompletedReminders((prev) =>
+        Array.from(new Set([...prev, ...preCompleted]))
+      );
     } catch {
       setError("CRM konnte nicht geladen werden.");
     } finally {
@@ -438,7 +445,10 @@ export default function PhotoToMailPage() {
     }
   }
 
-  async function handleReminderQuickSend(item: MailRecord) {
+  async function handleReminderQuickSend(
+    item: MailRecord,
+    reloadAfter = true
+  ) {
     setError("");
     setSuccessMessage("");
 
@@ -451,7 +461,7 @@ export default function PhotoToMailPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          jobTitle: item.subject,
+          jobTitle: item.jobTitle || item.subject,
           company: item.company || "",
           contactPerson: item.contactPerson || "",
           hints: [],
@@ -478,11 +488,12 @@ export default function PhotoToMailPage() {
           text: genData.generatedEmail,
           testMode: true,
           sendCopy: true,
-          jobTitle: item.subject,
+          jobTitle: item.jobTitle || item.subject,
           company: item.company || "",
           contactPerson: item.contactPerson || "",
           hints: [],
           followUp: true,
+          originalEmailId: item.id,
         }),
       });
 
@@ -493,22 +504,16 @@ export default function PhotoToMailPage() {
         return;
       }
 
-      await fetch("/api/reminder/mark-sent", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ emailId: item.id }),
-      });
-
       setCompletedReminders((prev) => [...prev, item.id]);
       setReminders((prev) => prev.filter((r) => r.id !== item.id));
 
       setSuccessMessage(
-        `Erinnerungs-Mail (Test) für "${item.subject}" wurde an dich gesendet.`
+        `Erinnerungs-Mail (Test) für "${displayMailTitle(item)}" wurde an dich gesendet.`
       );
 
-      await loadCrm();
+      if (reloadAfter) {
+        await loadCrm();
+      }
     } catch {
       setError("Erinnerungs-Mail konnte nicht gesendet werden.");
     } finally {
@@ -530,10 +535,11 @@ export default function PhotoToMailPage() {
       );
 
       for (const item of openReminders) {
-        await handleReminderQuickSend(item);
+        await handleReminderQuickSend(item, false);
       }
 
       setSuccessMessage("Alle offenen Erinnerungen wurden als Test verschickt.");
+      await loadCrm();
     } catch {
       setError("Nicht alle Erinnerungen konnten verschickt werden.");
     } finally {
@@ -655,7 +661,7 @@ export default function PhotoToMailPage() {
                     <button
                       key={item.id}
                       type="button"
-                      title={item.subject || "Ohne Betreff"}
+                      title={displayMailTitle(item)}
                       onClick={() => handleReminderQuickSend(item)}
                       disabled={isSending || isCompleted}
                       style={{
@@ -686,7 +692,7 @@ export default function PhotoToMailPage() {
                           minHeight: "30px",
                         }}
                       >
-                        {item.subject || "Ohne Betreff"}
+                        {displayMailTitle(item)}
                       </div>
 
                       <div
@@ -1167,7 +1173,7 @@ export default function PhotoToMailPage() {
                         wordBreak: "break-word",
                       }}
                     >
-                      {mail.subject || "Ohne Betreff"}
+                      {displayMailTitle(mail)}
                     </div>
 
                     <div
@@ -1275,7 +1281,7 @@ export default function PhotoToMailPage() {
                     marginBottom: "4px",
                   }}
                 >
-                  {selectedMail.subject || "Ohne Betreff"}
+                  {displayMailTitle(selectedMail)}
                 </div>
 
                 <div

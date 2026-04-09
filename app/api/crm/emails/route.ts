@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
-import { isReminderSent } from "@/lib/reminderStore";
 
 function getDomain(email: string) {
   return email.split("@")[1]?.toLowerCase().trim() || "";
@@ -41,6 +40,27 @@ function inferStatus(lastEvent: string): "sent" | "test" | "failed" | "draft" {
   return "draft";
 }
 
+function extractJobTitle(subject: string) {
+  const match = subject.match(/\[JOB:(.*?)\]/i);
+  return match?.[1]?.trim() || "";
+}
+
+function extractOriginalEmailId(subject: string) {
+  const match = subject.match(/\[REMINDER:(.*?)\]/i);
+  return match?.[1]?.trim() || "";
+}
+
+function isReminderMail(subject: string) {
+  return /\[REMINDER:.*?\]/i.test(subject);
+}
+
+function cleanSubject(subject: string) {
+  return subject
+    .replace(/\[REMINDER:.*?\]\s*/gi, "")
+    .replace(/\[JOB:.*?\]\s*/gi, "")
+    .trim();
+}
+
 export async function GET(req: Request) {
   try {
     const apiKey = process.env.RESEND_CRM_API_KEY || process.env.RESEND_API_KEY;
@@ -71,30 +91,48 @@ export async function GET(req: Request) {
 
     const rawEmails = Array.isArray(result.data?.data) ? result.data.data : [];
 
-    const emails = rawEmails.map((item: any) => {
-      const toValue = Array.isArray(item?.to) ? item.to[0] || "" : item?.to || "";
-      const recipientEmail = safeString(toValue);
-      const subject = safeString(item?.subject) || "Ohne Betreff";
-      const createdAt = safeString(item?.created_at) || new Date().toISOString();
-      const lastEvent = safeString(item?.last_event);
-      const reminded = isReminderSent(safeString(item?.id));
+    const reminderTargets = new Set<string>();
 
-      return {
-        id: safeString(item?.id),
-        subject,
-        company: "",
-        normalizedCompany: "",
-        contactPerson: "",
-        recipientEmail,
-        recipientLabel: recipientEmail,
-        domain: getDomain(recipientEmail),
-        text: "",
-        status: inferStatus(lastEvent),
-        createdAt,
-        lastEvent: lastEvent.toLowerCase(),
-        reminded,
-      };
-    });
+    for (const item of rawEmails) {
+      const subject = safeString(item?.subject);
+      const originalEmailId = extractOriginalEmailId(subject);
+
+      if (originalEmailId) {
+        reminderTargets.add(originalEmailId);
+      }
+    }
+
+    const emails = rawEmails
+      .map((item: any) => {
+        const toValue = Array.isArray(item?.to) ? item.to[0] || "" : item?.to || "";
+        const recipientEmail = safeString(toValue);
+        const rawSubject = safeString(item?.subject) || "Ohne Betreff";
+        const subject = cleanSubject(rawSubject) || "Ohne Betreff";
+        const createdAt = safeString(item?.created_at) || new Date().toISOString();
+        const lastEvent = safeString(item?.last_event);
+        const jobTitle = extractJobTitle(rawSubject);
+        const followUp = isReminderMail(rawSubject);
+        const reminded = reminderTargets.has(safeString(item?.id));
+
+        return {
+          id: safeString(item?.id),
+          subject,
+          jobTitle,
+          company: "",
+          normalizedCompany: "",
+          contactPerson: "",
+          recipientEmail,
+          recipientLabel: recipientEmail,
+          domain: getDomain(recipientEmail),
+          text: "",
+          status: inferStatus(lastEvent),
+          createdAt,
+          lastEvent: lastEvent.toLowerCase(),
+          reminded,
+          followUp,
+        };
+      })
+      .filter((mail) => !mail.followUp);
 
     const filtered =
       mode === "all"
@@ -116,7 +154,6 @@ export async function GET(req: Request) {
 
     const limited = sorted.slice(0, 25);
 
-    // TESTMODUS aktuell: 3 Stunden
     const reminderThreshold = Date.now() - 3 * 60 * 60 * 1000;
 
     const reminders = limited
