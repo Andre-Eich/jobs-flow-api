@@ -87,37 +87,26 @@ function buildBaseSubject(
   return "Mehr Bewerber für Ihre Stellenanzeige";
 }
 
-function sanitizeSubjectValue(value: string) {
-  return value.replace(/[\[\]]/g, "").replace(/\s+/g, " ").trim();
-}
-
-function buildTaggedSubject({
+function buildCrmMeta({
   jobTitle,
-  hints,
+  company,
+  contactPerson,
   followUp,
   originalEmailId,
 }: {
   jobTitle?: string;
-  hints?: string[];
+  company?: string;
+  contactPerson?: string;
   followUp?: boolean;
   originalEmailId?: string;
 }) {
-  const baseSubject = buildBaseSubject(jobTitle, hints || [], !!followUp);
-  const safeJobTitle = sanitizeSubjectValue(jobTitle || "");
-
-  const parts: string[] = [];
-
-  if (followUp && originalEmailId) {
-    parts.push(`[REMINDER:${sanitizeSubjectValue(originalEmailId)}]`);
-  }
-
-  if (safeJobTitle) {
-    parts.push(`[JOB:${safeJobTitle}]`);
-  }
-
-  parts.push(baseSubject);
-
-  return parts.join(" ");
+  return JSON.stringify({
+    jobTitle: String(jobTitle || "").trim(),
+    company: String(company || "").trim(),
+    contactPerson: String(contactPerson || "").trim(),
+    followUp: !!followUp,
+    originalEmailId: String(originalEmailId || "").trim(),
+  });
 }
 
 export async function POST(req: Request) {
@@ -154,11 +143,20 @@ export async function POST(req: Request) {
     }
 
     const safeHints = Array.isArray(hints) ? hints : [];
+    const isTestMode = Boolean(testMode);
+    const testRecipient = process.env.TEST_RECIPIENT_EMAIL?.trim();
 
-    const actualRecipient =
-      testMode && process.env.TEST_RECIPIENT_EMAIL
-        ? process.env.TEST_RECIPIENT_EMAIL
-        : to;
+    if (isTestMode && !testRecipient) {
+      return NextResponse.json(
+        {
+          error:
+            "TEST_RECIPIENT_EMAIL fehlt. Versand wurde aus Sicherheitsgründen gestoppt.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const actualRecipient = isTestMode ? testRecipient! : String(to || "").trim();
 
     if (!actualRecipient) {
       return NextResponse.json(
@@ -168,9 +166,12 @@ export async function POST(req: Request) {
     }
 
     const finalText = buildFinalText(text);
-    const finalSubject = buildTaggedSubject({
+    const finalSubject = buildBaseSubject(jobTitle, safeHints, !!followUp);
+
+    const crmMeta = buildCrmMeta({
       jobTitle,
-      hints: safeHints,
+      company,
+      contactPerson,
       followUp: !!followUp,
       originalEmailId: String(originalEmailId || "").trim(),
     });
@@ -180,7 +181,7 @@ export async function POST(req: Request) {
 
     const plainSignature = `
 
-Andre Eichstädt
+Andre Eichstaedt
 Anzeigenberater
 Jobs in Berlin-Brandenburg
 Tel. 0335/629797-38
@@ -201,13 +202,13 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
         <div style="margin: 20px 0 18px 0;">
           <img
             src="${profileImageUrl}"
-            alt="Andre Eichstädt"
+            alt="Andre Eichstaedt"
             style="display:block; width:160px; max-width:100%; height:auto; border-radius:80px;"
           />
         </div>
 
         <div style="margin-bottom: 22px;">
-          <div style="font-weight:700;">Andre Eichstädt von Jobs in Berlin-Brandenburg</div>
+          <div style="font-weight:700;">Andre Eichstaedt</div>
           <div>Anzeigenberater</div>
           <div>Jobs in Berlin-Brandenburg</div>
           <div>Tel. 0335/629797-38</div>
@@ -241,17 +242,28 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
           />
         </div>
       </div>
+      <!-- CRM_META ${escapeHtml(crmMeta)} -->
     `;
 
+    console.log("SEND MAIL SAFETY", {
+      testMode: isTestMode,
+      requestedTo: String(to || "").trim(),
+      actualRecipient,
+      hasTestRecipient: Boolean(testRecipient),
+      followUp: !!followUp,
+      originalEmailId: String(originalEmailId || "").trim(),
+      subject: finalSubject,
+    });
+
     const data = await resend.emails.send({
-      from: "Andre Eichstädt von Jobs in Berlin-Brandenburg <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
+      from: "Andre Eichstaedt <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
       replyTo: "a.eichstaedt@jobs-in-berlin-brandenburg.de",
       to: actualRecipient,
       subject: finalSubject,
       html,
-      text: `${finalText}${plainSignature}`,
-      bcc: testMode
-        ? process.env.TEST_RECIPIENT_EMAIL || undefined
+      text: `${finalText}${plainSignature}\n\n[CRM_META] ${crmMeta}`,
+      bcc: isTestMode
+        ? testRecipient
         : sendCopy
         ? "a.eichstaedt@jobs-in-berlin-brandenburg.de"
         : undefined,
@@ -267,7 +279,7 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
         company: company || "",
         contactPerson: contactPerson || "",
         recipientEmail: actualRecipient,
-        status: testMode ? "test" : "sent",
+        status: isTestMode ? "test" : "sent",
         createdAt: new Date().toISOString(),
         followUp: !!followUp,
         originalEmailId: String(originalEmailId || "").trim(),

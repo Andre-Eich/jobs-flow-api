@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
+type CrmMeta = {
+  jobTitle?: string;
+  company?: string;
+  contactPerson?: string;
+  followUp?: boolean;
+  originalEmailId?: string;
+};
+
 function getDomain(email: string) {
   return email.split("@")[1]?.toLowerCase().trim() || "";
 }
@@ -40,25 +48,28 @@ function inferStatus(lastEvent: string): "sent" | "test" | "failed" | "draft" {
   return "draft";
 }
 
-function extractJobTitle(subject: string) {
-  const match = subject.match(/\[JOB:(.*?)\]/i);
-  return match?.[1]?.trim() || "";
-}
+function extractCrmMeta(text: string): CrmMeta {
+  if (!text) return {};
 
-function extractOriginalEmailId(subject: string) {
-  const match = subject.match(/\[REMINDER:(.*?)\]/i);
-  return match?.[1]?.trim() || "";
-}
+  const plainTextMatch = text.match(/\[CRM_META\]\s*(\{[\s\S]*\})/);
+  if (plainTextMatch?.[1]) {
+    try {
+      return JSON.parse(plainTextMatch[1]);
+    } catch {
+      // ignore
+    }
+  }
 
-function isReminderMail(subject: string) {
-  return /\[REMINDER:.*?\]/i.test(subject);
-}
+  const htmlCommentMatch = text.match(/CRM_META\s+(\{[\s\S]*?\})/);
+  if (htmlCommentMatch?.[1]) {
+    try {
+      return JSON.parse(htmlCommentMatch[1]);
+    } catch {
+      // ignore
+    }
+  }
 
-function cleanSubject(subject: string) {
-  return subject
-    .replace(/\[REMINDER:.*?\]\s*/gi, "")
-    .replace(/\[JOB:.*?\]\s*/gi, "")
-    .trim();
+  return {};
 }
 
 export async function GET(req: Request) {
@@ -91,36 +102,49 @@ export async function GET(req: Request) {
 
     const rawEmails = Array.isArray(result.data?.data) ? result.data.data : [];
 
-    const reminderTargets = new Set<string>();
+    const sortedRawEmails = rawEmails.sort(
+      (a: any, b: any) =>
+        new Date(safeString(b?.created_at)).getTime() -
+        new Date(safeString(a?.created_at)).getTime()
+    );
 
-    for (const item of rawEmails) {
-      const subject = safeString(item?.subject);
-      const originalEmailId = extractOriginalEmailId(subject);
+    const limitedRawEmails = sortedRawEmails.slice(0, 25);
 
-      if (originalEmailId) {
-        reminderTargets.add(originalEmailId);
-      }
-    }
-
-    const emails = rawEmails
-      .map((item: any) => {
+    const detailedEmails = await Promise.all(
+      limitedRawEmails.map(async (item: any) => {
+        const id = safeString(item?.id);
         const toValue = Array.isArray(item?.to) ? item.to[0] || "" : item?.to || "";
         const recipientEmail = safeString(toValue);
-        const rawSubject = safeString(item?.subject) || "Ohne Betreff";
-        const subject = cleanSubject(rawSubject) || "Ohne Betreff";
+        const subject = safeString(item?.subject) || "Ohne Betreff";
         const createdAt = safeString(item?.created_at) || new Date().toISOString();
         const lastEvent = safeString(item?.last_event);
-        const jobTitle = extractJobTitle(rawSubject);
-        const followUp = isReminderMail(rawSubject);
-        const reminded = reminderTargets.has(safeString(item?.id));
+
+        let meta: CrmMeta = {};
+
+        try {
+          const detail = await resend.emails.get(id);
+
+          if (!detail.error && detail.data) {
+            const fullText = [
+              safeString(detail.data.text),
+              safeString(detail.data.html),
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+            meta = extractCrmMeta(fullText);
+          }
+        } catch (err) {
+          console.error("CRM DETAIL ERROR", { id, err });
+        }
 
         return {
-          id: safeString(item?.id),
+          id,
           subject,
-          jobTitle,
-          company: "",
-          normalizedCompany: "",
-          contactPerson: "",
+          jobTitle: safeString(meta.jobTitle),
+          company: safeString(meta.company),
+          normalizedCompany: normalizeCompany(safeString(meta.company)),
+          contactPerson: safeString(meta.contactPerson),
           recipientEmail,
           recipientLabel: recipientEmail,
           domain: getDomain(recipientEmail),
@@ -128,16 +152,50 @@ export async function GET(req: Request) {
           status: inferStatus(lastEvent),
           createdAt,
           lastEvent: lastEvent.toLowerCase(),
-          reminded,
-          followUp,
+          followUp: !!meta.followUp,
+          originalEmailId: safeString(meta.originalEmailId),
         };
       })
-      .filter((mail) => !mail.followUp);
+    );
+
+    const reminderInfoByOriginalId = new Map<
+      string,
+      { reminderSentAt: string; reminderSubject: string }
+    >();
+
+    for (const mail of detailedEmails) {
+      if (mail.followUp && mail.originalEmailId) {
+        const existing = reminderInfoByOriginalId.get(mail.originalEmailId);
+
+        if (
+          !existing ||
+          new Date(mail.createdAt).getTime() > new Date(existing.reminderSentAt).getTime()
+        ) {
+          reminderInfoByOriginalId.set(mail.originalEmailId, {
+            reminderSentAt: mail.createdAt,
+            reminderSubject: mail.subject,
+          });
+        }
+      }
+    }
+
+    const baseEmails = detailedEmails
+      .filter((mail) => !mail.followUp)
+      .map((mail) => {
+        const reminderInfo = reminderInfoByOriginalId.get(mail.id);
+
+        return {
+          ...mail,
+          reminded: Boolean(reminderInfo),
+          reminderSentAt: reminderInfo?.reminderSentAt || "",
+          reminderSubject: reminderInfo?.reminderSubject || "",
+        };
+      });
 
     const filtered =
       mode === "all"
-        ? emails
-        : emails.filter((mail) => {
+        ? baseEmails
+        : baseEmails.filter((mail) => {
             const sameDomain = domain && mail.domain === domain;
             const sameCompany =
               normalizedCompanyFilter &&
