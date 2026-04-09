@@ -21,6 +21,8 @@ type HookBaseId =
   | "minimal"
   | "consultative";
 
+type MainView = "mails" | "reminders" | "analytics";
+
 type AnalyzeResponse = {
   jobTitle?: string;
   company?: string;
@@ -80,6 +82,29 @@ type MailDetail = {
   cc: string[];
   bcc: string[];
   replyTo: string[];
+};
+
+type HookVariantStats = {
+  hookVariantId: string;
+  hookText: string;
+  sent: number;
+  opened: number;
+  openRate: number;
+  reminderSent: number;
+  reminderRate: number;
+};
+
+type HookBaseStats = {
+  hookBaseId: string;
+  hookBaseLabel: string;
+  sent: number;
+  opened: number;
+  openRate: number;
+  reminderSent: number;
+  reminderRate: number;
+  bestVariantId: string;
+  bestVariantOpenRate: number;
+  variants: HookVariantStats[];
 };
 
 const EMPTY_JOB_DATA: JobData = {
@@ -180,7 +205,57 @@ function displayMailTitle(mail: Pick<MailRecord, "jobTitle" | "subject">) {
   return mail.jobTitle?.trim() || mail.subject || "Ohne Betreff";
 }
 
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(1)} %`;
+}
+
+function StatBar({
+  value,
+  label,
+}: {
+  value: number;
+  label: string;
+}) {
+  const width = Math.max(0, Math.min(100, value * 100));
+
+  return (
+    <div style={{ marginBottom: "12px" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          marginBottom: "6px",
+          fontSize: "13px",
+        }}
+      >
+        <span>{label}</span>
+        <span style={{ fontWeight: 600 }}>{formatPercent(value)}</span>
+      </div>
+
+      <div
+        style={{
+          height: "10px",
+          background: "#e5e7eb",
+          borderRadius: "999px",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${width}%`,
+            height: "100%",
+            background: "#111827",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function PhotoToMailPage() {
+  const [mainView, setMainView] = useState<MainView>("mails");
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [jobUrl, setJobUrl] = useState("");
   const [isMobile, setIsMobile] = useState(false);
@@ -219,6 +294,10 @@ export default function PhotoToMailPage() {
   const [dismissedReminderIds, setDismissedReminderIds] = useState<string[]>(
     []
   );
+
+  const [loadingTextStats, setLoadingTextStats] = useState(false);
+  const [textStats, setTextStats] = useState<HookBaseStats[]>([]);
+  const [selectedAnalyticsHookId, setSelectedAnalyticsHookId] = useState("");
 
   useEffect(() => {
     function handleResize() {
@@ -269,6 +348,13 @@ export default function PhotoToMailPage() {
           !dismissedReminderIds.includes(item.id)
       ),
     [reminders, completedReminders, dismissedReminderIds]
+  );
+
+  const selectedHookStats = useMemo(
+    () =>
+      textStats.find((item) => item.hookBaseId === selectedAnalyticsHookId) ||
+      null,
+    [textStats, selectedAnalyticsHookId]
   );
 
   function toggleHint(hint: HintKey) {
@@ -344,10 +430,42 @@ export default function PhotoToMailPage() {
     }
   }
 
+  async function loadTextStats() {
+    try {
+      setLoadingTextStats(true);
+
+      const response = await fetch("/api/crm/text-stats");
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Text-Auswertungen konnten nicht geladen werden.");
+        return;
+      }
+
+      const hooks = Array.isArray(data.hooks) ? data.hooks : [];
+      setTextStats(hooks);
+
+      if (hooks.length > 0 && !selectedAnalyticsHookId) {
+        setSelectedAnalyticsHookId(hooks[0].hookBaseId);
+      }
+    } catch {
+      setError("Text-Auswertungen konnten nicht geladen werden.");
+    } finally {
+      setLoadingTextStats(false);
+    }
+  }
+
   useEffect(() => {
     loadCrm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crmView, currentDomain, currentCompany]);
+
+  useEffect(() => {
+    if (mainView === "analytics") {
+      loadTextStats();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainView]);
 
   async function handlePasteUrl() {
     setError("");
@@ -561,6 +679,9 @@ export default function PhotoToMailPage() {
       );
 
       await loadCrm();
+      if (mainView === "analytics") {
+        await loadTextStats();
+      }
     } catch {
       setError("Die E-Mail konnte nicht gesendet werden.");
     } finally {
@@ -640,6 +761,9 @@ export default function PhotoToMailPage() {
 
       if (reloadAfter) {
         await loadCrm();
+        if (mainView === "analytics") {
+          await loadTextStats();
+        }
       }
     } catch {
       setError("Erinnerungs-Mail konnte nicht gesendet werden.");
@@ -663,6 +787,9 @@ export default function PhotoToMailPage() {
 
       setSuccessMessage("Alle offenen Erinnerungen wurden als Test verschickt.");
       await loadCrm();
+      if (mainView === "analytics") {
+        await loadTextStats();
+      }
     } catch {
       setError("Nicht alle Erinnerungen konnten verschickt werden.");
     } finally {
@@ -715,23 +842,685 @@ export default function PhotoToMailPage() {
     <>
       <div
         style={{
+          marginBottom: "18px",
           display: "flex",
-          gap: "24px",
-          alignItems: "flex-start",
-          flexDirection: isMobile ? "column" : "row",
-          width: "100%",
+          gap: "10px",
+          flexWrap: "wrap",
+          alignItems: "center",
         }}
       >
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {visibleReminders.length > 0 && (
-            <div style={{ marginBottom: "16px" }}>
+        <button
+          type="button"
+          onClick={() => setMainView("mails")}
+          style={topMenuButtonStyle(mainView === "mails")}
+        >
+          Kaltakquise-Mails
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainView("reminders")}
+          style={topMenuButtonStyle(mainView === "reminders")}
+        >
+          Erinnerungen
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainView("analytics")}
+          style={topMenuButtonStyle(mainView === "analytics")}
+        >
+          Texte & Auswertungen
+        </button>
+      </div>
+
+      {mainView === "mails" && (
+        <div
+          style={{
+            display: "flex",
+            gap: "24px",
+            alignItems: "flex-start",
+            flexDirection: isMobile ? "column" : "row",
+            width: "100%",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1
+              style={{
+                marginTop: 0,
+                marginBottom: "18px",
+                fontSize: "18px",
+              }}
+            >
+              Kaltakquise-Mails
+            </h1>
+
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #d1d5db",
+                borderRadius: "14px",
+                padding: "20px",
+                width: "100%",
+                boxSizing: "border-box",
+              }}
+            >
+              <div
+                style={{
+                  marginBottom: "22px",
+                  paddingBottom: "18px",
+                  borderBottom: "1px solid #e5e7eb",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 700,
+                    marginBottom: "14px",
+                  }}
+                >
+                  1. Quelle analysieren
+                </div>
+
+                {!isMobile && (
+                  <Field
+                    label="Anzeigen-URL"
+                    value={jobUrl}
+                    onChange={setJobUrl}
+                    placeholder="https://..."
+                  />
+                )}
+
+                <div style={{ marginTop: !isMobile ? "4px" : 0 }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {isMobile ? "Datei, Foto oder URL" : "Datei"}
+                  </label>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "10px",
+                      marginBottom: "12px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <label style={uploadLabelStyle}>
+                      📁 Datei
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) =>
+                          setSelectedFile(e.target.files?.[0] || null)
+                        }
+                        style={{ display: "none" }}
+                      />
+                    </label>
+
+                    {isMobile && (
+                      <label style={uploadLabelStyle}>
+                        📷 Foto
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={(e) =>
+                            setSelectedFile(e.target.files?.[0] || null)
+                          }
+                          style={{ display: "none" }}
+                        />
+                      </label>
+                    )}
+
+                    {isMobile && (
+                      <button
+                        type="button"
+                        onClick={handlePasteUrl}
+                        style={{
+                          ...uploadLabelStyle,
+                          border: "1px solid #cbd5e1",
+                          fontSize: "14px",
+                        }}
+                      >
+                        🔗 URL einfügen
+                      </button>
+                    )}
+                  </div>
+
+                  {isMobile && jobUrl.trim() && (
+                    <div
+                      style={{
+                        marginBottom: "12px",
+                        fontSize: "13px",
+                        color: "#374151",
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      URL: {jobUrl}
+                    </div>
+                  )}
+
+                  {selectedFile && (
+                    <div
+                      style={{
+                        marginBottom: "12px",
+                        fontSize: "14px",
+                        color: "#374151",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      Ausgewählt: {selectedFile.name}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleAnalyzeSource}
+                  disabled={analyzingSource}
+                  style={primaryButtonStyle(analyzingSource)}
+                >
+                  {analyzingSource ? "Wird analysiert..." : "Quelle analysieren"}
+                </button>
+              </div>
+
+              {error ? (
+                <div
+                  style={{
+                    marginBottom: "18px",
+                    color: "#b91c1c",
+                    fontWeight: 600,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {error}
+                </div>
+              ) : null}
+
+              {successMessage ? (
+                <div
+                  style={{
+                    marginBottom: "18px",
+                    color: "#166534",
+                    fontWeight: 600,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {successMessage}
+                </div>
+              ) : null}
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: "16px",
+                  marginBottom: "24px",
+                }}
+              >
+                <FieldWithOptions
+                  label="Jobtitel"
+                  value={jobData.jobTitle}
+                  onChange={(value) => setFieldValue("jobTitle", value)}
+                  options={jobData.jobTitleOptions}
+                  onSelectOption={(value) => setFieldValue("jobTitle", value)}
+                />
+
+                <FieldWithOptions
+                  label="Firma"
+                  value={jobData.company}
+                  onChange={(value) => setFieldValue("company", value)}
+                  options={jobData.companyOptions}
+                  onSelectOption={(value) => setFieldValue("company", value)}
+                />
+
+                <FieldWithOptions
+                  label="Ansprechpartner"
+                  value={jobData.contactPerson}
+                  onChange={(value) => setFieldValue("contactPerson", value)}
+                  options={jobData.contactPersonOptions}
+                  onSelectOption={(value) => setFieldValue("contactPerson", value)}
+                />
+
+                <FieldWithOptions
+                  label="Email"
+                  value={jobData.email}
+                  onChange={(value) => setFieldValue("email", value)}
+                  options={jobData.emailOptions}
+                  onSelectOption={(value) => setFieldValue("email", value)}
+                />
+              </div>
+
+              <div
+                style={{
+                  marginBottom: "22px",
+                  paddingTop: "2px",
+                  paddingBottom: "18px",
+                  borderBottom: "1px solid #e5e7eb",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 700,
+                    marginBottom: "14px",
+                  }}
+                >
+                  2. Email gestalten
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: "280px" }}>
+                    <div style={{ marginBottom: "8px", fontWeight: 600 }}>
+                      Hinweise
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "10px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {HINT_OPTIONS.map((option) => {
+                        const active = selectedHints.includes(option.key);
+
+                        return (
+                          <button
+                            key={option.key}
+                            type="button"
+                            onClick={() => toggleHint(option.key)}
+                            style={{
+                              padding: "8px 12px",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: "999px",
+                              background: active ? "#111827" : "#ffffff",
+                              color: active ? "#ffffff" : "#111827",
+                              cursor: "pointer",
+                              fontSize: "14px",
+                            }}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ minWidth: "220px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: "8px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Einstieg
+                    </label>
+
+                    <select
+                      value={selectedHookBaseId}
+                      onChange={(e) =>
+                        setSelectedHookBaseId(e.target.value as HookBaseId)
+                      }
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        background: "#ffffff",
+                        fontSize: "14px",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {HOOK_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleGenerateEmail}
+                  disabled={generatingEmail || !hasAnalyzedSource}
+                  style={primaryButtonStyle(generatingEmail || !hasAnalyzedSource)}
+                >
+                  {generatingEmail ? "Wird generiert..." : "Email generieren"}
+                </button>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "8px",
+                    fontWeight: 600,
+                  }}
+                >
+                  Generierte E-Mail
+                </label>
+
+                <textarea
+                  value={jobData.generatedEmail}
+                  onChange={(e) =>
+                    setJobData((prev) => ({
+                      ...prev,
+                      generatedEmail: e.target.value,
+                    }))
+                  }
+                  rows={16}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    background: "#ffffff",
+                    fontSize: "15px",
+                    boxSizing: "border-box",
+                    resize: "vertical",
+                    fontFamily: "Arial, sans-serif",
+                    lineHeight: 1.5,
+                  }}
+                />
+              </div>
+
+              {jobData.hookBaseLabel && (
+                <div
+                  style={{
+                    marginTop: "-6px",
+                    marginBottom: "16px",
+                    fontSize: "13px",
+                    color: "#6b7280",
+                  }}
+                >
+                  Verwendeter Einstieg: {jobData.hookBaseLabel}
+                  {jobData.hookVariantId ? ` · ${jobData.hookVariantId}` : ""}
+                </div>
+              )}
+
+              <div style={{ marginBottom: "2px" }}>
+                <label style={{ fontSize: "14px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={testMode}
+                    onChange={(e) => setTestMode(e.target.checked)}
+                    style={{ marginRight: "6px" }}
+                  />
+                  Test an mich senden
+                </label>
+              </div>
+
+              <div style={{ marginBottom: "2px" }}>
+                <label style={{ fontSize: "14px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={sendCopy}
+                    onChange={(e) => setSendCopy(e.target.checked)}
+                    style={{ marginRight: "6px" }}
+                  />
+                  Kopie an mich senden
+                </label>
+              </div>
+
+              <div
+                style={{
+                  fontSize: "13px",
+                  color: "#6b7280",
+                  marginBottom: "18px",
+                }}
+              >
+                {testMode
+                  ? "Versand geht an deine Testadresse."
+                  : "Versand geht an die erkannte Unternehmens-E-Mail."}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  onClick={handleSendEmail}
+                  disabled={sendingEmail}
+                  style={primaryButtonStyle(sendingEmail)}
+                >
+                  {sendingEmail ? "Wird gesendet..." : "Email senden"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              width: isMobile ? "100%" : "340px",
+              minWidth: isMobile ? "100%" : "340px",
+              background: "#ffffff",
+              border: "1px solid #d1d5db",
+              borderRadius: "14px",
+              padding: "16px",
+              boxSizing: "border-box",
+              position: isMobile ? "static" : "sticky",
+              top: "20px",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: "16px",
+                marginBottom: "12px",
+              }}
+            >
+              CRM
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                marginBottom: "14px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setCrmView("company")}
+                style={{
+                  flex: 1,
+                  padding: "8px 10px",
+                  borderRadius: "8px",
+                  border: "1px solid #cbd5e1",
+                  background: crmView === "company" ? "#111827" : "#ffffff",
+                  color: crmView === "company" ? "#ffffff" : "#111827",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                }}
+              >
+                Emails an dieses Unternehmen
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCrmView("all")}
+                style={{
+                  flex: 1,
+                  padding: "8px 10px",
+                  borderRadius: "8px",
+                  border: "1px solid #cbd5e1",
+                  background: crmView === "all" ? "#111827" : "#ffffff",
+                  color: crmView === "all" ? "#ffffff" : "#111827",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                }}
+              >
+                Alle Emails
+              </button>
+            </div>
+
+            {loadingCrm ? (
+              <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                CRM wird geladen...
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  maxHeight: isMobile ? "none" : "70vh",
+                  overflowY: "auto",
+                  paddingRight: "2px",
+                }}
+              >
+                {mailHistory.length === 0 ? (
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      color: "#6b7280",
+                    }}
+                  >
+                    Noch keine passenden Einträge vorhanden.
+                  </div>
+                ) : (
+                  mailHistory.map((mail) => (
+                    <button
+                      key={mail.id}
+                      type="button"
+                      onClick={() => handleOpenMailDetail(mail)}
+                      style={{
+                        textAlign: "left",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "10px",
+                        padding: "10px",
+                        background: "#ffffff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          marginBottom: "4px",
+                          lineHeight: 1.3,
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {displayMailTitle(mail)}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "#374151",
+                          marginBottom: "4px",
+                          wordBreak: "break-word",
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {mail.company?.trim() ||
+                          mail.recipientLabel ||
+                          mail.recipientEmail}
+                      </div>
+
+                      {mail.reminded && (
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "#166534",
+                            fontWeight: 600,
+                            marginBottom: "4px",
+                          }}
+                        >
+                          Erinnerung gesendet
+                          {mail.reminderSentAt
+                            ? ` · ${formatDate(mail.reminderSentAt)}`
+                            : ""}
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "8px",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            color: "#6b7280",
+                          }}
+                        >
+                          {formatDate(mail.createdAt)}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: statusColor(mail.status),
+                          }}
+                        >
+                          {mail.lastEvent || statusLabel(mail.status)}
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mainView === "reminders" && (
+        <div
+          style={{
+            background: "#ffffff",
+            border: "1px solid #d1d5db",
+            borderRadius: "14px",
+            padding: "20px",
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "18px",
+              fontWeight: 700,
+              marginBottom: "18px",
+            }}
+          >
+            Erinnerungen
+          </div>
+
+          {visibleReminders.length === 0 ? (
+            <div style={{ fontSize: "14px", color: "#6b7280" }}>
+              Aktuell sind keine offenen Erinnerungen vorhanden.
+            </div>
+          ) : (
+            <>
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   gap: "12px",
                   alignItems: "center",
-                  marginBottom: "8px",
+                  marginBottom: "16px",
                   flexWrap: "wrap",
                 }}
               >
@@ -748,7 +1537,7 @@ export default function PhotoToMailPage() {
                     color: "#111827",
                   }}
                 >
-                  {remindersCollapsed ? "▶" : "▼"} Erinnerungen (Test)
+                  {remindersCollapsed ? "▶" : "▼"} Offene Erinnerungen
                 </button>
 
                 <button
@@ -782,7 +1571,7 @@ export default function PhotoToMailPage() {
                 <div
                   style={{
                     display: "flex",
-                    gap: "8px",
+                    gap: "10px",
                     flexWrap: "wrap",
                   }}
                 >
@@ -798,9 +1587,9 @@ export default function PhotoToMailPage() {
                         onClick={() => handleReminderQuickSend(item)}
                         disabled={isSending || isCompleted}
                         style={{
-                          width: isMobile ? "100%" : "23%",
-                          minWidth: isMobile ? "100%" : "220px",
-                          padding: "8px 10px",
+                          width: isMobile ? "100%" : "24%",
+                          minWidth: isMobile ? "100%" : "240px",
+                          padding: "10px 12px",
                           borderRadius: "10px",
                           background: isCompleted ? "#dcfce7" : "#f9fafb",
                           border: isCompleted
@@ -823,14 +1612,14 @@ export default function PhotoToMailPage() {
                         >
                           <div
                             style={{
-                              fontSize: "12px",
+                              fontSize: "13px",
                               fontWeight: 600,
                               lineHeight: 1.25,
                               display: "-webkit-box",
                               WebkitLineClamp: 2,
                               WebkitBoxOrient: "vertical",
                               overflow: "hidden",
-                              minHeight: "30px",
+                              minHeight: "34px",
                               flex: 1,
                             }}
                           >
@@ -864,7 +1653,7 @@ export default function PhotoToMailPage() {
                           style={{
                             fontSize: "11px",
                             color: "#6b7280",
-                            marginTop: "4px",
+                            marginTop: "6px",
                             whiteSpace: "nowrap",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
@@ -877,8 +1666,8 @@ export default function PhotoToMailPage() {
 
                         <div
                           style={{
-                            marginTop: "6px",
-                            fontSize: "10px",
+                            marginTop: "8px",
+                            fontSize: "11px",
                             color: isCompleted ? "#166534" : "#6b7280",
                           }}
                         >
@@ -889,610 +1678,269 @@ export default function PhotoToMailPage() {
                   })}
                 </div>
               )}
-            </div>
+            </>
           )}
-
-          <h1
-            style={{
-              marginTop: 0,
-              marginBottom: "18px",
-              fontSize: "18px",
-            }}
-          >
-            Kaltakquise-Mails
-          </h1>
-
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1px solid #d1d5db",
-              borderRadius: "14px",
-              padding: "20px",
-              width: "100%",
-              boxSizing: "border-box",
-            }}
-          >
-            <div
-              style={{
-                marginBottom: "22px",
-                paddingBottom: "18px",
-                borderBottom: "1px solid #e5e7eb",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  marginBottom: "14px",
-                }}
-              >
-                1. Quelle analysieren
-              </div>
-
-              {!isMobile && (
-                <Field
-                  label="Anzeigen-URL"
-                  value={jobUrl}
-                  onChange={setJobUrl}
-                  placeholder="https://..."
-                />
-              )}
-
-              <div style={{ marginTop: !isMobile ? "4px" : 0 }}>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "8px",
-                    fontWeight: 600,
-                  }}
-                >
-                  {isMobile ? "Datei, Foto oder URL" : "Datei"}
-                </label>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "10px",
-                    marginBottom: "12px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <label style={uploadLabelStyle}>
-                    📁 Datei
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) =>
-                        setSelectedFile(e.target.files?.[0] || null)
-                      }
-                      style={{ display: "none" }}
-                    />
-                  </label>
-
-                  {isMobile && (
-                    <label style={uploadLabelStyle}>
-                      📷 Foto
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={(e) =>
-                          setSelectedFile(e.target.files?.[0] || null)
-                        }
-                        style={{ display: "none" }}
-                      />
-                    </label>
-                  )}
-
-                  {isMobile && (
-                    <button
-                      type="button"
-                      onClick={handlePasteUrl}
-                      style={{
-                        ...uploadLabelStyle,
-                        border: "1px solid #cbd5e1",
-                        fontSize: "14px",
-                      }}
-                    >
-                      🔗 URL einfügen
-                    </button>
-                  )}
-                </div>
-
-                {isMobile && jobUrl.trim() && (
-                  <div
-                    style={{
-                      marginBottom: "12px",
-                      fontSize: "13px",
-                      color: "#374151",
-                      wordBreak: "break-all",
-                    }}
-                  >
-                    URL: {jobUrl}
-                  </div>
-                )}
-
-                {selectedFile && (
-                  <div
-                    style={{
-                      marginBottom: "12px",
-                      fontSize: "14px",
-                      color: "#374151",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    Ausgewählt: {selectedFile.name}
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={handleAnalyzeSource}
-                disabled={analyzingSource}
-                style={primaryButtonStyle(analyzingSource)}
-              >
-                {analyzingSource ? "Wird analysiert..." : "Quelle analysieren"}
-              </button>
-            </div>
-
-            {error ? (
-              <div
-                style={{
-                  marginBottom: "18px",
-                  color: "#b91c1c",
-                  fontWeight: 600,
-                  wordBreak: "break-word",
-                }}
-              >
-                {error}
-              </div>
-            ) : null}
-
-            {successMessage ? (
-              <div
-                style={{
-                  marginBottom: "18px",
-                  color: "#166534",
-                  fontWeight: 600,
-                  wordBreak: "break-word",
-                }}
-              >
-                {successMessage}
-              </div>
-            ) : null}
-
-            <div
-              style={{
-                display: "grid",
-                gap: "16px",
-                marginBottom: "24px",
-              }}
-            >
-              <FieldWithOptions
-                label="Jobtitel"
-                value={jobData.jobTitle}
-                onChange={(value) => setFieldValue("jobTitle", value)}
-                options={jobData.jobTitleOptions}
-                onSelectOption={(value) => setFieldValue("jobTitle", value)}
-              />
-
-              <FieldWithOptions
-                label="Firma"
-                value={jobData.company}
-                onChange={(value) => setFieldValue("company", value)}
-                options={jobData.companyOptions}
-                onSelectOption={(value) => setFieldValue("company", value)}
-              />
-
-              <FieldWithOptions
-                label="Ansprechpartner"
-                value={jobData.contactPerson}
-                onChange={(value) => setFieldValue("contactPerson", value)}
-                options={jobData.contactPersonOptions}
-                onSelectOption={(value) => setFieldValue("contactPerson", value)}
-              />
-
-              <FieldWithOptions
-                label="Email"
-                value={jobData.email}
-                onChange={(value) => setFieldValue("email", value)}
-                options={jobData.emailOptions}
-                onSelectOption={(value) => setFieldValue("email", value)}
-              />
-            </div>
-
-            <div
-              style={{
-                marginBottom: "22px",
-                paddingTop: "2px",
-                paddingBottom: "18px",
-                borderBottom: "1px solid #e5e7eb",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  marginBottom: "14px",
-                }}
-              >
-                2. Email gestalten
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: "16px",
-                  alignItems: "flex-start",
-                  flexWrap: "wrap",
-                  marginBottom: "16px",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: "280px" }}>
-                  <div style={{ marginBottom: "8px", fontWeight: 600 }}>
-                    Hinweise
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "10px",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    {HINT_OPTIONS.map((option) => {
-                      const active = selectedHints.includes(option.key);
-
-                      return (
-                        <button
-                          key={option.key}
-                          type="button"
-                          onClick={() => toggleHint(option.key)}
-                          style={{
-                            padding: "8px 12px",
-                            border: "1px solid #cbd5e1",
-                            borderRadius: "999px",
-                            background: active ? "#111827" : "#ffffff",
-                            color: active ? "#ffffff" : "#111827",
-                            cursor: "pointer",
-                            fontSize: "14px",
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div style={{ minWidth: "220px" }}>
-                  <label
-                    style={{
-                      display: "block",
-                      marginBottom: "8px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Einstieg
-                  </label>
-
-                  <select
-                    value={selectedHookBaseId}
-                    onChange={(e) =>
-                      setSelectedHookBaseId(e.target.value as HookBaseId)
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "8px",
-                      background: "#ffffff",
-                      fontSize: "14px",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    {HOOK_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <button
-                onClick={handleGenerateEmail}
-                disabled={generatingEmail || !hasAnalyzedSource}
-                style={primaryButtonStyle(generatingEmail || !hasAnalyzedSource)}
-              >
-                {generatingEmail ? "Wird generiert..." : "Email generieren"}
-              </button>
-            </div>
-
-            <div style={{ marginBottom: "16px" }}>
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "8px",
-                  fontWeight: 600,
-                }}
-              >
-                Generierte E-Mail
-              </label>
-
-              <textarea
-                value={jobData.generatedEmail}
-                onChange={(e) =>
-                  setJobData((prev) => ({
-                    ...prev,
-                    generatedEmail: e.target.value,
-                  }))
-                }
-                rows={16}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "8px",
-                  background: "#ffffff",
-                  fontSize: "15px",
-                  boxSizing: "border-box",
-                  resize: "vertical",
-                  fontFamily: "Arial, sans-serif",
-                  lineHeight: 1.5,
-                }}
-              />
-            </div>
-
-            {jobData.hookBaseLabel && (
-              <div
-                style={{
-                  marginTop: "-6px",
-                  marginBottom: "16px",
-                  fontSize: "13px",
-                  color: "#6b7280",
-                }}
-              >
-                Verwendeter Einstieg: {jobData.hookBaseLabel}
-                {jobData.hookVariantId ? ` · ${jobData.hookVariantId}` : ""}
-              </div>
-            )}
-
-            <div style={{ marginBottom: "2px" }}>
-              <label style={{ fontSize: "14px", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={testMode}
-                  onChange={(e) => setTestMode(e.target.checked)}
-                  style={{ marginRight: "6px" }}
-                />
-                Test an mich senden
-              </label>
-            </div>
-
-            <div style={{ marginBottom: "2px" }}>
-              <label style={{ fontSize: "14px", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={sendCopy}
-                  onChange={(e) => setSendCopy(e.target.checked)}
-                  style={{ marginRight: "6px" }}
-                />
-                Kopie an mich senden
-              </label>
-            </div>
-
-            <div
-              style={{
-                fontSize: "13px",
-                color: "#6b7280",
-                marginBottom: "18px",
-              }}
-            >
-              {testMode
-                ? "Versand geht an deine Testadresse."
-                : "Versand geht an die erkannte Unternehmens-E-Mail."}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "10px",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                onClick={handleSendEmail}
-                disabled={sendingEmail}
-                style={primaryButtonStyle(sendingEmail)}
-              >
-                {sendingEmail ? "Wird gesendet..." : "Email senden"}
-              </button>
-            </div>
-          </div>
         </div>
+      )}
 
+      {mainView === "analytics" && (
         <div
           style={{
-            width: isMobile ? "100%" : "340px",
-            minWidth: isMobile ? "100%" : "340px",
             background: "#ffffff",
             border: "1px solid #d1d5db",
             borderRadius: "14px",
-            padding: "16px",
+            padding: "20px",
             boxSizing: "border-box",
-            position: isMobile ? "static" : "sticky",
-            top: "20px",
           }}
         >
           <div
             style={{
+              fontSize: "18px",
               fontWeight: 700,
-              fontSize: "16px",
-              marginBottom: "12px",
+              marginBottom: "18px",
             }}
           >
-            CRM
+            Texte & Auswertungen
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              marginBottom: "14px",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setCrmView("company")}
-              style={{
-                flex: 1,
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "1px solid #cbd5e1",
-                background: crmView === "company" ? "#111827" : "#ffffff",
-                color: crmView === "company" ? "#ffffff" : "#111827",
-                cursor: "pointer",
-                fontSize: "13px",
-              }}
-            >
-              Emails an dieses Unternehmen
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setCrmView("all")}
-              style={{
-                flex: 1,
-                padding: "8px 10px",
-                borderRadius: "8px",
-                border: "1px solid #cbd5e1",
-                background: crmView === "all" ? "#111827" : "#ffffff",
-                color: crmView === "all" ? "#ffffff" : "#111827",
-                cursor: "pointer",
-                fontSize: "13px",
-              }}
-            >
-              Alle Emails
-            </button>
-          </div>
-
-          {loadingCrm ? (
-            <div style={{ fontSize: "13px", color: "#6b7280" }}>
-              CRM wird geladen...
+          {loadingTextStats ? (
+            <div style={{ fontSize: "14px", color: "#6b7280" }}>
+              Auswertungen werden geladen...
+            </div>
+          ) : textStats.length === 0 ? (
+            <div style={{ fontSize: "14px", color: "#6b7280" }}>
+              Noch keine Textdaten vorhanden.
             </div>
           ) : (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-                maxHeight: isMobile ? "none" : "70vh",
-                overflowY: "auto",
-                paddingRight: "2px",
-              }}
-            >
-              {mailHistory.length === 0 ? (
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "#6b7280",
-                  }}
-                >
-                  Noch keine passenden Einträge vorhanden.
-                </div>
-              ) : (
-                mailHistory.map((mail) => (
-                  <button
-                    key={mail.id}
-                    type="button"
-                    onClick={() => handleOpenMailDetail(mail)}
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                  marginBottom: "20px",
+                }}
+              >
+                {textStats.map((hook) => {
+                  const active = selectedAnalyticsHookId === hook.hookBaseId;
+
+                  return (
+                    <button
+                      key={hook.hookBaseId}
+                      type="button"
+                      onClick={() => setSelectedAnalyticsHookId(hook.hookBaseId)}
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: "999px",
+                        border: "1px solid #cbd5e1",
+                        background: active ? "#111827" : "#ffffff",
+                        color: active ? "#ffffff" : "#111827",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {hook.hookBaseLabel}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedHookStats && (
+                <>
+                  <div
                     style={{
-                      textAlign: "left",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "10px",
-                      padding: "10px",
-                      background: "#ffffff",
-                      cursor: "pointer",
+                      display: "grid",
+                      gridTemplateColumns: isMobile
+                        ? "1fr"
+                        : "repeat(5, minmax(0, 1fr))",
+                      gap: "12px",
+                      marginBottom: "20px",
+                    }}
+                  >
+                    <StatCard
+                      label="Gesendet"
+                      value={String(selectedHookStats.sent)}
+                    />
+                    <StatCard
+                      label="Geöffnet"
+                      value={String(selectedHookStats.opened)}
+                    />
+                    <StatCard
+                      label="Öffnungsrate"
+                      value={formatPercent(selectedHookStats.openRate)}
+                    />
+                    <StatCard
+                      label="Reminder-Quote"
+                      value={formatPercent(selectedHookStats.reminderRate)}
+                    />
+                    <StatCard
+                      label="Beste Variante"
+                      value={selectedHookStats.bestVariantId || "-"}
+                      subValue={formatPercent(
+                        selectedHookStats.bestVariantOpenRate
+                      )}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isMobile ? "1fr" : "1.1fr 1fr",
+                      gap: "20px",
+                      marginBottom: "24px",
                     }}
                   >
                     <div
                       style={{
-                        fontWeight: 600,
-                        fontSize: "13px",
-                        marginBottom: "4px",
-                        lineHeight: 1.3,
-                        wordBreak: "break-word",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "12px",
+                        padding: "16px",
                       }}
                     >
-                      {displayMailTitle(mail)}
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          marginBottom: "14px",
+                        }}
+                      >
+                        Kennzahlen
+                      </div>
+
+                      <StatBar
+                        label="Öffnungsrate"
+                        value={selectedHookStats.openRate}
+                      />
+                      <StatBar
+                        label="Reminder-Quote"
+                        value={selectedHookStats.reminderRate}
+                      />
+                      <StatBar
+                        label="Beste Variantenrate"
+                        value={selectedHookStats.bestVariantOpenRate}
+                      />
                     </div>
 
                     <div
                       style={{
-                        fontSize: "12px",
-                        color: "#374151",
-                        marginBottom: "4px",
-                        wordBreak: "break-word",
-                        lineHeight: 1.3,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "12px",
+                        padding: "16px",
                       }}
                     >
-                      {mail.company?.trim() ||
-                        mail.recipientLabel ||
-                        mail.recipientEmail}
-                    </div>
-
-                    {mail.reminded && (
                       <div
                         style={{
-                          fontSize: "11px",
-                          color: "#166534",
-                          fontWeight: 600,
-                          marginBottom: "4px",
+                          fontWeight: 700,
+                          marginBottom: "10px",
                         }}
                       >
-                        Erinnerung gesendet
-                        {mail.reminderSentAt
-                          ? ` · ${formatDate(mail.reminderSentAt)}`
-                          : ""}
+                        Hook-Überblick
                       </div>
-                    )}
 
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          color: "#374151",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        <div style={{ marginBottom: "10px" }}>
+                          Basehook:{" "}
+                          <strong>{selectedHookStats.hookBaseLabel}</strong>
+                        </div>
+                        <div style={{ marginBottom: "10px" }}>
+                          Varianten:{" "}
+                          <strong>{selectedHookStats.variants.length}</strong>
+                        </div>
+                        <div>
+                          Bestperformer:{" "}
+                          <strong>{selectedHookStats.bestVariantId}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "12px",
+                      overflow: "hidden",
+                    }}
+                  >
                     <div
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "8px",
-                        alignItems: "center",
+                        padding: "14px 16px",
+                        borderBottom: "1px solid #e5e7eb",
+                        fontWeight: 700,
                       }}
                     >
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          color: "#6b7280",
-                        }}
-                      >
-                        {formatDate(mail.createdAt)}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          color: statusColor(mail.status),
-                        }}
-                      >
-                        {mail.lastEvent || statusLabel(mail.status)}
-                      </div>
+                      Varianten
                     </div>
-                  </button>
-                ))
+
+                    <div style={{ overflowX: "auto" }}>
+                      <table
+                        style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontSize: "14px",
+                        }}
+                      >
+                        <thead>
+                          <tr
+                            style={{
+                              background: "#f9fafb",
+                              textAlign: "left",
+                            }}
+                          >
+                            <th style={tableHeadStyle}>Variante</th>
+                            <th style={tableHeadStyle}>Gesendet</th>
+                            <th style={tableHeadStyle}>Geöffnet</th>
+                            <th style={tableHeadStyle}>Öffnungsrate</th>
+                            <th style={tableHeadStyle}>Reminder-Quote</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedHookStats.variants.map((variant) => (
+                            <tr key={variant.hookVariantId}>
+                              <td style={tableCellStyle}>
+                                <div
+                                  style={{
+                                    fontWeight: 600,
+                                    marginBottom: "4px",
+                                  }}
+                                >
+                                  {variant.hookVariantId}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: "12px",
+                                    color: "#6b7280",
+                                    lineHeight: 1.4,
+                                  }}
+                                >
+                                  {variant.hookText}
+                                </div>
+                              </td>
+                              <td style={tableCellStyle}>{variant.sent}</td>
+                              <td style={tableCellStyle}>{variant.opened}</td>
+                              <td style={tableCellStyle}>
+                                {formatPercent(variant.openRate)}
+                              </td>
+                              <td style={tableCellStyle}>
+                                {formatPercent(variant.reminderRate)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
               )}
-            </div>
+            </>
           )}
         </div>
-      </div>
+      )}
 
       {selectedMail && (
         <div
@@ -1643,6 +2091,60 @@ export default function PhotoToMailPage() {
   );
 }
 
+function StatCard({
+  label,
+  value,
+  subValue,
+}: {
+  label: string;
+  value: string;
+  subValue?: string;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: "12px",
+        padding: "14px",
+        background: "#ffffff",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "12px",
+          color: "#6b7280",
+          marginBottom: "6px",
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          fontSize: "20px",
+          fontWeight: 700,
+          lineHeight: 1.2,
+          wordBreak: "break-word",
+        }}
+      >
+        {value}
+      </div>
+
+      {subValue ? (
+        <div
+          style={{
+            marginTop: "6px",
+            fontSize: "12px",
+            color: "#6b7280",
+          }}
+        >
+          {subValue}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Field({
   label,
   value,
@@ -1789,6 +2291,20 @@ const uploadLabelStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const tableHeadStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  fontSize: "13px",
+  fontWeight: 700,
+  color: "#111827",
+  borderBottom: "1px solid #e5e7eb",
+};
+
+const tableCellStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  verticalAlign: "top",
+  borderBottom: "1px solid #f3f4f6",
+};
+
 function primaryButtonStyle(disabled: boolean): React.CSSProperties {
   return {
     padding: "10px 16px",
@@ -1799,5 +2315,18 @@ function primaryButtonStyle(disabled: boolean): React.CSSProperties {
     cursor: disabled ? "not-allowed" : "pointer",
     fontSize: "15px",
     opacity: disabled ? 0.7 : 1,
+  };
+}
+
+function topMenuButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: "999px",
+    border: "1px solid #cbd5e1",
+    background: active ? "#111827" : "#ffffff",
+    color: active ? "#ffffff" : "#111827",
+    cursor: "pointer",
+    fontSize: "14px",
+    fontWeight: 600,
   };
 }
