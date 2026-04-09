@@ -27,7 +27,7 @@ function textToHtml(text: string) {
   return escapeHtml(text).replace(/\n/g, "<br/>");
 }
 
-function buildFinalText(text: string) {
+function buildFinalText(text: string, hiddenMarker?: string) {
   let cleanedText = normalizeGreeting(text);
 
   cleanedText = cleanedText.replace(
@@ -42,71 +42,30 @@ function buildFinalText(text: string) {
     cleanedText += `\n\n${infoBlock}`;
   }
 
-  return `${cleanedText}\n\nMit freundlichen Grüßen`;
+  let final = `${cleanedText}\n\nMit freundlichen Grüßen`;
+
+  // 👇 UNSICHTBARER MARKER
+  if (hiddenMarker) {
+    final += `\n\n<!-- ${hiddenMarker} -->`;
+  }
+
+  return final;
 }
 
-function buildBaseSubject(
-  jobTitle?: string,
-  hints: string[] = [],
-  followUp?: boolean
-) {
-  const safeJobTitle = (jobTitle || "").trim();
+function buildSubject(jobTitle?: string, followUp?: boolean) {
+  const safe = (jobTitle || "").trim();
 
   if (followUp) {
-    return safeJobTitle
-      ? `Erinnerung zu Ihrer ${safeJobTitle}-Anzeige`
+    return safe
+      ? `Erinnerung zu Ihrer ${safe}-Anzeige`
       : "Kurze Erinnerung zu meiner letzten E-Mail";
   }
 
-  if (hints.includes("multiposting")) {
-    return safeJobTitle
-      ? `Ihre ${safeJobTitle}-Anzeige zusätzlich auf Indeed & Stepstone`
-      : "Ihre Anzeige zusätzlich auf Indeed & Stepstone";
-  }
-
-  if (hints.includes("social-media")) {
-    return safeJobTitle
-      ? `Mehr Bewerber für ${safeJobTitle} über Facebook & Instagram`
-      : "Mehr Bewerber über Facebook & Instagram";
-  }
-
-  if (hints.includes("print")) {
-    return safeJobTitle
-      ? `Online + Print: mehr Sichtbarkeit für ${safeJobTitle}`
-      : "Online + Print: mehr Sichtbarkeit für Ihre Anzeige";
-  }
-
-  if (hints.includes("multiple-jobs")) {
-    return "Mehrere Stellen gleichzeitig effizient besetzen";
-  }
-
-  if (safeJobTitle) {
-    return `Zur Position ${safeJobTitle}: mehr passende Bewerber`;
+  if (safe) {
+    return `Zur Position ${safe}: mehr passende Bewerber`;
   }
 
   return "Mehr Bewerber für Ihre Stellenanzeige";
-}
-
-function buildCrmMeta({
-  jobTitle,
-  company,
-  contactPerson,
-  followUp,
-  originalEmailId,
-}: {
-  jobTitle?: string;
-  company?: string;
-  contactPerson?: string;
-  followUp?: boolean;
-  originalEmailId?: string;
-}) {
-  return JSON.stringify({
-    jobTitle: String(jobTitle || "").trim(),
-    company: String(company || "").trim(),
-    contactPerson: String(contactPerson || "").trim(),
-    followUp: !!followUp,
-    originalEmailId: String(originalEmailId || "").trim(),
-  });
 }
 
 export async function POST(req: Request) {
@@ -127,10 +86,7 @@ export async function POST(req: Request) {
       text,
       testMode,
       jobTitle,
-      hints,
       sendCopy,
-      company,
-      contactPerson,
       followUp,
       originalEmailId,
     } = await req.json();
@@ -142,21 +98,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const safeHints = Array.isArray(hints) ? hints : [];
-    const isTestMode = Boolean(testMode);
-    const testRecipient = process.env.TEST_RECIPIENT_EMAIL?.trim();
+    // 🚨 HARD SAFETY
+    let actualRecipient = to;
 
-    if (isTestMode && !testRecipient) {
-      return NextResponse.json(
-        {
-          error:
-            "TEST_RECIPIENT_EMAIL fehlt. Versand wurde aus Sicherheitsgründen gestoppt.",
-        },
-        { status: 500 }
-      );
+    if (testMode) {
+      if (!process.env.TEST_RECIPIENT_EMAIL) {
+        return NextResponse.json(
+          { error: "TEST_RECIPIENT_EMAIL fehlt." },
+          { status: 500 }
+        );
+      }
+
+      actualRecipient = process.env.TEST_RECIPIENT_EMAIL;
     }
-
-    const actualRecipient = isTestMode ? testRecipient! : String(to || "").trim();
 
     if (!actualRecipient) {
       return NextResponse.json(
@@ -165,105 +119,29 @@ export async function POST(req: Request) {
       );
     }
 
-    const finalText = buildFinalText(text);
-    const finalSubject = buildBaseSubject(jobTitle, safeHints, !!followUp);
+    const hiddenMarker =
+      followUp && originalEmailId
+        ? `REMINDER:${originalEmailId}`
+        : undefined;
 
-    const crmMeta = buildCrmMeta({
-      jobTitle,
-      company,
-      contactPerson,
-      followUp: !!followUp,
-      originalEmailId: String(originalEmailId || "").trim(),
-    });
-
-    const profileImageUrl = "https://api.jobs-flow.com/andre-eichstaedt.png";
-    const footerLogosUrl = "https://api.jobs-flow.com/footer-logos.png";
-
-    const plainSignature = `
-
-Andre Eichstaedt
-Anzeigenberater
-Jobs in Berlin-Brandenburg
-Tel. 0335/629797-38
-a.eichstaedt@jobs-in-berlin-brandenburg.de
-
-Leipziger Str. 56
-15236 Frankfurt (Oder)
-www.jobs-in-berlin-brandenburg.de
-
-Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen, genügt eine kurze Antwort mit "Nein danke".`;
+    const finalText = buildFinalText(text, hiddenMarker);
+    const finalSubject = buildSubject(jobTitle, followUp);
 
     const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
-        <div style="margin-bottom: 24px;">
-          ${textToHtml(finalText)}
-        </div>
-
-        <div style="margin: 20px 0 18px 0;">
-          <img
-            src="${profileImageUrl}"
-            alt="Andre Eichstaedt"
-            style="display:block; width:160px; max-width:100%; height:auto; border-radius:80px;"
-          />
-        </div>
-
-        <div style="margin-bottom: 22px;">
-          <div style="font-weight:700;">Andre Eichstaedt</div>
-          <div>Anzeigenberater</div>
-          <div>Jobs in Berlin-Brandenburg</div>
-          <div>Tel. 0335/629797-38</div>
-          <div>
-            <a href="mailto:a.eichstaedt@jobs-in-berlin-brandenburg.de" style="color:#111111; text-decoration:none;">
-              a.eichstaedt@jobs-in-berlin-brandenburg.de
-            </a>
-          </div>
-
-          <div style="height:12px;"></div>
-
-          <div>Leipziger Str. 56</div>
-          <div>15236 Frankfurt (Oder)</div>
-          <div>
-            <a href="https://www.jobs-in-berlin-brandenburg.de" target="_blank" style="color:#111111; text-decoration:none;">
-              www.jobs-in-berlin-brandenburg.de
-            </a>
-          </div>
-        </div>
-
-        <div style="margin:20px 0 22px 0; font-size:13px; color:#555555;">
-          Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
-          genügt eine kurze Antwort mit „Nein danke“.
-        </div>
-
-        <div style="margin-top:8px;">
-          <img
-            src="${footerLogosUrl}"
-            alt="Kooperationen"
-            style="display:block; width:600px; max-width:100%; height:auto;"
-          />
-        </div>
+      <div style="font-family: Arial, sans-serif;">
+        ${textToHtml(finalText)}
       </div>
-      <!-- CRM_META ${escapeHtml(crmMeta)} -->
     `;
 
-    console.log("SEND MAIL SAFETY", {
-      testMode: isTestMode,
-      requestedTo: String(to || "").trim(),
-      actualRecipient,
-      hasTestRecipient: Boolean(testRecipient),
-      followUp: !!followUp,
-      originalEmailId: String(originalEmailId || "").trim(),
-      subject: finalSubject,
-    });
-
     const data = await resend.emails.send({
-      from: "Andre Eichstaedt <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
+      from: "Jobs in Berlin-Brandenburg <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
       replyTo: "a.eichstaedt@jobs-in-berlin-brandenburg.de",
       to: actualRecipient,
       subject: finalSubject,
       html,
-      text: `${finalText}${plainSignature}\n\n[CRM_META] ${crmMeta}`,
-      bcc: isTestMode
-        ? testRecipient
+      text: finalText,
+      bcc: testMode
+        ? process.env.TEST_RECIPIENT_EMAIL
         : sendCopy
         ? "a.eichstaedt@jobs-in-berlin-brandenburg.de"
         : undefined,
@@ -272,26 +150,12 @@ Falls Sie keine weiteren Informationen zu Stellenanzeigen-Schaltungen wünschen,
     return NextResponse.json({
       success: true,
       data,
-      actualRecipient,
-      subject: finalSubject,
-      savedDraft: {
-        jobTitle: jobTitle || "",
-        company: company || "",
-        contactPerson: contactPerson || "",
-        recipientEmail: actualRecipient,
-        status: isTestMode ? "test" : "sent",
-        createdAt: new Date().toISOString(),
-        followUp: !!followUp,
-        originalEmailId: String(originalEmailId || "").trim(),
-      },
     });
   } catch (error: any) {
-    console.error("RESEND ERROR:", error);
+    console.error(error);
 
     return NextResponse.json(
-      {
-        error: error?.message || error?.response || "Fehler beim Mailversand.",
-      },
+      { error: error?.message || "Fehler beim Mailversand." },
       { status: 500 }
     );
   }
