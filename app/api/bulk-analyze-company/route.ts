@@ -1,6 +1,21 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
+const CAREER_KEYWORDS = [
+  "karriere",
+  "jobs",
+  "stellen",
+  "stellenangebote",
+  "stellenausschreibungen",
+  "bewerbung",
+  "offene stellen",
+  "career",
+  "join-us",
+  "arbeiten-bei",
+  "wir-suchen",
+  "jobportal",
+];
+
 function stripHtml(html: string) {
   return html
     .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, " ")
@@ -11,10 +26,37 @@ function stripHtml(html: string) {
     .trim();
 }
 
-async function fetchText(url: string) {
+async function fetchHtml(url: string) {
   const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
   if (!response.ok) return "";
-  return stripHtml(await response.text()).slice(0, 5000);
+  return await response.text();
+}
+
+function findCandidateLinks(html: string, baseUrl: string) {
+  const matches = Array.from(html.matchAll(/href=["']([^"']+)["']/gi)).map((match) => match[1]);
+  const urls: string[] = [];
+
+  for (const href of matches) {
+    const lowered = href.toLowerCase();
+    if (!CAREER_KEYWORDS.some((keyword) => lowered.includes(keyword))) continue;
+    try {
+      const absolute = new URL(href, baseUrl).toString();
+      urls.push(absolute);
+    } catch {
+      // ignore invalid urls
+    }
+  }
+
+  return Array.from(new Set(urls)).slice(0, 6);
+}
+
+function scoreCandidateUrl(url: string) {
+  const lowered = url.toLowerCase();
+  let score = 0;
+  for (const keyword of CAREER_KEYWORDS) {
+    if (lowered.includes(keyword)) score += 1;
+  }
+  return score;
 }
 
 export async function POST(req: Request) {
@@ -33,25 +75,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "OPENAI_API_KEY fehlt." }, { status: 500 });
     }
 
-    const candidates = [
+    const startHtml = await fetchHtml(safeWebsite);
+    const startText = stripHtml(startHtml).slice(0, 6000);
+    const discoveredLinks = startHtml ? findCandidateLinks(startHtml, safeWebsite) : [];
+
+    const staticCandidates = [
       safeWebsite,
       `${safeWebsite.replace(/\/$/, "")}/jobs`,
       `${safeWebsite.replace(/\/$/, "")}/karriere`,
       `${safeWebsite.replace(/\/$/, "")}/stellenangebote`,
+      `${safeWebsite.replace(/\/$/, "")}/stellenausschreibungen`,
       `${safeWebsite.replace(/\/$/, "")}/career`,
+      `${safeWebsite.replace(/\/$/, "")}/bewerbung`,
     ];
 
-    const pages = [] as { url: string; text: string }[];
-    for (const url of candidates) {
+    const allCandidates = Array.from(new Set([...staticCandidates, ...discoveredLinks]))
+      .sort((a, b) => scoreCandidateUrl(b) - scoreCandidateUrl(a))
+      .slice(0, 7);
+
+    const pages: { url: string; text: string }[] = [];
+
+    for (const url of allCandidates) {
       try {
-        const text = await fetchText(url);
-        if (text) pages.push({ url, text });
+        const html = url === safeWebsite && startHtml ? startHtml : await fetchHtml(url);
+        if (!html) continue;
+        const text = stripHtml(html).slice(0, 8000);
+        if (!text) continue;
+        pages.push({ url, text });
       } catch {
-        // ignore single page failures
+        // ignore
       }
     }
 
-    const combined = pages.map((page) => `URL: ${page.url}\nTEXT: ${page.text}`).join("\n\n---\n\n").slice(0, 15000);
+    const combined = pages.map((page) => `URL: ${page.url}\nTEXT: ${page.text}`).join("\n\n---\n\n").slice(0, 20000);
 
     if (!combined) {
       return NextResponse.json({
@@ -59,6 +115,7 @@ export async function POST(req: Request) {
         analysisStars: 0,
         analysisSummary: "Website konnte nicht gelesen werden.",
         foundJobTitles: [],
+        foundCareerUrls: [],
       });
     }
 
@@ -69,7 +126,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "Bewerte Websites von Unternehmen im Hinblick auf Recruiting-Signale. Antworte nur als JSON.",
+            "Bewerte Websites von Unternehmen im Hinblick auf Recruiting-Signale. Berücksichtige Karriere- und Job-Unterseiten ausdrücklich. Antworte nur als JSON.",
         },
         {
           role: "user",
@@ -77,7 +134,9 @@ export async function POST(req: Request) {
             company: safeCompany,
             city: safeCity,
             website: safeWebsite,
+            startText,
             pages,
+            discoveredLinks,
             scoring: {
               0: "keine verwertbaren Hinweise",
               1: "leichte Hinweise auf Karriere/Jobs",
@@ -88,6 +147,7 @@ export async function POST(req: Request) {
               analysisStars: 0,
               analysisSummary: "",
               foundJobTitles: [""],
+              foundCareerUrls: [""],
             },
           }),
         },
@@ -95,7 +155,7 @@ export async function POST(req: Request) {
       text: {
         format: {
           type: "json_schema",
-          name: "bulk_analysis",
+          name: "bulk_analysis_v2",
           schema: {
             type: "object",
             additionalProperties: false,
@@ -106,8 +166,12 @@ export async function POST(req: Request) {
                 type: "array",
                 items: { type: "string" },
               },
+              foundCareerUrls: {
+                type: "array",
+                items: { type: "string" },
+              },
             },
-            required: ["analysisStars", "analysisSummary", "foundJobTitles"],
+            required: ["analysisStars", "analysisSummary", "foundJobTitles", "foundCareerUrls"],
           },
         },
       },
@@ -122,9 +186,12 @@ export async function POST(req: Request) {
       foundJobTitles: Array.isArray(parsed.foundJobTitles)
         ? parsed.foundJobTitles.map((value: unknown) => String(value || "").trim()).filter(Boolean).slice(0, 5)
         : [],
+      foundCareerUrls: Array.isArray(parsed.foundCareerUrls)
+        ? parsed.foundCareerUrls.map((value: unknown) => String(value || "").trim()).filter(Boolean).slice(0, 3)
+        : discoveredLinks.slice(0, 3),
     });
   } catch (error: any) {
-    console.error("BULK ANALYZE ERROR:", error);
+    console.error("BULK ANALYZE V2 ERROR:", error);
     return NextResponse.json(
       { error: error?.message || "Analyse fehlgeschlagen." },
       { status: 500 }
