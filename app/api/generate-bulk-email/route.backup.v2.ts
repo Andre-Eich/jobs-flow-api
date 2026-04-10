@@ -8,16 +8,16 @@ type TextBlock = {
 };
 
 const SUBJECT_VARIANTS_STANDARD = [
-  "Zusätzliche regionale Sichtbarkeit für offene Positionen",
-  "Kurze Idee für mehr Reichweite Ihrer Stellenanzeigen",
-  "Mehr regionale Sichtbarkeit für Ihre Vakanzen",
-  "Ergänzende Reichweite für offene Positionen in Berlin-Brandenburg",
+  "Mehr regionale Sichtbarkeit für Ihre Stellenanzeigen",
+  "Kurze Idee für zusätzliche Bewerber-Reichweite",
+  "Ihre Stellenanzeigen regional gezielt sichtbarer machen",
+  "Mehr Reichweite für offene Positionen in Berlin und Brandenburg",
 ];
 
 const SUBJECT_VARIANTS_SHORT = [
-  "Kurze Idee zu zusätzlicher Reichweite",
-  "Ergänzende Sichtbarkeit für offene Positionen",
-  "Kurzer Hinweis zu regionaler Reichweite",
+  "Kurze Idee zu Ihrer Reichweite als Arbeitgeber",
+  "Zusätzliche regionale Sichtbarkeit für offene Positionen",
+  "Kurzer Hinweis zu Ihrer Stellenanzeigen-Reichweite",
 ];
 
 function pickRandom<T>(items: T[]) {
@@ -32,7 +32,6 @@ export async function POST(req: Request) {
     const industry = String(body.industry || "").trim();
     const analysisSummary = String(body.analysisSummary || "").trim();
     const shortMode = Boolean(body.shortMode);
-    const contactPerson = String(body.contactPerson || "").trim();
     const textBlocks: TextBlock[] = Array.isArray(body.textBlocks) ? body.textBlocks : [];
 
     const openaiKey = process.env.OPENAI_API_KEY;
@@ -41,13 +40,13 @@ export async function POST(req: Request) {
     }
 
     const client = new OpenAI({ apiKey: openaiKey });
-    const subject = shortMode ? pickRandom(SUBJECT_VARIANTS_SHORT) : pickRandom(SUBJECT_VARIANTS_STANDARD);
+    const subject = shortMode
+      ? pickRandom(SUBJECT_VARIANTS_SHORT)
+      : pickRandom(SUBJECT_VARIANTS_STANDARD);
 
-    const greeting = contactPerson
-      ? `Guten Tag ${contactPerson},`
-      : "Guten Tag,";
-
-    const blockTexts = textBlocks.map((block) => String(block?.text || "").trim()).filter(Boolean);
+    const blockTexts = textBlocks
+      .map((block) => String(block?.text || "").trim())
+      .filter(Boolean);
 
     const prompt = `
 Erstelle eine professionelle deutsche Vertriebs-E-Mail für ein regionales Stellenportal.
@@ -63,15 +62,15 @@ Dem Unternehmen soll angeboten werden, offene Positionen zusätzlich auf jobs-in
 
 WICHTIG:
 - Keine Bewerbung
-- Kein Betreff
+- Keine Grußformel am Ende
 - Keine Signatur
-- Keine Grußformel am Ende, die kommt später separat
-- Nach der Begrüßung beginnt ein neuer Absatz
-- Formuliere weich und unaufdringlich
-- Vermeide harte Formulierungen wie "wir platzieren" oder "wir erhöhen"
-- Besser: "kann helfen", "lässt sich ergänzen", "zusätzliche Sichtbarkeit", "regional sichtbar machen"
+- Kein Betreff
+- Kein Linkblock
+- Kein Preisblock
+- Kein Hinweis auf Testmodus
+- Professionell, kurz, vertrieblich
 - Allgemeiner formulieren als bei einer einzelnen konkret analysierten Stellenanzeige
-- Die später eingefügten Zusatzbausteine dürfen nicht vorweggenommen oder fast wortgleich wiederholt werden
+- Die später eingefügten Zusatzbausteine dürfen NICHT vorweggenommen oder fast wortgleich wiederholt werden
 
 ${shortMode ? `
 Kurze Mail:
@@ -83,14 +82,11 @@ Standard:
 - Er soll die Vorteile einer gezielten regionalen Stellenbörse klar machen
 `}
 
-Zusatzbausteine, die später 1:1 eingefügt werden:
+Wenn Zusatzbausteine ausgewählt sind, dann soll der Haupttext bewusst Platz für diese Bausteine lassen.
+Anschließend werden diese Zusatzbausteine 1:1 ergänzt:
 ${blockTexts.length ? blockTexts.map((text) => `- ${text}`).join("\n") : "- keine"}
 
-Antworte nur als JSON mit diesem Format:
-{
-  "body": "...",
-  "cta": "..."
-}
+Die Antwort soll nur den eigentlichen Mailtext enthalten.
 `;
 
     const response = await client.responses.create({
@@ -98,46 +94,29 @@ Antworte nur als JSON mit diesem Format:
       input: [
         {
           role: "system",
-          content: "Du schreibst kurze, professionelle deutsche B2B-Outreach-Mails. Gib nur gültiges JSON aus.",
+          content:
+            "Du schreibst kurze, professionelle deutsche Vertriebs-Mails für B2B-Outreach. Gib nur den Mailtext aus.",
         },
         {
           role: "user",
           content: prompt,
         },
       ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "bulk_mail_v2",
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              body: { type: "string" },
-              cta: { type: "string" },
-            },
-            required: ["body", "cta"],
-          },
-        },
-      },
     });
 
-    const parsed = JSON.parse(response.output_text || "{}");
-    const bodyText = String(parsed.body || "").trim();
-    const ctaText = String(parsed.cta || "").trim() || "Gerne sende ich Ihnen bei Interesse ein unverbindliches Angebot zu.";
-
-    if (!bodyText) {
+    const baseText = (response.output_text || "").trim();
+    if (!baseText) {
       return NextResponse.json({ error: "Kein Bulk-Text erzeugt." }, { status: 500 });
     }
 
     const finalText = [
-      greeting,
-      "",
-      bodyText,
-      ...(blockTexts.length ? ["", ...blockTexts] : []),
-      "",
-      ctaText,
-    ].join("\n");
+      baseText,
+      ...blockTexts,
+      "Gerne sende ich Ihnen ein unverbindliches Angebot zu.",
+      "Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-berlin-brandenburg.de",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
     return NextResponse.json({
       subject,
@@ -146,7 +125,10 @@ Antworte nur als JSON mit diesem Format:
       usedTextBlocks: blockTexts.length,
     });
   } catch (error: any) {
-    console.error("GENERATE BULK EMAIL V2 ERROR:", error);
-    return NextResponse.json({ error: error?.message || "Bulk-Text konnte nicht erzeugt werden." }, { status: 500 });
+    console.error("GENERATE BULK EMAIL ERROR:", error);
+    return NextResponse.json(
+      { error: error?.message || "Bulk-Text konnte nicht erzeugt werden." },
+      { status: 500 }
+    );
   }
 }
