@@ -21,7 +21,7 @@ type HookBaseId =
   | "minimal"
   | "consultative";
 
-type MainView = "mails" | "reminders" | "analytics";
+type MainView = "mails" | "bulk" | "reminders" | "analytics";
 
 type AnalyzeResponse = {
   jobTitle?: string;
@@ -107,6 +107,28 @@ type HookBaseStats = {
   variants: HookVariantStats[];
 };
 
+type BulkLead = {
+  id: string;
+  selected: boolean;
+  company: string;
+  city: string;
+  website: string;
+  analysisStatus: "idle" | "loading" | "done" | "error";
+  analysisStars: 0 | 1 | 2 | 3;
+  analysisSummary: string;
+  foundJobTitles: string[];
+  contactStatus: "idle" | "loading" | "done" | "error";
+  email: string;
+  contactPerson: string;
+  industry: string;
+  qualityStatus: "idle" | "loading" | "done" | "error";
+  qualityStars: 0 | 1 | 2 | 3;
+  qualitySummary: string;
+  alreadyContacted: boolean;
+  lastContactAt: string;
+  sendStatus: "idle" | "loading" | "sent" | "error";
+};
+
 const EMPTY_JOB_DATA: JobData = {
   jobTitle: "",
   company: "",
@@ -143,6 +165,8 @@ const HOOK_OPTIONS: { value: HookBaseId; label: string }[] = [
   { value: "minimal", label: "Minimal" },
   { value: "consultative", label: "Beratend" },
 ];
+
+const EMPTY_BULK_LEADS: BulkLead[] = [];
 
 function getDomain(email: string) {
   return email.split("@")[1]?.toLowerCase().trim() || "";
@@ -207,6 +231,11 @@ function displayMailTitle(mail: Pick<MailRecord, "jobTitle" | "subject">) {
 
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)} %`;
+}
+
+function stars(value: 0 | 1 | 2 | 3) {
+  if (value === 0) return "–";
+  return "★".repeat(value);
 }
 
 function StatBar({
@@ -459,6 +488,7 @@ const tableHeadStyle: React.CSSProperties = {
   fontWeight: 700,
   color: "#111827",
   borderBottom: "1px solid #e5e7eb",
+  verticalAlign: "top",
 };
 
 const tableCellStyle: React.CSSProperties = {
@@ -480,6 +510,19 @@ function primaryButtonStyle(disabled: boolean): React.CSSProperties {
   };
 }
 
+function smallButtonStyle(disabled = false): React.CSSProperties {
+  return {
+    padding: "8px 10px",
+    borderRadius: "8px",
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    color: "#111827",
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontSize: "12px",
+    opacity: disabled ? 0.65 : 1,
+  };
+}
+
 function topMenuButtonStyle(active: boolean): React.CSSProperties {
   return {
     padding: "10px 14px",
@@ -491,6 +534,71 @@ function topMenuButtonStyle(active: boolean): React.CSSProperties {
     fontSize: "14px",
     fontWeight: 600,
   };
+}
+
+function buildMockBulkLeads(
+  location: string,
+  count: number
+): BulkLead[] {
+  const baseNames = [
+    "Pflegezentrum",
+    "BauService",
+    "Logistik Partner",
+    "Sozialwerk",
+    "Handwerk Team",
+    "Kita Träger",
+    "Steuerkanzlei",
+    "Wohnverbund",
+    "Klinikverbund",
+    "Reha Zentrum",
+    "Elektrotechnik",
+    "Gastro Service",
+    "Transport GmbH",
+    "Stadtwerke",
+    "Immobilienservice",
+    "Seniorenresidenz",
+    "Vereinsservice",
+    "Bildungsträger",
+    "Metallbau",
+    "Reinigungsdienst",
+    "Tiefbau",
+    "Hausverwaltung",
+    "Ingenieurbüro",
+    "Malerbetrieb",
+    "Autohaus",
+    "Werkstattservice",
+    "Sportverein",
+    "Jugendhilfe",
+    "Apothekenverbund",
+    "Landschaftsbau",
+  ];
+
+  return Array.from({ length: count }).map((_, index) => {
+    const name = baseNames[index % baseNames.length];
+    const company = `${name} ${location} ${index + 1}`;
+
+    return {
+      id: crypto.randomUUID(),
+      selected: true,
+      company,
+      city: location,
+      website: `https://${normalizeCompany(company).replace(/\s+/g, "-")}.de`,
+      analysisStatus: "idle",
+      analysisStars: 0,
+      analysisSummary: "",
+      foundJobTitles: [],
+      contactStatus: "idle",
+      email: "",
+      contactPerson: "",
+      industry: "",
+      qualityStatus: "idle",
+      qualityStars: 0,
+      qualitySummary: "",
+      alreadyContacted: false,
+      lastContactAt: "",
+      sendStatus: "idle",
+    };
+  });
 }
 
 export default function PhotoToMailPage() {
@@ -538,6 +646,12 @@ export default function PhotoToMailPage() {
   const [loadingTextStats, setLoadingTextStats] = useState(false);
   const [textStats, setTextStats] = useState<HookBaseStats[]>([]);
   const [selectedAnalyticsHookId, setSelectedAnalyticsHookId] = useState("");
+
+  const [bulkLocation, setBulkLocation] = useState("");
+  const [bulkRadius, setBulkRadius] = useState("30");
+  const [bulkCount, setBulkCount] = useState("20");
+  const [bulkLeads, setBulkLeads] = useState<BulkLead[]>(EMPTY_BULK_LEADS);
+  const [findingBulkLeads, setFindingBulkLeads] = useState(false);
 
   useEffect(() => {
     function handleResize() {
@@ -1060,6 +1174,262 @@ export default function PhotoToMailPage() {
     }
   }
 
+  async function handleFindBulkLeads() {
+    setError("");
+    setSuccessMessage("");
+
+    const location = bulkLocation.trim();
+    const count = Number(bulkCount);
+
+    if (!location) {
+      setError("Bitte Ort oder PLZ für Streumail eingeben.");
+      return;
+    }
+
+    try {
+      setFindingBulkLeads(true);
+
+      // UI-/MVP-Logik. Echte Google-/Lead-Suche kommt als API im nächsten Schritt.
+      const leads = buildMockBulkLeads(location, count);
+      setBulkLeads(leads);
+
+      setSuccessMessage(
+        `${count} Unternehmen für ${location} im Umkreis von ${bulkRadius} km geladen.`
+      );
+    } catch {
+      setError("Die Firmenliste konnte nicht geladen werden.");
+    } finally {
+      setFindingBulkLeads(false);
+    }
+  }
+
+  function updateBulkLead(id: string, patch: Partial<BulkLead>) {
+    setBulkLeads((prev) =>
+      prev.map((lead) => (lead.id === id ? { ...lead, ...patch } : lead))
+    );
+  }
+
+  async function handleAnalyzeBulkLead(id: string) {
+    updateBulkLead(id, { analysisStatus: "loading" });
+
+    setTimeout(() => {
+      setBulkLeads((prev) =>
+        prev.map((lead) => {
+          if (lead.id !== id) return lead;
+
+          const seed = lead.company.length % 3;
+          const analysisStars = ([1, 2, 3] as const)[seed];
+          const foundJobTitles =
+            analysisStars === 1
+              ? []
+              : analysisStars === 2
+              ? ["Sachbearbeiter/in"]
+              : ["Pflegefachkraft", "Verwaltungsmitarbeiter/in"];
+
+          const analysisSummary =
+            analysisStars === 1
+              ? "Hinweise auf Karriere- oder Jobbereich gefunden."
+              : analysisStars === 2
+              ? "Konkreter Jobtitel auf der Website gefunden."
+              : "Mehrere Jobtitel oder starkes Recruiting-Signal erkannt.";
+
+          return {
+            ...lead,
+            analysisStatus: "done",
+            analysisStars,
+            analysisSummary,
+            foundJobTitles,
+          };
+        })
+      );
+    }, 500);
+  }
+
+  async function handleCollectBulkData(id: string) {
+    updateBulkLead(id, { contactStatus: "loading" });
+
+    setTimeout(() => {
+      setBulkLeads((prev) =>
+        prev.map((lead) => {
+          if (lead.id !== id) return lead;
+
+          const normalized = normalizeCompany(lead.company).replace(/\s+/g, ".");
+          const domain = `${normalized}.de`;
+          const emailPrefix =
+            lead.analysisStars >= 3
+              ? "bewerbung"
+              : lead.analysisStars === 2
+              ? "jobs"
+              : "info";
+
+          const industries = [
+            "Pflege",
+            "Verwaltung",
+            "Bau",
+            "Logistik",
+            "Soziales",
+            "Bildung",
+          ];
+
+          return {
+            ...lead,
+            contactStatus: "done",
+            email: `${emailPrefix}@${domain}`,
+            contactPerson:
+              lead.analysisStars >= 2 ? "Frau Schneider" : "–",
+            industry: industries[lead.company.length % industries.length],
+          };
+        })
+      );
+    }, 500);
+  }
+
+  async function handleAssessBulkQuality(id: string) {
+    updateBulkLead(id, { qualityStatus: "loading" });
+
+    setTimeout(() => {
+      setBulkLeads((prev) =>
+        prev.map((lead) => {
+          if (lead.id !== id) return lead;
+
+          const domain = getDomain(lead.email);
+          const normalizedLeadCompany = normalizeCompany(lead.company);
+
+          const existing = mailHistory.find((mail) => {
+            const sameEmail =
+              lead.email && mail.recipientEmail.toLowerCase() === lead.email.toLowerCase();
+            const sameDomain = domain && mail.domain === domain;
+            const sameCompany =
+              normalizedLeadCompany &&
+              mail.company &&
+              normalizeCompany(mail.company) === normalizedLeadCompany;
+
+            return sameEmail || sameDomain || sameCompany;
+          });
+
+          let qualityStars: 0 | 1 | 2 | 3 = 1;
+          let qualitySummary = "Es gibt erste Hinweise, aber noch begrenzte Daten.";
+
+          if (lead.analysisStars >= 2 && lead.email) {
+            qualityStars = 2;
+            qualitySummary =
+              "Es gibt genug Daten für eine brauchbare Vertriebsmail.";
+          }
+
+          if (
+            lead.analysisStars >= 3 &&
+            lead.email &&
+            lead.industry &&
+            lead.contactPerson &&
+            lead.contactPerson !== "–"
+          ) {
+            qualityStars = 3;
+            qualitySummary =
+              "Guter Lead: klare Recruiting-Hinweise und belastbare Kontaktdaten.";
+          }
+
+          if (existing) {
+            qualitySummary += " Bereits Kontakt im CRM vorhanden.";
+          }
+
+          return {
+            ...lead,
+            qualityStatus: "done",
+            qualityStars,
+            qualitySummary,
+            alreadyContacted: Boolean(existing),
+            lastContactAt: existing?.createdAt || "",
+          };
+        })
+      );
+    }, 450);
+  }
+
+  async function handleSendBulkLead(id: string) {
+    const lead = bulkLeads.find((item) => item.id === id);
+    if (!lead) return;
+
+    if (!lead.email) {
+      setError("Für dieses Unternehmen wurde noch keine E-Mail-Adresse gefunden.");
+      return;
+    }
+
+    updateBulkLead(id, { sendStatus: "loading" });
+
+    const introByIndustry: Record<string, string> = {
+      Pflege:
+        "viele Einrichtungen stehen aktuell vor der Herausforderung, passendes Personal zuverlässig zu erreichen.",
+      Verwaltung:
+        "gerade im Bereich Verwaltung kann zusätzliche Sichtbarkeit helfen, offene Positionen schneller zu besetzen.",
+      Bau:
+        "im Bau- und Handwerksbereich ist zusätzliche Reichweite oft entscheidend, um qualifizierte Bewerber zu gewinnen.",
+      Logistik:
+        "in der Logistik hilft zusätzliche Sichtbarkeit häufig dabei, offene Stellen schneller mit passenden Bewerbern zu besetzen.",
+      Soziales:
+        "im sozialen Bereich ist es oft sinnvoll, offene Stellen regional noch sichtbarer zu machen.",
+      Bildung:
+        "gerade im Bildungsbereich kann zusätzliche regionale Reichweite helfen, passende Bewerber gezielt anzusprechen.",
+    };
+
+    const intro =
+      introByIndustry[lead.industry] ||
+      "zusätzliche regionale Sichtbarkeit kann helfen, offene Stellen schneller und gezielter zu besetzen.";
+
+    const bulkText = `Sehr geehrte Damen und Herren,
+
+${intro}
+
+über jobs-in-berlin-brandenburg.de können Unternehmen ihre Stellenanzeigen zusätzlich regional sichtbar machen und so gezielt Bewerber in Berlin und Brandenburg erreichen.
+
+Gerade wenn Recruiting, Reichweite und Kosten eine Rolle spielen, kann eine ergänzende regionale Schaltung eine sinnvolle Unterstützung sein.
+
+Gerne sende ich Ihnen ein unverbindliches Angebot zu.
+
+Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-berlin-brandenburg.de`;
+
+    try {
+      const response = await fetch("/api/send-mail", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: lead.email,
+          text: bulkText,
+          testMode,
+          sendCopy,
+          jobTitle: "",
+          company: lead.company,
+          contactPerson: lead.contactPerson === "–" ? "" : lead.contactPerson,
+          hookBaseId: "bulk",
+          hookBaseLabel: "Streumail",
+          hookVariantId: "bulk_default",
+          hookText: intro,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        updateBulkLead(id, { sendStatus: "error" });
+        setError(data.error || "Streumail konnte nicht gesendet werden.");
+        return;
+      }
+
+      updateBulkLead(id, { sendStatus: "sent" });
+      setSuccessMessage(
+        testMode
+          ? `Streumail-Test für "${lead.company}" wurde an dich gesendet.`
+          : `Streumail für "${lead.company}" wurde gesendet.`
+      );
+
+      await loadCrm();
+    } catch {
+      updateBulkLead(id, { sendStatus: "error" });
+      setError("Streumail konnte nicht gesendet werden.");
+    }
+  }
+
   function setFieldValue<
     K extends keyof Pick<
       JobData,
@@ -1095,6 +1465,14 @@ export default function PhotoToMailPage() {
           style={topMenuButtonStyle(mainView === "mails")}
         >
           Kaltakquise-Mails
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainView("bulk")}
+          style={topMenuButtonStyle(mainView === "bulk")}
+        >
+          Streumail
         </button>
 
         <button
@@ -1543,6 +1921,427 @@ export default function PhotoToMailPage() {
                   {sendingEmail ? "Wird gesendet..." : "Email senden"}
                 </button>
               </div>
+            </div>
+          )}
+
+          {mainView === "bulk" && (
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #d1d5db",
+                borderRadius: "14px",
+                padding: "20px",
+                boxSizing: "border-box",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  marginBottom: "18px",
+                }}
+              >
+                Streumail
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "minmax(180px, 1.2fr) 140px 140px auto",
+                  gap: "12px",
+                  alignItems: "end",
+                  marginBottom: "18px",
+                }}
+              >
+                <Field
+                  label="PLZ oder Ort"
+                  value={bulkLocation}
+                  onChange={setBulkLocation}
+                  placeholder="z. B. Potsdam oder 14467"
+                />
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Radius
+                  </label>
+                  <select
+                    value={bulkRadius}
+                    onChange={(e) => setBulkRadius(e.target.value)}
+                    style={selectStyle}
+                  >
+                    <option value="15">15 km</option>
+                    <option value="30">30 km</option>
+                    <option value="50">50 km</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Kontakte
+                  </label>
+                  <select
+                    value={bulkCount}
+                    onChange={(e) => setBulkCount(e.target.value)}
+                    style={selectStyle}
+                  >
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleFindBulkLeads}
+                  disabled={findingBulkLeads}
+                  style={primaryButtonStyle(findingBulkLeads)}
+                >
+                  {findingBulkLeads ? "Wird gesucht..." : "Liste finden"}
+                </button>
+              </div>
+
+              {bulkLeads.length === 0 ? (
+                <div
+                  style={{
+                    fontSize: "14px",
+                    color: "#6b7280",
+                  }}
+                >
+                  Noch keine Firmenliste geladen.
+                </div>
+              ) : (
+                <div
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ overflowX: "auto" }}>
+                    <table
+                      style={{
+                        width: "100%",
+                        borderCollapse: "collapse",
+                        fontSize: "14px",
+                      }}
+                    >
+                      <thead>
+                        <tr
+                          style={{
+                            background: "#f9fafb",
+                            textAlign: "left",
+                          }}
+                        >
+                          <th style={tableHeadStyle}>Auswahl / Unternehmen</th>
+                          <th style={tableHeadStyle}>
+                            <div>Analysieren</div>
+                          </th>
+                          <th style={tableHeadStyle}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: "10px",
+                                alignItems: "center",
+                              }}
+                            >
+                              <span>Kontaktdaten</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  bulkLeads
+                                    .filter((lead) => lead.selected)
+                                    .forEach((lead) =>
+                                      handleCollectBulkData(lead.id)
+                                    );
+                                }}
+                                style={smallButtonStyle(false)}
+                              >
+                                Daten sammeln
+                              </button>
+                            </div>
+                          </th>
+                          <th style={tableHeadStyle}>Qualität einschätzen</th>
+                          <th style={tableHeadStyle}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: "10px",
+                                alignItems: "center",
+                              }}
+                            >
+                              <span>Email erstellen und senden</span>
+                            </div>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkLeads.map((lead) => (
+                          <tr key={lead.id}>
+                            <td style={tableCellStyle}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "10px",
+                                  alignItems: "flex-start",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={lead.selected}
+                                  onChange={(e) =>
+                                    updateBulkLead(lead.id, {
+                                      selected: e.target.checked,
+                                    })
+                                  }
+                                  style={{ marginTop: "3px" }}
+                                />
+
+                                <div>
+                                  <div
+                                    style={{
+                                      fontWeight: 700,
+                                      marginBottom: "4px",
+                                    }}
+                                  >
+                                    {lead.company}
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: "12px",
+                                      color: "#6b7280",
+                                      lineHeight: 1.4,
+                                    }}
+                                  >
+                                    {lead.city}
+                                  </div>
+                                  <div
+                                    style={{
+                                      marginTop: "4px",
+                                      fontSize: "12px",
+                                      color: "#6b7280",
+                                      lineHeight: 1.4,
+                                      wordBreak: "break-all",
+                                    }}
+                                  >
+                                    {lead.website}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td style={tableCellStyle}>
+                              <button
+                                type="button"
+                                onClick={() => handleAnalyzeBulkLead(lead.id)}
+                                disabled={!lead.selected || lead.analysisStatus === "loading"}
+                                style={smallButtonStyle(
+                                  !lead.selected || lead.analysisStatus === "loading"
+                                )}
+                              >
+                                {lead.analysisStatus === "loading"
+                                  ? "Analysiert..."
+                                  : "Analysieren"}
+                              </button>
+
+                              <div
+                                style={{
+                                  marginTop: "10px",
+                                  fontSize: "18px",
+                                  fontWeight: 700,
+                                  color:
+                                    lead.analysisStars >= 2
+                                      ? "#111827"
+                                      : "#6b7280",
+                                }}
+                              >
+                                {stars(lead.analysisStars)}
+                              </div>
+
+                              {lead.analysisSummary && (
+                                <div
+                                  style={{
+                                    marginTop: "6px",
+                                    fontSize: "12px",
+                                    color: "#6b7280",
+                                    lineHeight: 1.4,
+                                  }}
+                                >
+                                  {lead.analysisSummary}
+                                  {lead.foundJobTitles.length > 0 && (
+                                    <>
+                                      <br />
+                                      Titel: {lead.foundJobTitles.join(", ")}
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
+                            <td style={tableCellStyle}>
+                              <button
+                                type="button"
+                                onClick={() => handleCollectBulkData(lead.id)}
+                                disabled={!lead.selected || lead.contactStatus === "loading"}
+                                style={smallButtonStyle(
+                                  !lead.selected || lead.contactStatus === "loading"
+                                )}
+                              >
+                                {lead.contactStatus === "loading"
+                                  ? "Sammelt..."
+                                  : "Daten sammeln"}
+                              </button>
+
+                              {(lead.email || lead.contactPerson || lead.industry) && (
+                                <div
+                                  style={{
+                                    marginTop: "8px",
+                                    fontSize: "12px",
+                                    color: "#374151",
+                                    lineHeight: 1.5,
+                                    wordBreak: "break-word",
+                                  }}
+                                >
+                                  <div>
+                                    <strong>Email:</strong> {lead.email || "–"}
+                                  </div>
+                                  <div>
+                                    <strong>AP:</strong> {lead.contactPerson || "–"}
+                                  </div>
+                                  <div>
+                                    <strong>Branche:</strong> {lead.industry || "–"}
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+
+                            <td style={tableCellStyle}>
+                              <button
+                                type="button"
+                                onClick={() => handleAssessBulkQuality(lead.id)}
+                                disabled={!lead.selected || lead.qualityStatus === "loading"}
+                                style={smallButtonStyle(
+                                  !lead.selected || lead.qualityStatus === "loading"
+                                )}
+                              >
+                                {lead.qualityStatus === "loading"
+                                  ? "Bewertet..."
+                                  : "Qualität prüfen"}
+                              </button>
+
+                              <div
+                                style={{
+                                  marginTop: "10px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "8px",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize: "18px",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {stars(lead.qualityStars)}
+                                </div>
+
+                                {lead.alreadyContacted && (
+                                  <span
+                                    title={
+                                      lead.lastContactAt
+                                        ? `Bereits kontaktiert: ${formatDate(
+                                            lead.lastContactAt
+                                          )}`
+                                        : "Bereits kontaktiert"
+                                    }
+                                    style={{
+                                      color: "#dc2626",
+                                      fontSize: "18px",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    ❗
+                                  </span>
+                                )}
+                              </div>
+
+                              {lead.qualitySummary && (
+                                <div
+                                  style={{
+                                    marginTop: "6px",
+                                    fontSize: "12px",
+                                    color: "#6b7280",
+                                    lineHeight: 1.4,
+                                  }}
+                                >
+                                  {lead.qualitySummary}
+                                </div>
+                              )}
+                            </td>
+
+                            <td style={tableCellStyle}>
+                              <button
+                                type="button"
+                                onClick={() => handleSendBulkLead(lead.id)}
+                                disabled={
+                                  !lead.selected ||
+                                  !lead.email ||
+                                  lead.sendStatus === "loading"
+                                }
+                                style={smallButtonStyle(
+                                  !lead.selected ||
+                                    !lead.email ||
+                                    lead.sendStatus === "loading"
+                                )}
+                              >
+                                {lead.sendStatus === "loading"
+                                  ? "Sendet..."
+                                  : "Email erstellen und senden"}
+                              </button>
+
+                              <div
+                                style={{
+                                  marginTop: "10px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  color:
+                                    lead.sendStatus === "sent"
+                                      ? "#166534"
+                                      : lead.sendStatus === "error"
+                                      ? "#b91c1c"
+                                      : "#6b7280",
+                                }}
+                              >
+                                {lead.sendStatus === "sent"
+                                  ? "gesendet"
+                                  : lead.sendStatus === "error"
+                                  ? "Fehler"
+                                  : "–"}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2332,3 +3131,13 @@ export default function PhotoToMailPage() {
     </>
   );
 }
+
+const selectStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  border: "1px solid #cbd5e1",
+  borderRadius: "8px",
+  background: "#ffffff",
+  fontSize: "14px",
+  boxSizing: "border-box",
+};
