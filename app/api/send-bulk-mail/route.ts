@@ -23,16 +23,7 @@ export async function POST(req: Request) {
     }
 
     const resend = new Resend(apiKey);
-    const {
-      to,
-      subject,
-      text,
-      testMode,
-      sendCopy,
-      company,
-      contactPerson,
-      hookText,
-    } = await req.json();
+    const { to, subject, text, testMode, sendCopy, company, contactPerson, hookText, textBlockTitles = [], shortMode = false, batchId = crypto.randomUUID() } = await req.json();
 
     const testRecipient = String(process.env.TEST_RECIPIENT_EMAIL || "").trim();
     const isTestMode = Boolean(testMode);
@@ -49,11 +40,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Fehlende Daten." }, { status: 400 });
     }
 
+    const bulkMeta = {
+      type: "bulk_package",
+      batchId,
+      company: String(company || "").trim(),
+      textBlockTitles: Array.isArray(textBlockTitles) ? textBlockTitles : [],
+      shortMode: Boolean(shortMode),
+      testMode: Boolean(testMode),
+      contactPerson: String(contactPerson || "").trim(),
+    };
+
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
         <div style="margin-bottom: 24px;">${textToHtml(text)}</div>
         <div style="margin-top: 28px;">
-          <div style="font-weight: 700;">Andre Eichstädt</div>
+          <div>Mit freundlichen Grüßen</div>
+          <div style="margin-top: 14px; font-weight: 700;">Andre Eichstädt</div>
           <div>Anzeigenberater</div>
           <div>Jobs in Berlin-Brandenburg</div>
           <div>Tel. 0335/629797-38</div>
@@ -62,6 +64,7 @@ export async function POST(req: Request) {
           <div>15236 Frankfurt (Oder)</div>
           <div><a href="https://www.jobs-in-berlin-brandenburg.de" target="_blank" style="color:#111111; text-decoration:none;">www.jobs-in-berlin-brandenburg.de</a></div>
         </div>
+        <!-- BULK_META:${escapeHtml(JSON.stringify(bulkMeta))} -->
       </div>
     `;
 
@@ -71,12 +74,8 @@ export async function POST(req: Request) {
       to: actualRecipient,
       subject,
       html,
-      text,
-      bcc: isTestMode
-        ? testRecipient || undefined
-        : sendCopy
-        ? "a.eichstaedt@jobs-in-berlin-brandenburg.de"
-        : undefined,
+      text: `${text}\n\n[BULK_META:${JSON.stringify(bulkMeta)}]`,
+      bcc: isTestMode ? testRecipient || undefined : sendCopy ? "a.eichstaedt@jobs-in-berlin-brandenburg.de" : undefined,
     });
 
     const emailId = (result as any)?.data?.id || (result as any)?.id || "";
@@ -91,7 +90,7 @@ export async function POST(req: Request) {
       subject: String(subject || "").trim(),
       hookBaseId: "bulk",
       hookBaseLabel: "Streumail",
-      hookVariantId: "bulk_v2",
+      hookVariantId: "bulk_v3",
       hookText: String(hookText || "").trim(),
       followUp: false,
       opened: false,
@@ -99,19 +98,9 @@ export async function POST(req: Request) {
       reminderSent: false,
     });
 
-    return NextResponse.json({
-      success: true,
-      data: result,
-      actualRecipient,
-      emailId,
-      testMode: isTestMode,
-      contactPerson: String(contactPerson || "").trim(),
-    });
+    return NextResponse.json({ success: true, data: result, actualRecipient, emailId, testMode: isTestMode, batchId });
   } catch (error: any) {
-    console.error("SEND BULK MAIL ERROR:", error);
-    return NextResponse.json(
-      { error: error?.message || "Bulk-Mail konnte nicht gesendet werden." },
-      { status: 500 }
-    );
+    console.error("SEND BULK MAIL V2 ERROR:", error);
+    return NextResponse.json({ error: error?.message || "Bulk-Mail konnte nicht gesendet werden." }, { status: 500 });
   }
 }

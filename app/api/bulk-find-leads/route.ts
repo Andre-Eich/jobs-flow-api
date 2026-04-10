@@ -16,11 +16,49 @@ function normalizeWebsite(url: string) {
   }
 }
 
+function hostLooksUseful(url: string) {
+  const lowered = url.toLowerCase();
+  return ![
+    "stepstone",
+    "indeed",
+    "linkedin",
+    "facebook",
+    "instagram",
+    "xing",
+    "kununu",
+    "meinestadt",
+    "stellenanzeigen",
+    "jobrapido",
+    "glassdoor",
+  ].some((blocked) => lowered.includes(blocked));
+}
+
+function buildQueries(location: string, focus: string, desiredCount: number) {
+  const base = [
+    `${location} unternehmen jobs karriere`,
+    `${location} arbeitgeber stellenangebote`,
+    `${location} firma karriere jobs`,
+    `${location} stellenausschreibungen arbeitgeber`,
+    `${location} beruf jobs unternehmen`,
+    `${location} jobs karriere impressum firma`,
+  ];
+
+  if (!focus.trim()) return base;
+
+  return [
+    `${location} ${focus} jobs karriere`,
+    `${location} ${focus} arbeitgeber stellenangebote`,
+    `${location} ${focus} firma karriere`,
+    ...base,
+  ].slice(0, desiredCount >= 20 ? 6 : 4);
+}
+
 export async function POST(req: Request) {
   try {
-    const { location, count = 20, radius = "30" } = await req.json();
+    const { location, focus = "", count = 20, radius = "30" } = await req.json();
 
     const safeLocation = String(location || "").trim();
+    const safeFocus = String(focus || "").trim();
     const safeCount = Math.max(1, Math.min(30, Number(count) || 20));
     const safeRadius = String(radius || "30").trim();
 
@@ -32,28 +70,20 @@ export async function POST(req: Request) {
     const openaiKey = process.env.OPENAI_API_KEY;
 
     if (!braveKey) {
-      return NextResponse.json(
-        { error: "BRAVE_SEARCH_API_KEY fehlt. Für echte Suche bitte Brave Search API-Key setzen." },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "BRAVE_SEARCH_API_KEY fehlt." }, { status: 500 });
     }
 
     if (!openaiKey) {
       return NextResponse.json({ error: "OPENAI_API_KEY fehlt." }, { status: 500 });
     }
 
-    const queries = [
-      `${safeLocation} unternehmen jobs karriere`,
-      `${safeLocation} stellenangebote arbeitgeber`,
-      `${safeLocation} firma personal jobs`,
-    ];
-
+    const queries = buildQueries(safeLocation, safeFocus, safeCount);
     const resultMap = new Map<string, BraveWebResult>();
 
     for (const query of queries) {
       const url = `https://api.search.brave.com/res/v1/web/search?${new URLSearchParams({
         q: query,
-        count: "10",
+        count: safeCount >= 20 ? "20" : "15",
         country: "de",
         search_lang: "de",
       })}`;
@@ -67,12 +97,8 @@ export async function POST(req: Request) {
       });
 
       const data = await response.json();
-
       if (!response.ok) {
-        return NextResponse.json(
-          { error: data?.error?.message || "Brave Search Fehler" },
-          { status: 500 }
-        );
+        return NextResponse.json({ error: data?.error?.message || "Brave Search Fehler" }, { status: 500 });
       }
 
       const results = Array.isArray(data?.web?.results) ? data.web.results : [];
@@ -82,16 +108,17 @@ export async function POST(req: Request) {
           url: typeof item?.url === "string" ? item.url : "",
           description: typeof item?.description === "string" ? item.description : "",
         };
-
-        if (!candidate.url) continue;
+        if (!candidate.url || !hostLooksUseful(candidate.url)) continue;
         const normalized = normalizeWebsite(candidate.url);
         if (!resultMap.has(normalized)) {
           resultMap.set(normalized, { ...candidate, url: normalized });
         }
       }
+
+      if (resultMap.size >= safeCount * 3) break;
     }
 
-    const searchResults = Array.from(resultMap.values()).slice(0, 20);
+    const searchResults = Array.from(resultMap.values()).slice(0, Math.max(safeCount * 3, 18));
 
     const client = new OpenAI({ apiKey: openaiKey });
     const ai = await client.responses.create({
@@ -100,12 +127,13 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "Du extrahierst aus Suchergebnissen echte potenzielle Arbeitgeber mit eigener Website. Keine Jobbörsen, keine Verzeichnisse, keine Social-Media-Seiten. Antworte nur als JSON.",
+            "Du extrahierst aus Suchergebnissen echte potenzielle Arbeitgeber mit eigener Website. Keine Jobbörsen, keine Verzeichnisse, keine Social-Media-Seiten. Gib möglichst genau die gewünschte Anzahl zurück. Antworte nur als JSON.",
         },
         {
           role: "user",
           content: JSON.stringify({
             location: safeLocation,
+            focus: safeFocus,
             radiusKm: safeRadius,
             desiredCount: safeCount,
             results: searchResults,
@@ -118,7 +146,7 @@ export async function POST(req: Request) {
       text: {
         format: {
           type: "json_schema",
-          name: "bulk_leads",
+          name: "bulk_leads_v2",
           schema: {
             type: "object",
             additionalProperties: false,
@@ -146,20 +174,37 @@ export async function POST(req: Request) {
     const parsed = JSON.parse(ai.output_text || "{}");
     const leads = Array.isArray(parsed?.leads) ? parsed.leads : [];
 
+    const finalLeads = Array.from(
+      new Map(
+        leads
+          .map((lead: any) => ({
+            company: String(lead.company || "").trim(),
+            city: String(lead.city || safeLocation).trim() || safeLocation,
+            website: normalizeWebsite(String(lead.website || "").trim()),
+          }))
+          .filter((lead: any) => lead.company && lead.website)
+          .map((lead: any) => [lead.website.toLowerCase(), lead])
+      ).values()
+    ).slice(0, safeCount);
+
     return NextResponse.json({
-      leads: leads.slice(0, safeCount).map((lead: any) => ({
+      leads: finalLeads.map((lead: any) => ({
         id: crypto.randomUUID(),
         selected: true,
-        company: String(lead.company || "").trim(),
-        city: String(lead.city || safeLocation).trim() || safeLocation,
-        website: String(lead.website || "").trim(),
+        company: lead.company,
+        city: lead.city,
+        website: lead.website,
         analysisStatus: "idle",
         analysisStars: 0,
         analysisSummary: "",
         foundJobTitles: [],
+        foundCareerUrls: [],
         contactStatus: "idle",
         email: "",
+        emailOptions: [],
+        emailNeedsReview: false,
         contactPerson: "",
+        contactPersonOptions: [],
         industry: "",
         qualityStatus: "idle",
         qualityStars: 0,
@@ -168,13 +213,12 @@ export async function POST(req: Request) {
         lastContactAt: "",
         sendStatus: "idle",
       })),
-      rawResults: searchResults.length,
+      requestedCount: safeCount,
+      foundCount: finalLeads.length,
+      complete: finalLeads.length >= safeCount,
     });
   } catch (error: any) {
-    console.error("BULK FIND LEADS ERROR:", error);
-    return NextResponse.json(
-      { error: error?.message || "Unternehmenssuche fehlgeschlagen." },
-      { status: 500 }
-    );
+    console.error("BULK FIND LEADS V2 ERROR:", error);
+    return NextResponse.json({ error: error?.message || "Unternehmenssuche fehlgeschlagen." }, { status: 500 });
   }
 }
