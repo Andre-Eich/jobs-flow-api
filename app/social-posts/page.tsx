@@ -14,7 +14,8 @@ type SocialPostElementKey =
   | "logo"
   | "teaserImage"
   | "branding"
-  | "cta";
+  | "cta"
+  | "benefits";
 
 type SocialPostElementConfig = {
   visible: boolean;
@@ -26,6 +27,8 @@ type SocialPostElementConfig = {
   color: string;
   textAlign: "left" | "center" | "right";
   objectFit: "cover" | "contain";
+  lineHeight: number;
+  iconSize: number;
 };
 
 type SocialPostTemplate = {
@@ -49,6 +52,7 @@ type ExtractedSocialPostData = {
   link: string;
   shortText: string;
   captionText: string;
+  benefits: string[];
 };
 
 type DragState = {
@@ -62,16 +66,27 @@ type DragState = {
   startHeight: number;
 };
 
-const ELEMENT_LABELS: Array<{ key: SocialPostElementKey; label: string; kind: "text" | "image" }> = [
+// "list" = Benefit-Häkchenliste im Template
+const ELEMENT_LABELS: Array<{ key: SocialPostElementKey; label: string; kind: "text" | "image" | "list" }> = [
   { key: "company", label: "Firmenname", kind: "text" },
   { key: "jobTitle", label: "Jobtitel", kind: "text" },
   { key: "location", label: "Ort", kind: "text" },
-  { key: "employment", label: "Arbeitszeit / Vertragsart", kind: "text" },
-  { key: "highlight", label: "Highlight / Benefit", kind: "text" },
+  { key: "employment", label: "Arbeitszeit", kind: "text" },
+  { key: "highlight", label: "Highlight", kind: "text" },
   { key: "logo", label: "Logo", kind: "image" },
-  { key: "teaserImage", label: "Arbeitgeberbild / Teaserbild", kind: "image" },
+  { key: "teaserImage", label: "Arbeitgeberbild", kind: "image" },
   { key: "branding", label: "Branding", kind: "text" },
   { key: "cta", label: "CTA", kind: "text" },
+  { key: "benefits", label: "Benefit-Liste", kind: "list" },
+];
+
+// Checkboxen im Content-Tab: nur diese 5 Felder
+const CONTENT_ELEMENT_KEYS: SocialPostElementKey[] = [
+  "company",
+  "jobTitle",
+  "location",
+  "logo",
+  "teaserImage",
 ];
 
 const SAMPLE_DATA: ExtractedSocialPostData = {
@@ -79,14 +94,14 @@ const SAMPLE_DATA: ExtractedSocialPostData = {
   jobTitle: "Referent Wirtschaftspolitik (m/w/d)",
   location: "Frankfurt (Oder)",
   employment: "Vollzeit, unbefristet",
-  highlight: "Hoher Gestaltungsspielraum und direkte Wirkung auf wirtschaftspolitische Entscheidungsprozesse",
+  highlight: "Hoher Gestaltungsspielraum",
   logoUrl: "",
   teaserImageUrl: "",
   link: "https://jobs-in-berlin-brandenburg.de/",
-  shortText:
-    "Referent Wirtschaftspolitik (m/w/d) bei IHK Ostbrandenburg. Frankfurt (Oder) • Vollzeit, unbefristet • Hoher Gestaltungsspielraum und direkte Wirkung auf wirtschaftspolitische Entscheidungsprozesse",
+  shortText: "Referent Wirtschaftspolitik (m/w/d) bei IHK Ostbrandenburg.",
   captionText:
     "Die IHK Ostbrandenburg sucht einen Referenten Wirtschaftspolitik (m/w/d) in Frankfurt (Oder) – eine Stelle mit echtem Gestaltungsspielraum. Jetzt bewerben und Teil der regionalen Wirtschaftsförderung werden.",
+  benefits: ["Vollzeit, unbefristet", "Tarifliche Vergütung", "Hoher Gestaltungsspielraum"],
 };
 
 function formatDate(dateString: string) {
@@ -143,7 +158,62 @@ function buildImageSource(key: SocialPostElementKey, data: ExtractedSocialPostDa
   return "";
 }
 
-// Statische Vorschau – verwendet im Content-Tab (nicht interaktiv)
+// Benefit-Liste als Häkchen-Zeilen rendern
+function BenefitList({
+  items,
+  color,
+  fontSize,
+  lineHeight,
+  iconSize,
+  scale,
+}: {
+  items: string[];
+  color: string;
+  fontSize: number;
+  lineHeight: number;
+  iconSize: number;
+  scale: number;
+}) {
+  if (items.length === 0) return null;
+  const rowGap = (lineHeight - 1) * fontSize * scale * 1.4;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: rowGap }}>
+      {items.map((item, idx) => (
+        <div
+          key={idx}
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 6 * scale,
+          }}
+        >
+          <span
+            style={{
+              fontSize: iconSize * scale,
+              color,
+              flexShrink: 0,
+              lineHeight: 1.1,
+              fontWeight: 700,
+            }}
+          >
+            ✓
+          </span>
+          <span
+            style={{
+              fontSize: fontSize * scale,
+              color,
+              lineHeight: 1.2,
+            }}
+          >
+            {item}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Statische Vorschau – Content-Tab (nicht interaktiv)
 function SocialPostPreview({
   template,
   data,
@@ -151,7 +221,7 @@ function SocialPostPreview({
 }: {
   template: SocialPostTemplate;
   data: ExtractedSocialPostData;
-  selectedElements?: Record<SocialPostElementKey, boolean>;
+  selectedElements?: Partial<Record<SocialPostElementKey, boolean>>;
 }) {
   const scale = 420 / template.width;
 
@@ -174,8 +244,7 @@ function SocialPostPreview({
           style={{
             position: "absolute",
             inset: 0,
-            background:
-              "linear-gradient(145deg, rgba(15, 23, 42, 0.28), rgba(37, 99, 235, 0.16))",
+            background: "linear-gradient(145deg, rgba(15, 23, 42, 0.28), rgba(37, 99, 235, 0.16))",
           }}
         />
       ) : null}
@@ -189,6 +258,26 @@ function SocialPostPreview({
         const top = config.y * scale;
         const width = config.width * scale;
         const height = config.height * scale;
+
+        if (element.kind === "list") {
+          const items = data.benefits ?? [];
+          if (items.length === 0) return null;
+          return (
+            <div
+              key={element.key}
+              style={{ position: "absolute", left, top, width, height, overflow: "hidden" }}
+            >
+              <BenefitList
+                items={items}
+                color={config.color}
+                fontSize={config.fontSize}
+                lineHeight={config.lineHeight ?? 1.6}
+                iconSize={config.iconSize ?? 18}
+                scale={scale}
+              />
+            </div>
+          );
+        }
 
         if (element.kind === "image") {
           const src = buildImageSource(element.key, data);
@@ -266,7 +355,7 @@ function SocialPostPreview({
   );
 }
 
-// Interaktiver Canvas – verwendet im Template-Tab
+// Interaktiver Canvas – Template-Tab
 function SocialPostTemplateCanvas({
   template,
   data,
@@ -356,8 +445,7 @@ function SocialPostTemplateCanvas({
           style={{
             position: "absolute",
             inset: 0,
-            background:
-              "linear-gradient(145deg, rgba(15, 23, 42, 0.28), rgba(37, 99, 235, 0.16))",
+            background: "linear-gradient(145deg, rgba(15, 23, 42, 0.28), rgba(37, 99, 235, 0.16))",
           }}
         />
       ) : null}
@@ -371,9 +459,6 @@ function SocialPostTemplateCanvas({
         const top = config.y * scale;
         const width = config.width * scale;
         const height = config.height * scale;
-
-        const text = element.kind === "text" ? buildElementText(element.key, data) : "";
-        const imgSrc = element.kind === "image" ? buildImageSource(element.key, data) : "";
 
         return (
           <div
@@ -401,35 +486,49 @@ function SocialPostTemplateCanvas({
                 : {}),
             }}
           >
-            {element.kind === "image" ? (
-              imgSrc ? (
-                <Image
-                  src={imgSrc}
-                  alt={element.label}
-                  fill
-                  unoptimized
-                  style={{ objectFit: config.objectFit, pointerEvents: "none" }}
+            {element.kind === "list" ? (
+              <div style={{ padding: "2px", pointerEvents: "none" }}>
+                <BenefitList
+                  items={data.benefits?.length ? data.benefits : SAMPLE_DATA.benefits}
+                  color={config.color}
+                  fontSize={config.fontSize}
+                  lineHeight={config.lineHeight ?? 1.6}
+                  iconSize={config.iconSize ?? 18}
+                  scale={scale}
                 />
-              ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#ffffff",
-                    fontSize: Math.max(10, 12 * scale),
-                    textAlign: "center",
-                    padding: "6px",
-                    boxSizing: "border-box",
-                    pointerEvents: "none",
-                    opacity: 0.7,
-                  }}
-                >
-                  {element.label}
-                </div>
-              )
+              </div>
+            ) : element.kind === "image" ? (
+              (() => {
+                const src = buildImageSource(element.key, data);
+                return src ? (
+                  <Image
+                    src={src}
+                    alt={element.label}
+                    fill
+                    unoptimized
+                    style={{ objectFit: config.objectFit, pointerEvents: "none" }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#ffffff",
+                      fontSize: Math.max(10, 12 * scale),
+                      textAlign: "center",
+                      padding: "6px",
+                      boxSizing: "border-box",
+                      pointerEvents: "none",
+                      opacity: 0.7,
+                    }}
+                  >
+                    {element.label}
+                  </div>
+                );
+              })()
             ) : (
               <div
                 style={{
@@ -448,11 +547,11 @@ function SocialPostTemplateCanvas({
                   boxSizing: "border-box",
                 }}
               >
-                {text}
+                {buildElementText(element.key, data)}
               </div>
             )}
 
-            {/* Resize-Handle unten rechts */}
+            {/* Resize-Handle */}
             {isActive && (
               <div
                 onMouseDown={(e) => handleElementMouseDown(e, element.key, "resize")}
@@ -472,12 +571,12 @@ function SocialPostTemplateCanvas({
                 }}
               >
                 <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                  <path d="M7 1L1 7M7 4L4 7" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+                  <path d="M7 1L1 7M7 4L4 7" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
               </div>
             )}
 
-            {/* Label beim aktiven Element */}
+            {/* Aktives Element: Label */}
             {isActive && (
               <div
                 style={{
@@ -512,18 +611,18 @@ export default function SocialPostsPage() {
   const [sourceUrl, setSourceUrl] = useState(
     "https://jobs-in-berlin-brandenburg.de/stellenangebot/referenten-wirtschaftspolitik-mwd-frankfurt-oder-ihk-ostbrandenburg-3164157/"
   );
-  const [selectedElements, setSelectedElements] = useState<Record<SocialPostElementKey, boolean>>({
+
+  // Nur die 5 sinnvollen Felder haben Checkboxen im Content-Tab
+  const [selectedElements, setSelectedElements] = useState<Partial<Record<SocialPostElementKey, boolean>>>({
     company: true,
     jobTitle: true,
     location: true,
-    employment: true,
-    highlight: true,
     logo: true,
     teaserImage: true,
-    branding: true,
-    cta: true,
   });
+
   const [extractedData, setExtractedData] = useState<ExtractedSocialPostData | null>(null);
+  const [selectedBenefits, setSelectedBenefits] = useState<string[]>([]);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [loadingContent, setLoadingContent] = useState(false);
@@ -535,12 +634,10 @@ export default function SocialPostsPage() {
       setLoadingTemplate(true);
       const response = await fetch(`/api/social-posts/template?format=${nextFormat}`);
       const data = await response.json();
-
       if (!response.ok) {
         setError(data.error || "Template konnte nicht geladen werden.");
         return;
       }
-
       setTemplate(data.template);
       setTemplateDraft(data.template);
     } catch {
@@ -559,13 +656,19 @@ export default function SocialPostsPage() {
     [templateDraft, activeElement]
   );
 
+  const activeElementKind = useMemo(
+    () => ELEMENT_LABELS.find((el) => el.key === activeElement)?.kind ?? "text",
+    [activeElement]
+  );
+
   async function handleBackgroundUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file || !templateDraft) return;
-
     const reader = new FileReader();
     reader.onload = () => {
-      setTemplateDraft((prev) => (prev ? { ...prev, backgroundImage: String(reader.result || "") } : prev));
+      setTemplateDraft((prev) =>
+        prev ? { ...prev, backgroundImage: String(reader.result || "") } : prev
+      );
     };
     reader.readAsDataURL(file);
   }
@@ -580,10 +683,7 @@ export default function SocialPostsPage() {
             ...prev,
             elements: {
               ...prev.elements,
-              [key]: {
-                ...prev.elements[key],
-                ...patch,
-              },
+              [key]: { ...prev.elements[key], ...patch },
             },
           }
         : prev
@@ -592,27 +692,23 @@ export default function SocialPostsPage() {
 
   async function saveTemplate() {
     if (!templateDraft) return;
-
     try {
       setSavingTemplate(true);
       setError("");
       setSuccessMessage("");
-
       const response = await fetch("/api/social-posts/template", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(templateDraft),
       });
       const data = await response.json();
-
       if (!response.ok) {
         setError(data.error || "Template konnte nicht gespeichert werden.");
         return;
       }
-
       setTemplate(data.template);
       setTemplateDraft(data.template);
-      setSuccessMessage("Template wurde gespeichert und bleibt fuer kuenftige Social Posts erhalten.");
+      setSuccessMessage("Template gespeichert.");
     } catch {
       setError("Template konnte nicht gespeichert werden.");
     } finally {
@@ -625,21 +721,23 @@ export default function SocialPostsPage() {
       setLoadingContent(true);
       setError("");
       setSuccessMessage("");
-
       const response = await fetch("/api/social-posts/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: sourceUrl }),
       });
       const data = await response.json();
-
       if (!response.ok) {
         setError(data.error || "Die Stellenanzeige konnte nicht ausgewertet werden.");
         return;
       }
-
       setExtractedData(data.data);
-      setSuccessMessage("Stellenanzeige geladen und fuer das gespeicherte Template vorbereitet.");
+      // Automatisch die ersten 3 Benefits vorauswählen
+      const initialBenefits: string[] = Array.isArray(data.data.benefits)
+        ? data.data.benefits.slice(0, 3)
+        : [];
+      setSelectedBenefits(initialBenefits);
+      setSuccessMessage("Stellenanzeige geladen.");
     } catch {
       setError("Die Stellenanzeige konnte nicht ausgewertet werden.");
     } finally {
@@ -647,13 +745,29 @@ export default function SocialPostsPage() {
     }
   }
 
+  function toggleBenefit(benefit: string) {
+    setSelectedBenefits((prev) =>
+      prev.includes(benefit) ? prev.filter((b) => b !== benefit) : [...prev, benefit]
+    );
+  }
+
+  // Daten für die Content-Vorschau: merged mit ausgewählten Benefits
+  const previewData: ExtractedSocialPostData = extractedData
+    ? { ...extractedData, benefits: selectedBenefits }
+    : SAMPLE_DATA;
+
+  // selectedElements + benefits-Flag für Vorschau
+  const effectiveSelectedElements: Partial<Record<SocialPostElementKey, boolean>> = {
+    ...selectedElements,
+    benefits: selectedBenefits.length > 0,
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
       <div>
         <h1 style={{ margin: 0, fontSize: "22px" }}>Social Posts</h1>
         <div style={{ marginTop: "8px", color: "#6b7280", fontSize: "14px", maxWidth: "860px" }}>
-          Verwalte ein dauerhaft gespeichertes Bild-Template und erzeuge daraus Social Content aus
-          Stellenanzeigen-URLs.
+          Dauerhaft gespeichertes Bild-Template + Social Content aus Stellenanzeigen-URLs.
         </div>
       </div>
 
@@ -669,9 +783,9 @@ export default function SocialPostsPage() {
       {error ? <div style={{ color: "#b91c1c", fontWeight: 600 }}>{error}</div> : null}
       {successMessage ? <div style={{ color: "#166534", fontWeight: 600 }}>{successMessage}</div> : null}
 
+      {/* ───────────── TEMPLATE BEARBEITEN ───────────── */}
       {activeTab === "template" ? (
         <div style={{ display: "flex", gap: "18px", alignItems: "flex-start", flexWrap: "wrap" }}>
-          {/* Linkes Panel: Einstellungen */}
           <div style={{ ...panelStyle(), width: 300, flexShrink: 0 }}>
             <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Einstellungen</div>
 
@@ -679,23 +793,23 @@ export default function SocialPostsPage() {
               <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>Format</label>
               <select
                 value={formatId}
-                onChange={(event) => setFormatId(event.target.value === "format-a" ? "format-a" : "format-a")}
-                style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff" }}
+                onChange={(e) => setFormatId(e.target.value === "format-a" ? "format-a" : "format-a")}
+                style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff" }}
               >
-                <option value="format-a">Format A (1200 x 1200)</option>
+                <option value="format-a">Format A (1200 × 1200)</option>
               </select>
             </div>
 
             <div style={{ marginBottom: "14px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>Hintergrundbild hochladen</label>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>Hintergrundbild</label>
               <input type="file" accept="image/*" onChange={handleBackgroundUpload} />
-              <div style={{ marginTop: "8px", fontSize: "12px", color: "#6b7280" }}>
-                Wird zusammen mit den Positionen gespeichert.
+              <div style={{ marginTop: "6px", fontSize: "12px", color: "#6b7280" }}>
+                Wird mit Positionen dauerhaft gespeichert.
               </div>
             </div>
 
             <div style={{ marginBottom: "14px" }}>
-              <div style={{ fontWeight: 600, marginBottom: "8px" }}>Element anklicken oder hier wählen</div>
+              <div style={{ fontWeight: 600, marginBottom: "8px" }}>Element wählen</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                 {ELEMENT_LABELS.map((element) => (
                   <button
@@ -706,7 +820,7 @@ export default function SocialPostsPage() {
                       padding: "5px 10px",
                       borderRadius: "999px",
                       border: `1px solid ${activeElement === element.key ? "#3b82f6" : "#cbd5e1"}`,
-                      background: activeElement === element.key ? "#eff6ff" : "#ffffff",
+                      background: activeElement === element.key ? "#eff6ff" : "#fff",
                       color: activeElement === element.key ? "#1d4ed8" : "#111827",
                       cursor: "pointer",
                       fontSize: "12px",
@@ -729,45 +843,72 @@ export default function SocialPostsPage() {
                   <input
                     type="checkbox"
                     checked={activeElementConfig.visible}
-                    onChange={(event) => updateElementConfig(activeElement, { visible: event.target.checked })}
+                    onChange={(e) => updateElementConfig(activeElement, { visible: e.target.checked })}
                   />
                   Sichtbar
                 </label>
 
-                {/* Nur Styling-Optionen — keine Koordinaten-Inputs */}
-                {ELEMENT_LABELS.find((el) => el.key === activeElement)?.kind === "text" ? (
+                {/* Benefit-Liste: eigene Optionen */}
+                {activeElementKind === "list" && (
                   <>
-                    <div>
-                      <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Schriftgröße</label>
-                      <input
-                        type="number"
-                        value={activeElementConfig.fontSize}
-                        onChange={(event) => updateElementConfig(activeElement, { fontSize: Number(event.target.value) })}
-                        style={{ width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: "8px", boxSizing: "border-box" }}
-                      />
-                    </div>
+                    <NumberField
+                      label="Schriftgröße"
+                      value={activeElementConfig.fontSize}
+                      onChange={(v) => updateElementConfig(activeElement, { fontSize: v })}
+                    />
                     <div>
                       <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Farbe</label>
                       <input
                         type="color"
                         value={activeElementConfig.color}
-                        onChange={(event) => updateElementConfig(activeElement, { color: event.target.value })}
-                        style={{ width: "100%", height: "42px", border: "1px solid #cbd5e1", borderRadius: "8px" }}
+                        onChange={(e) => updateElementConfig(activeElement, { color: e.target.value })}
+                        style={{ width: "100%", height: "40px", border: "1px solid #cbd5e1", borderRadius: "8px" }}
+                      />
+                    </div>
+                    <NumberField
+                      label="Zeilenabstand (z.B. 1.6)"
+                      value={activeElementConfig.lineHeight ?? 1.6}
+                      onChange={(v) => updateElementConfig(activeElement, { lineHeight: v })}
+                      step={0.1}
+                    />
+                    <NumberField
+                      label="Häkchen-Größe"
+                      value={activeElementConfig.iconSize ?? 18}
+                      onChange={(v) => updateElementConfig(activeElement, { iconSize: v })}
+                    />
+                  </>
+                )}
+
+                {/* Text-Elemente */}
+                {activeElementKind === "text" && (
+                  <>
+                    <NumberField
+                      label="Schriftgröße"
+                      value={activeElementConfig.fontSize}
+                      onChange={(v) => updateElementConfig(activeElement, { fontSize: v })}
+                    />
+                    <div>
+                      <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Farbe</label>
+                      <input
+                        type="color"
+                        value={activeElementConfig.color}
+                        onChange={(e) => updateElementConfig(activeElement, { color: e.target.value })}
+                        style={{ width: "100%", height: "40px", border: "1px solid #cbd5e1", borderRadius: "8px" }}
                       />
                     </div>
                     <div>
                       <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Ausrichtung</label>
                       <select
                         value={activeElementConfig.textAlign}
-                        onChange={(event) =>
+                        onChange={(e) =>
                           updateElementConfig(activeElement, {
                             textAlign:
-                              event.target.value === "center" || event.target.value === "right"
-                                ? event.target.value
+                              e.target.value === "center" || e.target.value === "right"
+                                ? e.target.value
                                 : "left",
                           })
                         }
-                        style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff" }}
+                        style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff" }}
                       >
                         <option value="left">Links</option>
                         <option value="center">Zentriert</option>
@@ -775,17 +916,20 @@ export default function SocialPostsPage() {
                       </select>
                     </div>
                   </>
-                ) : (
+                )}
+
+                {/* Bild-Elemente */}
+                {activeElementKind === "image" && (
                   <div>
                     <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Bildmodus</label>
                     <select
                       value={activeElementConfig.objectFit}
-                      onChange={(event) =>
+                      onChange={(e) =>
                         updateElementConfig(activeElement, {
-                          objectFit: event.target.value === "contain" ? "contain" : "cover",
+                          objectFit: e.target.value === "contain" ? "contain" : "cover",
                         })
                       }
-                      style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff" }}
+                      style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff" }}
                     >
                       <option value="cover">Cover (füllt Bereich)</option>
                       <option value="contain">Contain (zeigt Ganzes)</option>
@@ -793,10 +937,9 @@ export default function SocialPostsPage() {
                   </div>
                 )}
 
-                {/* Position + Größe als Readonly-Info */}
                 <div style={{ fontSize: "12px", color: "#9ca3af", lineHeight: 1.6 }}>
-                  x: {activeElementConfig.x} · y: {activeElementConfig.y}
-                  {" "}· {activeElementConfig.width} × {activeElementConfig.height} px
+                  x: {activeElementConfig.x} · y: {activeElementConfig.y} ·{" "}
+                  {activeElementConfig.width} × {activeElementConfig.height} px
                 </div>
               </div>
             ) : null}
@@ -811,7 +954,7 @@ export default function SocialPostsPage() {
                   border: "none",
                   borderRadius: "8px",
                   background: "#111827",
-                  color: "#ffffff",
+                  color: "#fff",
                   cursor: savingTemplate ? "not-allowed" : "pointer",
                   opacity: savingTemplate ? 0.7 : 1,
                 }}
@@ -822,25 +965,25 @@ export default function SocialPostsPage() {
                 <button
                   type="button"
                   onClick={() => setTemplateDraft(template)}
-                  style={{ padding: "10px 14px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff", cursor: "pointer" }}
+                  style={{ padding: "10px 14px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff", cursor: "pointer" }}
                 >
-                  Gespeicherten Stand laden
+                  Stand laden
                 </button>
               ) : null}
             </div>
           </div>
 
-          {/* Rechtes Panel: Interaktiver Canvas */}
+          {/* Canvas */}
           <div style={{ ...panelStyle(), flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", marginBottom: "12px", flexWrap: "wrap", alignItems: "flex-end" }}>
               <div>
                 <div style={{ fontSize: "18px", fontWeight: 700 }}>Canvas</div>
                 <div style={{ marginTop: "4px", color: "#6b7280", fontSize: "13px" }}>
-                  Elemente verschieben per Drag · Größe ändern am blauen Handle rechts unten
+                  Drag zum Verschieben · Blauer Handle zum Vergrößern/Verkleinern
                 </div>
               </div>
               <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                {templateDraft ? `Zuletzt gespeichert: ${formatDate(templateDraft.updatedAt)}` : ""}
+                {templateDraft ? `Gespeichert: ${formatDate(templateDraft.updatedAt)}` : ""}
               </div>
             </div>
 
@@ -858,47 +1001,52 @@ export default function SocialPostsPage() {
           </div>
         </div>
       ) : (
+        /* ───────────── CONTENT ERSTELLEN ───────────── */
         <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 440px) 1fr", gap: "18px" }}>
+          {/* Linkes Panel */}
           <div style={panelStyle()}>
             <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Content erstellen</div>
+
             <div style={{ marginBottom: "14px" }}>
               <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>URL der Stellenanzeige</label>
               <input
                 value={sourceUrl}
-                onChange={(event) => setSourceUrl(event.target.value)}
+                onChange={(e) => setSourceUrl(e.target.value)}
                 style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", boxSizing: "border-box" }}
               />
             </div>
+
             <div style={{ marginBottom: "14px" }}>
               <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>Format</label>
               <select
                 value={formatId}
-                onChange={(event) => setFormatId(event.target.value === "format-a" ? "format-a" : "format-a")}
-                style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff" }}
+                onChange={(e) => setFormatId(e.target.value === "format-a" ? "format-a" : "format-a")}
+                style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff" }}
               >
-                <option value="format-a">Format A (1200 x 1200)</option>
+                <option value="format-a">Format A (1200 × 1200)</option>
               </select>
             </div>
 
+            {/* Vereinfachte Checkboxen: nur 5 Basisfelder */}
             <div style={{ marginBottom: "14px" }}>
-              <div style={{ fontWeight: 600, marginBottom: "8px" }}>Elemente übernehmen</div>
+              <div style={{ fontWeight: 600, marginBottom: "8px" }}>Felder übernehmen</div>
               <div style={{ display: "grid", gap: "8px" }}>
-                {ELEMENT_LABELS.map((element) => (
-                  <label key={element.key} style={{ fontSize: "14px" }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedElements[element.key]}
-                      onChange={(event) =>
-                        setSelectedElements((prev) => ({
-                          ...prev,
-                          [element.key]: event.target.checked,
-                        }))
-                      }
-                      style={{ marginRight: "6px" }}
-                    />
-                    {element.label}
-                  </label>
-                ))}
+                {CONTENT_ELEMENT_KEYS.map((key) => {
+                  const label = ELEMENT_LABELS.find((el) => el.key === key)?.label ?? key;
+                  return (
+                    <label key={key} style={{ fontSize: "14px" }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedElements[key] ?? false}
+                        onChange={(e) =>
+                          setSelectedElements((prev) => ({ ...prev, [key]: e.target.checked }))
+                        }
+                        style={{ marginRight: "6px" }}
+                      />
+                      {label}
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
@@ -911,7 +1059,7 @@ export default function SocialPostsPage() {
                 border: "none",
                 borderRadius: "8px",
                 background: "#111827",
-                color: "#ffffff",
+                color: "#fff",
                 cursor: loadingContent ? "not-allowed" : "pointer",
                 opacity: loadingContent ? 0.7 : 1,
               }}
@@ -919,37 +1067,76 @@ export default function SocialPostsPage() {
               {loadingContent ? "Analysiert..." : "URL laden und Content vorbereiten"}
             </button>
 
+            {/* Benefit-Badges */}
+            {extractedData && extractedData.benefits.length > 0 && (
+              <div style={{ marginTop: "18px", borderTop: "1px solid #e5e7eb", paddingTop: "16px" }}>
+                <div style={{ fontWeight: 600, marginBottom: "6px" }}>Benefits für das Bild</div>
+                <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "10px" }}>
+                  Klick zum Aus-/Abwählen – ausgewählte erscheinen als ✓-Liste im Template.
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  {extractedData.benefits.map((benefit) => {
+                    const active = selectedBenefits.includes(benefit);
+                    return (
+                      <button
+                        key={benefit}
+                        type="button"
+                        onClick={() => toggleBenefit(benefit)}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: "999px",
+                          border: `1px solid ${active ? "#111827" : "#cbd5e1"}`,
+                          background: active ? "#111827" : "#f9fafb",
+                          color: active ? "#ffffff" : "#374151",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          fontWeight: active ? 700 : 400,
+                          transition: "background 0.1s",
+                        }}
+                      >
+                        {active ? "✓ " : ""}{benefit}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Extrahierte Daten */}
             {extractedData ? (
-              <div style={{ marginTop: "18px", borderTop: "1px solid #e5e7eb", paddingTop: "18px", display: "grid", gap: "10px", fontSize: "14px" }}>
+              <div style={{ marginTop: "18px", borderTop: "1px solid #e5e7eb", paddingTop: "16px", display: "grid", gap: "8px", fontSize: "13px" }}>
                 <PreviewRow label="Firmenname" value={extractedData.company || "-"} />
                 <PreviewRow label="Jobtitel" value={extractedData.jobTitle || "-"} />
                 <PreviewRow label="Ort" value={extractedData.location || "-"} />
-                <PreviewRow label="Arbeitszeit / Vertragsart" value={extractedData.employment || "-"} />
-                <PreviewRow label="Highlight" value={extractedData.highlight || "-"} />
                 <PreviewRow label="Logo" value={extractedData.logoUrl || "-"} />
-                <PreviewRow label="Teaserbild" value={extractedData.teaserImageUrl || "-"} />
+                <PreviewRow label="Hauptbild" value={extractedData.teaserImageUrl || "-"} />
                 <PreviewRow label="Link" value={extractedData.link || "-"} />
               </div>
             ) : null}
           </div>
 
+          {/* Rechtes Panel */}
           <div style={{ display: "grid", gap: "18px" }}>
             <div style={panelStyle()}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", marginBottom: "16px", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: "18px", fontWeight: 700 }}>Bild-Vorschau</div>
                   <div style={{ marginTop: "6px", color: "#6b7280", fontSize: "13px" }}>
-                    Das zuletzt gespeicherte Template des gewählten Formats wird automatisch verwendet.
+                    Gespeichertes Template + ausgewählte Elemente und Benefits.
                   </div>
                 </div>
                 <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                  {template ? `Template-Stand: ${formatDate(template.updatedAt)}` : ""}
+                  {template ? `Template: ${formatDate(template.updatedAt)}` : ""}
                 </div>
               </div>
 
               {template && extractedData ? (
                 <>
-                  <SocialPostPreview template={template} data={extractedData} selectedElements={selectedElements} />
+                  <SocialPostPreview
+                    template={template}
+                    data={previewData}
+                    selectedElements={effectiveSelectedElements}
+                  />
                   <div style={{ marginTop: "14px" }}>
                     <button
                       type="button"
@@ -958,7 +1145,7 @@ export default function SocialPostsPage() {
                         if (imgUrl) {
                           window.open(imgUrl, "_blank", "noopener,noreferrer");
                         } else {
-                          alert("Kein Bild verfügbar.");
+                          alert("Kein Hauptbild verfügbar.");
                         }
                       }}
                       style={{
@@ -966,7 +1153,7 @@ export default function SocialPostsPage() {
                         border: "none",
                         borderRadius: "8px",
                         background: "#111827",
-                        color: "#ffffff",
+                        color: "#fff",
                         cursor: "pointer",
                         fontSize: "14px",
                         fontWeight: 600,
@@ -991,6 +1178,31 @@ export default function SocialPostsPage() {
   );
 }
 
+function NumberField({
+  label,
+  value,
+  onChange,
+  step,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+}) {
+  return (
+    <div>
+      <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>{label}</label>
+      <input
+        type="number"
+        value={value}
+        step={step ?? 1}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: "8px", boxSizing: "border-box" }}
+      />
+    </div>
+  );
+}
+
 function CaptionPanel({ captionText }: { captionText: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -1007,7 +1219,15 @@ function CaptionPanel({ captionText }: { captionText: string }) {
 
   return (
     <div style={{ ...panelStyle() }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", gap: "12px" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "10px",
+          gap: "12px",
+        }}
+      >
         <div style={{ fontSize: "18px", fontWeight: 700 }}>Post-Text</div>
         <button
           type="button"
@@ -1017,7 +1237,7 @@ function CaptionPanel({ captionText }: { captionText: string }) {
             padding: "8px 14px",
             border: "1px solid #cbd5e1",
             borderRadius: "8px",
-            background: copied ? "#f0fdf4" : "#ffffff",
+            background: copied ? "#f0fdf4" : "#fff",
             color: copied ? "#166534" : "#111827",
             cursor: captionText ? "pointer" : "not-allowed",
             fontSize: "13px",
@@ -1030,7 +1250,8 @@ function CaptionPanel({ captionText }: { captionText: string }) {
         </button>
       </div>
       <div style={{ color: "#000000", lineHeight: 1.7, fontSize: "15px" }}>
-        {captionText || "Hier erscheint der generierte Post-Text nach dem Laden einer Stellenanzeige."}
+        {captionText ||
+          "Hier erscheint der generierte Post-Text nach dem Laden einer Stellenanzeige."}
       </div>
     </div>
   );
@@ -1038,7 +1259,7 @@ function CaptionPanel({ captionText }: { captionText: string }) {
 
 function PreviewRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "170px 1fr", gap: "12px" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "130px 1fr", gap: "10px" }}>
       <div style={{ color: "#6b7280" }}>{label}</div>
       <div style={{ wordBreak: "break-word" }}>{value}</div>
     </div>

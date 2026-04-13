@@ -14,7 +14,8 @@ export type SocialPostElementKey =
   | "logo"
   | "teaserImage"
   | "branding"
-  | "cta";
+  | "cta"
+  | "benefits";
 
 export type SocialPostElementConfig = {
   visible: boolean;
@@ -26,6 +27,8 @@ export type SocialPostElementConfig = {
   color: string;
   textAlign: "left" | "center" | "right";
   objectFit: "cover" | "contain";
+  lineHeight: number;
+  iconSize: number;
 };
 
 export type SocialPostTemplate = {
@@ -40,11 +43,7 @@ export type SocialPostTemplate = {
 
 function ensureFile() {
   const dir = path.dirname(filePath);
-
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, JSON.stringify(buildDefaultTemplates(), null, 2), "utf-8");
   }
@@ -75,6 +74,8 @@ function normalizeElementConfig(
         ? element.textAlign
         : fallback.textAlign,
     objectFit: element.objectFit === "contain" ? "contain" : fallback.objectFit,
+    lineHeight: safeNumber(element.lineHeight, fallback.lineHeight),
+    iconSize: safeNumber(element.iconSize, fallback.iconSize),
   };
 }
 
@@ -98,6 +99,7 @@ function normalizeTemplate(template: Partial<SocialPostTemplate>): SocialPostTem
       teaserImage: normalizeElementConfig(template.elements?.teaserImage || {}, defaults.elements.teaserImage),
       branding: normalizeElementConfig(template.elements?.branding || {}, defaults.elements.branding),
       cta: normalizeElementConfig(template.elements?.cta || {}, defaults.elements.cta),
+      benefits: normalizeElementConfig(template.elements?.benefits || {}, defaults.elements.benefits),
     },
   };
 }
@@ -144,7 +146,7 @@ export function saveSocialPostTemplate(input: Partial<SocialPostTemplate>) {
 }
 
 function buildDefaultTemplates(): SocialPostTemplate[] {
-  const baseElement = {
+  const baseElement: SocialPostElementConfig = {
     visible: true,
     x: 60,
     y: 60,
@@ -152,8 +154,10 @@ function buildDefaultTemplates(): SocialPostTemplate[] {
     height: 60,
     fontSize: 28,
     color: "#ffffff",
-    textAlign: "left" as const,
-    objectFit: "cover" as const,
+    textAlign: "left",
+    objectFit: "cover",
+    lineHeight: 1.5,
+    iconSize: 18,
   };
 
   return [
@@ -168,12 +172,22 @@ function buildDefaultTemplates(): SocialPostTemplate[] {
         company: { ...baseElement, x: 60, y: 60, width: 500, height: 70, fontSize: 32 },
         jobTitle: { ...baseElement, x: 60, y: 160, width: 700, height: 180, fontSize: 52 },
         location: { ...baseElement, x: 60, y: 370, width: 380, height: 60, fontSize: 28 },
-        employment: { ...baseElement, x: 60, y: 450, width: 420, height: 60, fontSize: 24 },
-        highlight: { ...baseElement, x: 60, y: 535, width: 620, height: 120, fontSize: 28 },
+        employment: { ...baseElement, x: 60, y: 450, width: 420, height: 60, fontSize: 24, visible: false },
+        highlight: { ...baseElement, x: 60, y: 535, width: 620, height: 120, fontSize: 28, visible: false },
         logo: { ...baseElement, x: 930, y: 60, width: 190, height: 190, objectFit: "contain" },
         teaserImage: { ...baseElement, x: 720, y: 310, width: 400, height: 520, objectFit: "cover" },
-        branding: { ...baseElement, x: 60, y: 1010, width: 420, height: 60, fontSize: 28 },
-        cta: { ...baseElement, x: 60, y: 1090, width: 520, height: 56, fontSize: 26 },
+        branding: { ...baseElement, x: 60, y: 1010, width: 420, height: 60, fontSize: 28, visible: false },
+        cta: { ...baseElement, x: 60, y: 1090, width: 520, height: 56, fontSize: 26, visible: false },
+        benefits: {
+          ...baseElement,
+          x: 60,
+          y: 450,
+          width: 580,
+          height: 220,
+          fontSize: 26,
+          lineHeight: 1.6,
+          iconSize: 24,
+        },
       },
     },
   ];

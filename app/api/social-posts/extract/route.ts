@@ -12,6 +12,7 @@ type ExtractedSocialPostData = {
   link: string;
   shortText: string;
   captionText: string;
+  benefits: string[];
 };
 
 function safeString(value: unknown) {
@@ -106,9 +107,18 @@ function trimSentence(value: string, maxLength = 130) {
   return `${text.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-// Hauptbild: zuerst platform-spezifisches order_images-Muster, dann og:image, dann Fallbacks
+// Jobtitel von Portal-Suffixen bereinigen
+function cleanJobTitle(raw: string): string {
+  return raw
+    .replace(/\s*[|–\-]\s*Jobs?\s+in\s+Berlin[^|–\-]*/i, "")
+    .replace(/\s*[|–\-]\s*jobs-in-berlin[^\s|–]*/i, "")
+    .replace(/\s*[|–\-]\s*Stellen?(?:anzeige|börse|portal|markt)?[^|–\-]*/i, "")
+    .replace(/\s*[|–\-]\s*Karriere[^|–\-]*/i, "")
+    .trim();
+}
+
+// Hauptbild: plattformspezifisch → og:image → hero/figure-Fallback
 function extractMainImage(html: string, baseUrl: string): string {
-  // 1. Plattform-spezifisch: order_images / crop_hr URL (jobs-in-berlin-brandenburg.de)
   const platformPatterns = [
     /["'](https?:\/\/[^"']*order_images[^"']*\.(?:jpg|jpeg|png|webp)[^"']*)/i,
     /["'](https?:\/\/[^"']*crop_hr[^"']*\.(?:jpg|jpeg|png|webp)[^"']*)/i,
@@ -119,11 +129,9 @@ function extractMainImage(html: string, baseUrl: string): string {
     if (match?.[1]) return decodeHtml(match[1]);
   }
 
-  // 2. og:image
   const ogImage = extractMeta(html, "og:image");
   if (ogImage) return absoluteUrl(baseUrl, ogImage);
 
-  // 3. Großes Bild in figure / header / hero-Bereich
   const heroPatterns = [
     /<figure[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["']/i,
     /<div[^>]+(?:class|id)=["'][^"']*(?:hero|header|teaser|stage|banner|main-image)[^"']*["'][^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["']/i,
@@ -138,9 +146,8 @@ function extractMainImage(html: string, baseUrl: string): string {
   return "";
 }
 
-// Arbeitgeberseiten-Link aus der Stellenanzeige extrahieren
+// Arbeitgeberseiten-Link aus der Stellenanzeige
 function extractEmployerPageUrl(html: string, baseUrl: string): string {
-  // jobs-in-berlin-brandenburg.de verlinkt auf Arbeitgeberprofile
   const patterns = [
     /href=["']([^"']*\/arbeitgeber\/[^"']+)["']/i,
     /href=["']([^"']*\/unternehmen\/[^"']+)["']/i,
@@ -158,13 +165,11 @@ function extractEmployerPageUrl(html: string, baseUrl: string): string {
   return "";
 }
 
-// Logo aus der Arbeitgeberseite extrahieren
+// Logo aus der Arbeitgeberseite
 function extractLogoFromEmployerPage(html: string, baseUrl: string): string {
-  // 1. og:image (häufig das Firmenlogo auf Profilseiten)
   const ogImage = extractMeta(html, "og:image");
   if (ogImage) return absoluteUrl(baseUrl, ogImage);
 
-  // 2. Img-Tag mit Logo-Signalen in class, alt, id oder src
   const logoPatterns = [
     /<img[^>]+src=["']([^"']+)["'][^>]*(?:class|alt|id|title)=["'][^"']*(?:logo|brand|marke|signet)[^"']*["']/i,
     /<img[^>]*(?:class|alt|id|title)=["'][^"']*(?:logo|brand|marke|signet)[^"']*["'][^>]+src=["']([^"']+)["']/i,
@@ -177,22 +182,106 @@ function extractLogoFromEmployerPage(html: string, baseUrl: string): string {
       if (url.startsWith("http")) return url;
     }
   }
+  return "";
+}
+
+// Unternehmensdomäne aus HTML extrahieren (für Clearbit-Fallback)
+function extractCompanyDomain(html: string, siteHostname: string): string {
+  // 1. JSON-LD: url / website / sameAs
+  for (const block of extractJsonLdBlocks(html)) {
+    try {
+      const parsed = JSON.parse(block);
+      const raw = findStringInJson(parsed, ["url", "website", "sameAs"]);
+      if (raw?.startsWith("http")) {
+        const domain = new URL(raw).hostname.replace(/^www\./, "");
+        if (domain && !domain.includes(siteHostname)) return domain;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2. Externe Links die nicht zur Jobplattform gehören
+  const externalLinkPattern = new RegExp(
+    `href=["'](https?:\\/\\/(?!(?:www\\.)?${siteHostname.replace(/\./g, "\\.")})[^"']+)["']`,
+    "gi"
+  );
+  const skipDomains = ["google.", "facebook.", "linkedin.", "xing.", "twitter.", "instagram."];
+  for (const match of html.matchAll(externalLinkPattern)) {
+    try {
+      const domain = new URL(match[1]).hostname.replace(/^www\./, "");
+      if (domain && domain.includes(".") && !skipDomains.some((s) => domain.includes(s))) {
+        return domain;
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   return "";
 }
 
-// Caption per OpenAI generieren (2 Sätze, natürlicher Social-Post-Stil)
+// Benefits 3–5 Stück via OpenAI extrahieren
+async function extractBenefits(html: string, apiKey: string): Promise<string[]> {
+  try {
+    const openai = new OpenAI({ apiKey });
+
+    // Relevante Textabschnitte aus dem HTML destillieren
+    const bodyText = stripTags(html)
+      .replace(/\s{2,}/g, " ")
+      .slice(0, 3500);
+
+    const response = await openai.responses.create({
+      model: "gpt-4o-mini",
+      input: [
+        {
+          role: "system",
+          content:
+            "Du extrahierst Benefits und Arbeitsbedingungen aus Stellenanzeigen als kompaktes JSON-Array.",
+        },
+        {
+          role: "user",
+          content: `Extrahiere aus dem folgenden Stellenanzeigentext genau 3 bis 5 kurze, prägnante Benefits oder Arbeitsbedingungen.
+
+Regeln:
+- max. 5 Wörter pro Benefit
+- konkrete Angaben bevorzugen (z.B. "TVöD-Vergütung", "30 Tage Urlaub", "Homeoffice möglich")
+- keine generischen Floskeln ("interessante Tätigkeit", "gutes Team")
+- Ausgabe: nur das JSON-Array, kein Kommentar
+
+Text:
+${bodyText}`,
+        },
+      ],
+    });
+
+    const text = response.output_text?.trim() || "[]";
+    const jsonMatch = text.match(/\[[\s\S]*?\]/);
+    if (!jsonMatch) return [];
+
+    const parsed: unknown = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .slice(0, 5)
+      .map((s) => String(s).trim())
+      .filter((s) => s.length > 0 && s.length < 60);
+  } catch (error) {
+    console.error("BENEFIT EXTRACTION ERROR:", error);
+    return [];
+  }
+}
+
+// Caption per OpenAI generieren (2 Sätze)
 async function generateCaption(
   jobTitle: string,
   company: string,
   location: string,
   employment: string,
   highlight: string,
-  fallback: string
+  fallback: string,
+  apiKey: string
 ): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return fallback;
-
   try {
     const openai = new OpenAI({ apiKey });
 
@@ -212,7 +301,7 @@ async function generateCaption(
         {
           role: "system",
           content:
-            "Du schreibst prägnante, authentische Social-Media-Texte auf Deutsch. Keine Floskeln, kein Spam, kein Auflisten von Feldern.",
+            "Du schreibst prägnante, authentische Social-Media-Texte auf Deutsch. Keine Floskeln, kein Spam.",
         },
         {
           role: "user",
@@ -221,26 +310,24 @@ async function generateCaption(
 ${parts}
 
 Anforderungen:
-- Satz 1: Stelle, Unternehmen und Ort natürlich und ansprechend formulieren
-- Satz 2: Echter, persönlicher CTA oder kurzer Hinweis auf die Bewerbung
-- Natürlicher Stil, sachlich aber ansprechend
-- Kein Spam, keine Aufzählung, keine Template-Sprache
-- Nur die 2 Sätze ausgeben, keine Erklärung, kein Hashtag`,
+- Satz 1: Stelle, Unternehmen und Ort natürlich formulieren
+- Satz 2: Echter, persönlicher CTA
+- Kein Spam, keine Aufzählung, keine Floskel
+- Nur die 2 Sätze ausgeben`,
         },
       ],
     });
 
-    const text = response.output_text?.trim() || "";
-    return text || fallback;
+    return response.output_text?.trim() || fallback;
   } catch (error) {
-    console.error("SOCIAL POST CAPTION ERROR:", error);
+    console.error("CAPTION GENERATION ERROR:", error);
     return fallback;
   }
 }
 
-function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialPostData, "captionText"> {
+function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialPostData, "captionText" | "benefits"> {
   let company = extractMeta(html, "og:site_name");
-  let jobTitle = extractMeta(html, "og:title");
+  let jobTitle = cleanJobTitle(extractMeta(html, "og:title"));
   let teaserImageUrl = extractMainImage(html, url);
   let logoUrl = "";
   let location = "";
@@ -250,28 +337,19 @@ function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialP
   for (const block of extractJsonLdBlocks(html)) {
     try {
       const parsed = JSON.parse(block);
-      company =
-        company ||
-        findStringInJson(parsed, ["hiringOrganization", "name", "organization", "title"]);
-      jobTitle = jobTitle || findStringInJson(parsed, ["title", "name"]);
-      location =
-        location ||
-        findStringInJson(parsed, ["addressLocality", "jobLocation", "location", "address"]);
-      employment =
-        employment || findStringInJson(parsed, ["employmentType", "workHours", "jobType"]);
-      logoUrl =
-        logoUrl ||
-        absoluteUrl(url, findStringInJson(parsed, ["logo", "image", "thumbnailUrl"]));
-      // teaserImageUrl nur überschreiben, wenn noch nicht per Hauptbild-Logik gefunden
-      if (!teaserImageUrl) {
-        teaserImageUrl =
-          absoluteUrl(url, findStringInJson(parsed, ["image", "thumbnailUrl", "photo"]));
+      company = company || findStringInJson(parsed, ["hiringOrganization", "name", "organization", "title"]);
+      if (!jobTitle) {
+        jobTitle = cleanJobTitle(findStringInJson(parsed, ["title", "name"]));
       }
-      highlight =
-        highlight ||
-        trimSentence(findStringInJson(parsed, ["description", "summary", "qualifications"]), 150);
+      location = location || findStringInJson(parsed, ["addressLocality", "jobLocation", "location", "address"]);
+      employment = employment || findStringInJson(parsed, ["employmentType", "workHours", "jobType"]);
+      logoUrl = logoUrl || absoluteUrl(url, findStringInJson(parsed, ["logo", "image", "thumbnailUrl"]));
+      if (!teaserImageUrl) {
+        teaserImageUrl = absoluteUrl(url, findStringInJson(parsed, ["image", "thumbnailUrl", "photo"]));
+      }
+      highlight = highlight || trimSentence(findStringInJson(parsed, ["description", "summary", "qualifications"]), 150);
     } catch {
-      // ignore malformed blocks
+      // ignore
     }
   }
 
@@ -280,41 +358,22 @@ function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialP
     html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ||
     "";
   if (!jobTitle) {
-    jobTitle = stripTags(titleHeading).replace(/\s*\|\s*Jobs?.*$/i, "").trim();
+    jobTitle = cleanJobTitle(stripTags(titleHeading));
   }
 
-  company =
-    company ||
-    extractListText(html, "Unternehmen") ||
-    extractListText(html, "Arbeitgeber") ||
-    "";
-  location =
-    location || extractListText(html, "Ort") || extractListText(html, "Standort") || "";
-  employment =
-    employment ||
-    extractListText(html, "Arbeitszeit") ||
-    extractListText(html, "Vertragsart") ||
-    "";
-  highlight =
-    highlight ||
-    trimSentence(
-      extractParagraphAround(html, "Benefit") ||
-        extractParagraphAround(html, "Vorteile") ||
-        extractParagraphAround(html, "Wir bieten"),
-      150
-    );
+  company = company || extractListText(html, "Unternehmen") || extractListText(html, "Arbeitgeber") || "";
+  location = location || extractListText(html, "Ort") || extractListText(html, "Standort") || "";
+  employment = employment || extractListText(html, "Arbeitszeit") || extractListText(html, "Vertragsart") || "";
+  highlight = highlight || trimSentence(
+    extractParagraphAround(html, "Benefit") ||
+    extractParagraphAround(html, "Vorteile") ||
+    extractParagraphAround(html, "Wir bieten"),
+    150
+  );
 
-  // Logo aus JSON-LD oder Img-Tags (wird ggf. durch Arbeitgeberseite überschrieben)
-  logoUrl =
-    logoUrl ||
-    absoluteUrl(
-      url,
-      html.match(/<img[^>]+(?:class|alt|id)=["'][^"']*(?:logo|arbeitgeber)[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] || ""
-    ) ||
-    absoluteUrl(
-      url,
-      html.match(/<img[^>]+src=["']([^"']+)["'][^>]*(?:class|alt)=["'][^"']*(?:logo|arbeitgeber)[^"']*["']/i)?.[1] || ""
-    );
+  logoUrl = logoUrl ||
+    absoluteUrl(url, html.match(/<img[^>]+(?:class|alt|id)=["'][^"']*(?:logo|arbeitgeber)[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] || "") ||
+    absoluteUrl(url, html.match(/<img[^>]+src=["']([^"']+)["'][^>]*(?:class|alt)=["'][^"']*(?:logo|arbeitgeber)[^"']*["']/i)?.[1] || "");
 
   const shortText = [
     jobTitle && company ? `${jobTitle} bei ${company}.` : "",
@@ -355,7 +414,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Hauptseite laden
     const response = await fetch(url, {
       headers: { "User-Agent": "jobs-flow-api social-post extractor" },
       cache: "no-store",
@@ -378,10 +436,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // Arbeitgeberseite + Caption parallel laden
+    const apiKey = process.env.OPENAI_API_KEY || "";
     const employerPageUrl = extractEmployerPageUrl(html, url);
+    const siteHostname = parsedUrl.hostname;
 
-    const [employerLogoResult, captionText] = await Promise.allSettled([
+    // Employer-Seite, Caption und Benefits parallel laden
+    const [employerLogoResult, captionResult, benefitsResult] = await Promise.allSettled([
       employerPageUrl
         ? fetch(employerPageUrl, {
             headers: { "User-Agent": "jobs-flow-api social-post extractor" },
@@ -395,30 +455,48 @@ export async function POST(req: Request) {
             .catch(() => "")
         : Promise.resolve(""),
 
-      generateCaption(
-        baseData.jobTitle,
-        baseData.company,
-        baseData.location,
-        baseData.employment,
-        baseData.highlight,
-        baseData.shortText
-      ),
+      apiKey
+        ? generateCaption(
+            baseData.jobTitle,
+            baseData.company,
+            baseData.location,
+            baseData.employment,
+            baseData.highlight,
+            baseData.shortText,
+            apiKey
+          )
+        : Promise.resolve(baseData.shortText),
+
+      apiKey
+        ? extractBenefits(html, apiKey)
+        : Promise.resolve([] as string[]),
     ]);
 
-    // Bestes Logo: bevorzugt von Arbeitgeberseite, sonst aus Stellenanzeige
-    const betterLogoUrl =
+    // Bestes Logo bestimmen: Arbeitgeberseite → Clearbit → Stellenanzeige
+    let bestLogo =
       (employerLogoResult.status === "fulfilled" && employerLogoResult.value) ||
       baseData.logoUrl;
 
+    if (!bestLogo) {
+      const domain = extractCompanyDomain(html, siteHostname);
+      if (domain) {
+        bestLogo = `https://logo.clearbit.com/${domain}`;
+      }
+    }
+
     const finalCaption =
-      captionText.status === "fulfilled" && captionText.value
-        ? captionText.value
+      captionResult.status === "fulfilled" && captionResult.value
+        ? captionResult.value
         : baseData.shortText;
+
+    const finalBenefits =
+      benefitsResult.status === "fulfilled" ? benefitsResult.value : ([] as string[]);
 
     const data: ExtractedSocialPostData = {
       ...baseData,
-      logoUrl: safeString(betterLogoUrl),
+      logoUrl: safeString(bestLogo),
       captionText: safeString(finalCaption),
+      benefits: finalBenefits,
     };
 
     return NextResponse.json({ data });
