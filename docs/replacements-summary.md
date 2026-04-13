@@ -1,44 +1,54 @@
-# Replacement files summary
+# Replacement- und Backup-Dateien
 
-This repo currently contains several replacement files intended for manual local swap-in while the original files remain untouched.
+Dieses Repo enthaelt weiterhin mehrere historische `replacement`- und `backup`-Dateien. Sie sind im Alltag leicht zu verwechseln und sollten mittelfristig konsolidiert werden.
 
-## Latest useful replacements
+## Aktuell aktive Dateien
 
-### Bulk routes
+Die produktiv relevante Logik sitzt derzeit in diesen Dateien:
+
+- `app/page.tsx`
+- `app/photo/page.tsx` fuer `Streumails`
+- `app/photo/page.replacement.tsx` fuer `Kaltakquise-Mails`
+- `app/photo/BulkLeadsTable.replacement.v4.tsx` als aktuell genutzte Bulk-Tabelle
+- `app/api/bulk-find-leads/route.ts`
+- `app/api/bulk-analyze-company/route.ts`
+- `app/api/bulk-collect-contact/route.ts`
+- `app/api/generate-bulk-email/route.ts`
+- `app/api/send-bulk-mail/route.ts`
+
+## Vorhandene historische Varianten
+
+### Frontend
+
+- `app/photo/page.replacement.v3.tsx`
+- `app/photo/page.replacement.v4.tsx`
+- `app/photo/page.backup.tsx`
+- `app/photo/page.backup.v4.tsx`
+- `app/photo/BulkLeadsTable.replacement.v3.tsx`
+- `app/photo/BulkLeadsTable.replacement.v5.tsx`
+- `app/photo/BulkLeadsTable.next.tsx`
+
+### API
+
 - `app/api/bulk-find-leads/route.replacement.v2.ts`
 - `app/api/bulk-analyze-company/route.replacement.v2.ts`
+- `app/api/bulk-collect-contact/route.replacement.v2.ts`
 - `app/api/bulk-collect-contact/route.replacement.v3.ts`
 - `app/api/generate-bulk-email/route.replacement.v2.ts`
+- `app/api/send-bulk-mail/route.replacement.v2.ts`
 - `app/api/send-bulk-mail/route.replacement.v3.ts`
 
-### Bulk UI
-- `app/photo/BulkLeadsTable.replacement.v5.tsx`
+## Wichtige Hinweise
 
-## What these latest replacements focus on
-- target count filling for bulk search
-- focus field support for the search query
-- stronger career/jobs/stelle detection during analysis
-- obfuscated email normalization like `[at]` and `(at)`
-- fallback email search when website extraction fails
-- no duplicate email suggestions / no duplicate contact suggestions
-- hard timeout and pragmatic early return for contact collection
-- softer bulk email wording
-- greeting + paragraph structure in generated bulk mail text
-- closing safeguard so greeting / closing are not missing
-- batch metadata in bulk send route for later package-style CRM grouping
+- Nicht jede Datei mit der hoechsten Versionsnummer ist automatisch die aktive Datei.
+- Im Bereich `Kaltakquise-Mails` wird aktuell bewusst `app/photo/page.replacement.tsx` direkt aus `app/page.tsx` gerendert.
+- Im Bereich `Streumails` wird aktuell bewusst `app/photo/page.tsx` zusammen mit `app/photo/BulkLeadsTable.replacement.v4.tsx` verwendet.
+- Vor Aufraeumarbeiten immer erst pruefen, welche Datei wirklich importiert wird.
 
-## Manual local swap example (PowerShell)
+## Empfohlener naechster Schritt
 
-```powershell
-git pull
-copy app\api\bulk-find-leads\route.replacement.v2.ts app\api\bulk-find-leads\route.ts
-copy app\api\bulk-analyze-company\route.replacement.v2.ts app\api\bulk-analyze-company\route.ts
-copy app\api\bulk-collect-contact\route.replacement.v3.ts app\api\bulk-collect-contact\route.ts
-copy app\api\generate-bulk-email\route.replacement.v2.ts app\api\generate-bulk-email\route.ts
-copy app\api\send-bulk-mail\route.replacement.v3.ts app\api\send-bulk-mail\route.ts
-copy app\photo\BulkLeadsTable.replacement.v5.tsx app\photo\BulkLeadsTable.tsx
-npm run dev
-```
+Bei Gelegenheit:
 
-## Important note
-A full page replacement that restores all four top-level services and switches CRM behavior by active view still needs a clean final pass before it should replace the current production page.
+1. aktive Dateien eindeutig markieren
+2. historische Varianten archivieren oder loeschen
+3. `replacement`-Namen nach finaler Uebernahme wieder auf normale Dateinamen zurueckfuehren

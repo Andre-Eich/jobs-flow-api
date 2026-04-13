@@ -1,184 +1,128 @@
-# Technische Projektübersicht
+# Technische Projektuebersicht
 
-## Projektcharakter
+## Charakter des Repos
 
-`jobs-flow-api` ist aktuell keine reine API, sondern eine vollständige **Next.js-Anwendung mit UI und serverseitigen API-Routen**.
+`jobs-flow-api` ist aktuell eine Next.js-App mit mehreren fachlich getrennten Services, serverseitigen API-Routen und lokaler JSON-Persistenz. Das Repo enthaelt sowohl Produkt-UI als auch Versand-, CRM-, Such- und Content-Logik.
 
-Das Projekt bündelt mehrere interne KI-gestützte Workflows rund um Stellenanzeigen, Vertriebsautomatisierung und Mailauswertung.
+## Aktuelle Hauptservices
 
-## Produktziel
+### Service Text
 
-Die Anwendung soll helfen,
-- Stellenanzeigen aus **URLs** oder **Bildern/Screenshots** zu analysieren,
-- daraus strukturierte Informationen wie Jobtitel, Firma, Ansprechpartner und E-Mail-Adresse zu extrahieren,
-- passende **Kaltakquise-Mails** für ein regionales Stellenportal zu generieren,
-- diese Mails zu versenden,
-- spätere Follow-ups, CRM-Übersichten und Text-Auswertungen zu unterstützen.
+- freier Textservice direkt in `app/page.tsx`
+- eigener Prompt fuer freie deutsche Textgenerierung
 
-Zusätzlich gibt es einen kleineren separaten Bereich für freie Textgenerierung.
+### Text Generator
 
-## Hauptbereiche der Anwendung
+- aktuell weiterhin Platzhalter
+- bewusst nicht entfernt, aber noch kein ausgebauter Produktbereich
 
-### 1. Service Text
-Freie Generierung deutscher Texte auf Basis von:
-- Thema
-- Eigenschaften
-- gewünschter Wortanzahl
+### Kaltakquise-Mails
 
-Der Bereich unterstützt Einzelausgabe sowie zwei parallele Varianten.
+- Rendert ueber `app/photo/page.replacement.tsx`
+- Einzelworkflow fuer Stellenanzeigen aus Bild oder URL
+- Unterbereiche:
+- Mail generieren und senden
+- Erinnerungen
+- Texte und Auswertungen
+- rechte Spalte ist kontextbezogene `Historie`, nicht das zentrale CRM
 
-### 2. Kaltakquise-Mails
-Dies ist derzeit der wichtigste Bereich des Produkts.
+### Streumails
 
-Unterstützte Schritte:
-1. Quelle analysieren (Bild oder URL)
-2. Kerndaten extrahieren
-3. Vertriebs-Mail generieren
-4. Testversand oder Produktivversand
-5. Versandhistorie im CRM anzeigen
-6. Follow-up-/Reminder-Kandidaten erkennen
-7. Hook-/Text-Auswertungen anzeigen
+- Rendert ueber `app/photo/page.tsx`
+- Unternehmenssuche, Analyse, Kontaktdatensuche, Qualitaetsbewertung und Versand
+- aktuelle Suchquelle:
+- Google Geocoding API
+- Places API (New)
+- neue Suchlogik:
+- `Nur neue Kontakte` gegen CRM-Leads
+- `Naechste Treffer` gegen bereits angezeigte Leads desselben Suchkontexts
+- rechte Spalte ist kontextbezogene `Historie`, nicht das zentrale CRM
 
-### 3. Streumail / Bulk
-Es existiert bereits eine UI für einen Streumail-Workflow.
+### CRM
 
-Aktueller Stand:
-- Firmenlisten werden aktuell noch über MVP-/Mock-Logik erzeugt
-- Analyse, Datensammlung und Qualitätsbewertung sind noch nicht an echte externe Datenquellen angebunden
+- eigene Seite in `app/crm/page.tsx`
+- zentrale Lead-Sicht ueber Kaltakquise und Streumails
+- Tabellendarstellung mit Pagination, Mehrfachauswahl und Sammel-Erinnerung
 
-### 4. Text Generator
-Der Bereich ist aktuell noch nicht umgesetzt und im Frontend nur als Platzhalter vorhanden.
+### Prompts & Texte
 
-## Technologiestack
+- eigene Seite in `app/prompts-text/page.tsx`
+- Karten-Grid fuer Texttypen und Prompts
+- Editieren und Speichern ueber `promptTextStore`
+- noch nicht in allen Services vollstaendig live verdrahtet
 
-- **Framework:** Next.js 16
-- **Frontend:** React 19
-- **Sprache:** TypeScript
-- **KI-Integration:** OpenAI API
-- **Mailversand / Maildaten:** Resend
-- **Aktuelle Persistenz:** JSON-Dateien im lokalen Dateisystem (`data/`)
+### Social Posts
 
-## Verzeichnisstruktur
+- eigene Seite in `app/social-posts/page.tsx`
+- Bereiche:
+- `Content erstellen`
+- `Template bearbeiten`
+- speicherbare Template-Konfigurationen
+- Extraktion aus Jobseiten
+- finaler PNG-Export der gerenderten Vorschau
 
-```text
-app/
-  api/
-    crm/
-      email/[id]/route.ts
-      emails/route.ts
-      text-stats/route.ts
-    generate/route.ts
-    photo-to-mail/route.ts
-    photo-to-mail-url/route.ts
-    regenerate-email/route.ts
-    send-mail/route.ts
-  photo/page.tsx
-  page.tsx
-lib/
-  reminderStore.ts
-  textControllingStore.ts
-data/
-  reminders.json
-  textControlling.json
-```
+## Persistenz
 
-## Kern-Workflow: Kaltakquise-Mail
+Der aktuelle Stand speichert Daten in JSON-Dateien unter `data/`.
 
-### Schritt 1: Quelle analysieren
-Es gibt zwei Analysepfade:
+Wichtige Stores:
 
-#### A. Bildanalyse
-- Nutzer lädt ein Bild / Screenshot / Foto einer Stellenanzeige hoch
-- Das Bild wird serverseitig verarbeitet und an OpenAI übergeben
-- Ergebnis:
-  - Jobtitel
-  - Firmenname
-  - Ansprechpartner
-  - E-Mail-Adresse
-  - optionale Alternativen je Feld
-  - erster Mail-Vorschlag
+- `leadStore.ts`: zentrale Lead-Historie fuer CRM
+- `bulkPackageStore.ts`: Streumail-Pakete
+- `textControllingStore.ts`: Text- und Mail-Auswertung
+- `promptTextStore.ts`: Prompts und Texttypen
+- `socialPostTemplateStore.ts`: Social-Post-Templates
 
-#### B. URL-Analyse
-- Nutzer gibt eine URL zu einer Stellenanzeige ein
-- Der Server lädt die Seite, entfernt grob HTML-Sonderbereiche und extrahiert den sichtbaren Text
-- Der bereinigte Text wird an OpenAI gesendet
-- Ergebnis ist strukturell identisch zur Bildanalyse
+Das ist fuer lokale Entwicklung praktikabel, aber weiterhin eine Uebergangsloesung.
 
-### Schritt 2: Mail generieren
-Die Route `regenerate-email` erzeugt eine kurze Vertriebs-Mail auf Basis der strukturierten Daten.
+## Wichtige API-Bloecke
 
-Unterstützte Elemente:
-- verschiedene Hook-Basen
-- zufällige Varianten pro Hook-Basis
-- Follow-up-Modus
-- zusätzliche Hinweise wie Social Media, Print, Multiposting oder mehrere Jobs
+### Kaltakquise
 
-### Schritt 3: Mail versenden
-Die Route `send-mail` übernimmt:
-- Generierung einer Betreffzeile
-- Aufbau von Text- und HTML-Version
-- Ergänzung eines Abschluss- und Signaturblocks
-- Versand über Resend
-- Speichern von einfachen Text-Controlling-Daten
+- `app/api/photo-to-mail/route.ts`
+- `app/api/photo-to-mail-url/route.ts`
+- `app/api/regenerate-email/route.ts`
+- `app/api/send-mail/route.ts`
 
-### Schritt 4: CRM und Follow-up
-Über die CRM-Routen können gesendete Mails geladen und dargestellt werden.
+### Streumails
 
-Dazu gehören:
-- Mail-Historie
-- Mail-Detailansicht
-- Filterung nach Unternehmen oder Domain
-- Reminder-Kandidaten nach Zeitlogik
+- `app/api/bulk-find-leads/route.ts`
+- `app/api/bulk-analyze-company/route.ts`
+- `app/api/bulk-collect-contact/route.ts`
+- `app/api/generate-bulk-email/route.ts`
+- `app/api/send-bulk-mail/route.ts`
 
-### Schritt 5: Text- und Hook-Auswertung
-Gesendete Hooks und Varianten werden lokal gespeichert und mit Resend-Ereignissen abgeglichen.
+### CRM
 
-Ausgewertet werden unter anderem:
-- Anzahl gesendeter Mails je Hook-Basis
-- Öffnungsrate je Hook-Basis
-- Öffnungsrate je Hook-Variante
-- Reminder-Quote
-- Bestperformer je Hook-Basis
+- `app/api/crm/leads/route.ts`
+- `app/api/crm/emails/route.ts`
+- `app/api/crm/send-reminder/route.ts`
+- `app/api/crm/bulk-packages/route.ts`
 
-## Bekannte architektonische Schwächen
+### Social Posts
 
-### 1. Repo-Name passt nur teilweise
-Der Name `jobs-flow-api` beschreibt das tatsächliche Projekt nur ungenau, weil Frontend, CRM und UI-Logik ebenfalls Teil des Repos sind.
+- `app/api/social-posts/extract/route.ts`
+- `app/api/social-posts/template/route.ts`
+- `app/api/social-posts/image-proxy/route.ts`
 
-### 2. Persistenz ist aktuell MVP-Niveau
-Text-Controlling und Reminder werden aktuell in JSON-Dateien gespeichert:
-- `data/textControlling.json`
-- `data/reminders.json`
+## Aktuelle bekannte Spannungsfelder
 
-Das ist für lokale Entwicklung brauchbar, aber keine robuste Langfristlösung für produktiven Betrieb.
+### 1. Replacement- und Backup-Dateien
 
-### 3. Business-Logik ist teilweise dupliziert
-Prompt-Bestandteile, Hint-Mappings und Teile der Verarbeitungslogik liegen in mehreren API-Routen in ähnlicher Form vor.
+Im Repo liegen weiterhin mehrere `replacement`- und `backup`-Dateien, vor allem im Bereich `app/photo` und bei Bulk-API-Routen. Sie sind aktuell dokumentiert, aber noch nicht konsequent bereinigt.
 
-### 4. CRM-/Reminder-Datenfluss sollte stabilisiert werden
-Der Bereich um CRM-Metadaten, Follow-up-Zuordnung und Reminder-Status sollte explizit überprüft und vereinheitlicht werden.
+### 2. Teilweise doppelte oder historisch gewachsene Logik
 
-### 5. Bulk-Bereich ist noch nicht echt angebunden
-Der Streumail-Bereich bildet den Prozess schon ab, läuft aber noch nicht auf einer echten Lead-Quelle.
+Einige Bulk-, Prompt- und Mailpfade sind mehrfach iteriert worden. Die aktuelle aktive Logik sitzt in den echten `route.ts`-/`page.tsx`-Dateien, die historischen Varianten sind aber noch vorhanden.
 
-## Empfohlene nächste Schritte
+### 3. JSON statt Datenbank
 
-### Kurzfristig
-1. README projektspezifisch erneuern
-2. CRM-Metadaten beim Versand sauber und strukturiert mitspeichern
-3. Reminder-/Follow-up-Logik technisch prüfen
-4. gemeinsame Prompt- und Hint-Logik in `lib/` auslagern
+Der Datenstand ist lokal nachvollziehbar, aber fuer groessere Datenmengen, Parallelitaet und Deployments nicht robust genug.
 
-### Mittelfristig
-1. JSON-Dateien durch echte Datenbank ersetzen
-2. Bulk-/Streumail an echte Lead-Suche anbinden
-3. saubere Trennung zwischen UI, Domain-Logik und Integrationen ausbauen
+### 4. Social-Posts-Extraktion
 
-## Hinweise für neue Chats / neue Mitwirkende
+Die Extraktion fuer Arbeitgebername und Logo ist deutlich verbessert, sollte aber mit mehr Realbeispielen weiter getestet werden.
 
-Damit neue Arbeitskontexte schnell wieder in das Projekt einsteigen können, sollten dauerhaft folgende Informationen im Repo gepflegt werden:
-- README mit Produktziel und Setup
-- technische Projektübersicht
-- aktueller Stand
-- nächste Schritte / Backlog
-- optional zusätzliche Dateien wie `docs/roadmap.md`
+### 5. Streumail-Feinschliff
+
+Suche, CRM-Abgleich und Paketdarstellung sind auf gutem Stand, brauchen aber weiterhin Feinschliff bei Suchqualitaet, Treffer-Varianz und Nachbearbeitungs-UX.

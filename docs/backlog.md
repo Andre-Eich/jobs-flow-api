@@ -1,118 +1,66 @@
 # Backlog
 
-Dieses Dokument bündelt die aktuell wichtigsten Arbeitsblöcke für `jobs-flow-api`.
+Dieses Dokument buendelt die naechsten sinnvollen Arbeitsbloecke auf Basis des Standes vom 13.04.2026.
 
-## P1 – sofort sinnvoll
+## P1 - naechste praktische Schritte
 
-### 1. README neu schreiben
-**Ziel:** Das Standard-README von Next.js durch ein projektspezifisches README ersetzen.
+### 1. Streumail-Suche weiter absichern
 
-**Soll enthalten:**
-- Produktziel
-- Kernfunktionen
-- Tech-Stack
-- Setup
-- Umgebungsvariablen
-- API-Routen im Überblick
-- Arbeitsmodus für neue Chats / neue Entwickler
+- Trefferqualitaet fuer `Naechste Treffer` mit echten Suchlaeufen pruefen
+- CRM-Abgleich fuer `Nur neue Kontakte` mit mehr Match-Faellen absichern
+- Fokusfeld staerker in Ranking und Query-Varianten einbeziehen
 
----
+### 2. Social Posts weiter validieren
 
-### 2. CRM-Metadaten beim Mailversand sauber speichern
-**Ziel:** Jobtitel, Firma, Ansprechpartner, Follow-up-Status und Original-Mail-ID so mitspeichern, dass CRM und Reminder zuverlässig darauf zugreifen können.
+- Extraktion fuer Arbeitgebername und Logo mit mehr echten Anzeigen gegenpruefen
+- Template-Editor weiter UX-seitig verfeinern
+- optional echten Bildexport-/Downloadflow mit mehr Testfaellen pruefen
 
-**Zu prüfen / umzusetzen:**
-- einheitliches Metadatenformat
-- strukturierte Speicherung im Mailkontext
-- stabile Wiederherstellung in CRM-Routen
-- saubere Zuordnung von Follow-up zu Erstmail
+### 3. Prompts & Texte an Live-Logik anbinden
 
----
+- Streumail-Generator direkt auf gespeicherte Prompt-/Text-Eintraege ziehen
+- CRM-Reminder und Footer-/Signaturlogik soweit moeglich an den Store anbinden
+- Service Text und weitere Bereiche nachziehen
 
-### 3. Reminder-/Follow-up-Logik prüfen und stabilisieren
-**Ziel:** Sicherstellen, dass offene Erinnerungen korrekt erkannt, angezeigt und nicht doppelt verarbeitet werden.
+### 4. README / Kontextdateien synchron halten
 
-**Zu prüfen / umzusetzen:**
-- Reminder-Zeitlogik
-- Status- und Zuordnungslogik
-- Konsistenz zwischen UI, Versand und CRM-Daten
+- `CODEX_CONTEXT.md` bei Gelegenheit an den aktuellen Service-Stand angleichen
+- veraltete Formulierungen zu alten Bulk- und CRM-Zustaenden entfernen
 
----
+## P2 - strukturelle Verbesserungen
 
-### 4. Gemeinsame Business-Logik aus API-Routen extrahieren
-**Ziel:** Duplizierte Logik in zentrale Module verschieben.
+### 5. Replacement-Dateien reduzieren
 
-**Kandidaten:**
-- Hint-Mappings
-- Prompt-Bausteine
-- Hook-Definitionen
-- Hilfsfunktionen für CRM und Normalisierung
+- aktive Dateien und historische Varianten klarer trennen
+- unnoetige `replacement`-/`backup`-Dateien schrittweise abbauen
+- dokumentieren, welche Datei aktuell wirklich aktiv ist
 
----
+### 6. Bulk- und CRM-Logik weiter vereinheitlichen
 
-## P2 – hoher Hebel
+- Qualitaetsbewertung und 14-Tage-Warnlogik robuster machen
+- Paket- und Lead-Sicht noch sauberer zusammenspielen lassen
+- Batch-Status und Versandfehler noch klarer im UI sichtbar machen
 
-### 5. Technische Dokumentation weiter ausbauen
-**Ziel:** Das Repo so dokumentieren, dass neue Kontexte schnell arbeitsfähig werden.
+### 7. Test-Strategie ausbauen
 
-**Nächste mögliche Dateien:**
-- `README.md`
-- `docs/architecture.md`
-- `docs/roadmap.md`
-- `docs/decisions.md`
+- gezielte Checks fuer Bulk-Suche, CRM-Reminder und Social Posts
+- wiederholbare Testfaelle fuer echte Beispielanzeigen
+- moeglichst kleine technische Regressionstests einfuehren
 
----
+## P3 - mittelfristig
 
-### 6. Bulk-/Streumail-Bereich von Mock auf echte Datenquelle umbauen
-**Ziel:** Den vorhandenen Bulk-Workflow mit echter Lead-Recherche und echter Datenanreicherung verbinden.
+### 8. Datenhaltung modernisieren
 
-**Offene Punkte:**
-- Datenquelle / APIs
-- Qualitätslogik
-- Duplikaterkennung
-- Versandstrategie
-- CRM-Integration
+- JSON-Persistenz durch Datenbank ersetzen
+- Datenmodell fuer Leads, Bulk-Pakete, Prompt-Texte und Social-Templates stabilisieren
 
----
+### 9. Text Generator entscheiden
 
-### 7. Repo-Namen und Außenstruktur prüfen
-**Ziel:** Bewerten, ob `jobs-flow-api` langfristig als Name noch passend ist.
+- entweder produktiv ausbauen
+- oder klar als Platzhalter markieren, bis ein echter Use Case umgesetzt wird
 
-**Optionen:**
-- `jobs-flow`
-- `jobs-flow-app`
-- aktueller Name bleibt bestehen
+### 10. Deploy- und Betriebsstabilitaet verbessern
 
----
-
-## P3 – mittelfristig
-
-### 8. JSON-Speicherung durch echte Datenbank ersetzen
-**Ziel:** Die lokale Speicherung in JSON-Dateien langfristig ablösen.
-
-**Betroffene Bereiche:**
-- Text-Controlling
-- Reminder
-- spätere CRM-Zusatzdaten
-
-**Zu entscheiden:**
-- Ziel-Datenbank
-- Datenmodell
-- Migrationspfad
-- Betriebskonzept
-
----
-
-### 9. Text Generator umsetzen oder klar ausblenden
-**Ziel:** Den Platzhalterbereich entweder produktiv machen oder bis dahin bewusst deaktivieren / kennzeichnen.
-
----
-
-### 10. Test- und Qualitätsstrategie definieren
-**Ziel:** Für Mailfluss, Analysepfade und CRM-Logik wiederholbare Prüfungen einführen.
-
-**Mögliche Bausteine:**
-- Testfälle für URL-Analyse
-- Testfälle für Bildanalyse
-- Snapshot-/Golden-Tests für Mailausgaben
-- Tests für Reminder-Logik
+- externe Abhaengigkeiten weiter minimieren
+- Build-/Deploy-Pfade schlank halten
+- API-Fehler und Timeouts gezielter sichtbar machen
