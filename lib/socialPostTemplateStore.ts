@@ -24,6 +24,7 @@ export type SocialPostElementConfig = {
   width: number;
   height: number;
   fontSize: number;
+  fontPreset: string;
   color: string;
   textAlign: "left" | "center" | "right";
   objectFit: "cover" | "contain";
@@ -68,6 +69,7 @@ function normalizeElementConfig(
     width: safeNumber(element.width, fallback.width),
     height: safeNumber(element.height, fallback.height),
     fontSize: safeNumber(element.fontSize, fallback.fontSize),
+    fontPreset: safeString(element.fontPreset) || fallback.fontPreset,
     color: safeString(element.color) || fallback.color,
     textAlign:
       element.textAlign === "center" || element.textAlign === "right" || element.textAlign === "left"
@@ -153,6 +155,7 @@ function buildDefaultTemplates(): SocialPostTemplate[] {
     width: 320,
     height: 60,
     fontSize: 28,
+    fontPreset: "arial",
     color: "#ffffff",
     textAlign: "left",
     objectFit: "cover",

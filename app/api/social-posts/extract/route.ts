@@ -158,6 +158,56 @@ function extractStableHeaderData(html: string) {
   };
 }
 
+function extractHeaderCompanyAfterTitle(html: string, jobTitle: string) {
+  if (!jobTitle) return "";
+
+  const headerChunk = html.slice(0, 120000);
+  const titleIndex = headerChunk.indexOf(jobTitle);
+  if (titleIndex === -1) return "";
+
+  const nearbyChunk = headerChunk.slice(titleIndex, Math.min(headerChunk.length, titleIndex + 7000));
+  const beforeHero = nearbyChunk.split(/<(?:figure|img|section|article)[^>]*>/i)[0] || nearbyChunk;
+
+  const directLinkPatterns = [
+    /<\/h1>[\s\S]{0,800}?<a[^>]*>([\s\S]*?)<\/a>/i,
+    /<\/h1>[\s\S]{0,800}?<span[^>]*>\s*<a[^>]*>([\s\S]*?)<\/a>\s*<\/span>/i,
+    /<\/h1>[\s\S]{0,800}?<div[^>]*>\s*<a[^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/div>/i,
+  ];
+
+  for (const pattern of directLinkPatterns) {
+    const match = beforeHero.match(pattern);
+    const candidate = cleanCompanyName(normalizeWhitespace(match?.[1] || ""));
+    if (
+      candidate &&
+      candidate !== jobTitle &&
+      !looksLikePortalBranding(candidate) &&
+      !/^(einsatzort|arbeitszeit|branche|kontaktdaten|anzeigen-id|alle jobs)/i.test(candidate)
+    ) {
+      return candidate;
+    }
+  }
+
+  const prioritizedPatterns = [
+    /<\/h1>[\s\S]{0,1200}?<(h2|h3)[^>]*>([\s\S]*?)<\/\1>/i,
+    /<\/h1>[\s\S]{0,1200}?<(strong|b|p|div|span|a)[^>]*>([\s\S]*?)<\/\1>/i,
+  ];
+
+  for (const pattern of prioritizedPatterns) {
+    const match = beforeHero.match(pattern);
+    const candidate = cleanCompanyName(normalizeWhitespace(match?.[2] || ""));
+    if (
+      candidate &&
+      candidate !== jobTitle &&
+      !looksLikePortalBranding(candidate) &&
+      !/^(einsatzort|arbeitszeit|branche|kontaktdaten|anzeigen-id)/i.test(candidate)
+    ) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
 function trimSentence(value: string, maxLength = 130) {
   const text = safeString(value);
   if (!text) return "";
@@ -279,6 +329,99 @@ function extractCompanyDomain(html: string, siteHostname: string): string {
   return "";
 }
 
+function extractCompanyDomains(html: string, siteHostname: string): string[] {
+  const found = new Set<string>();
+  const externalLinkPattern = new RegExp(
+    `href=["'](https?:\\/\\/(?!(?:www\\.)?${siteHostname.replace(/\./g, "\\.")})[^"']+)["']`,
+    "gi"
+  );
+  const skipDomains = [
+    "google.",
+    "facebook.",
+    "linkedin.",
+    "xing.",
+    "twitter.",
+    "instagram.",
+    "youtube.",
+    "kununu.",
+  ];
+
+  for (const match of html.matchAll(externalLinkPattern)) {
+    try {
+      const domain = new URL(match[1]).hostname.replace(/^www\./, "");
+      if (domain && domain.includes(".") && !skipDomains.some((entry) => domain.includes(entry))) {
+        found.add(domain);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return Array.from(found);
+}
+
+async function inferEmployerViaAi(args: {
+  html: string;
+  apiKey: string;
+  candidateDomains: string[];
+  fallbackJobTitle: string;
+  fallbackCompany: string;
+}) {
+  try {
+    const openai = new OpenAI({ apiKey: args.apiKey });
+    const headerHtml = args.html.slice(0, 12000);
+    const response = await openai.responses.create({
+      model: "gpt-4o-mini",
+      input: [
+        {
+          role: "system",
+          content:
+            "Du extrahierst aus einer deutschen Jobseite exakt Jobtitel, Arbeitgebername und die beste Firmendomain. Gib nur valides JSON aus.",
+        },
+        {
+          role: "user",
+          content: `Auf dieser Jobseite gilt im Header meist:
+- oben Portal-Logo
+- direkt darunter Jobtitel
+- direkt darunter Arbeitgebername
+
+Wichtig:
+- 'Jobs in Berlin-Brandenburg' ist NIE der Arbeitgeber
+- das Portal-Logo ist NIE das Firmenlogo
+
+Fallback Jobtitel: ${args.fallbackJobTitle || "-"}
+Fallback Arbeitgeber: ${args.fallbackCompany || "-"}
+Moegliche Firmendomains: ${args.candidateDomains.join(", ") || "-"}
+
+Header-HTML:
+${headerHtml}
+
+Antworte nur als JSON:
+{
+  "jobTitle": "...",
+  "company": "...",
+  "companyDomain": "..."
+}`,
+        },
+      ],
+    });
+
+    const parsed = JSON.parse(response.output_text || "{}");
+    return {
+      jobTitle: cleanJobTitle(safeString(parsed.jobTitle)),
+      company: cleanCompanyName(safeString(parsed.company)),
+      companyDomain: safeString(parsed.companyDomain).replace(/^www\./, ""),
+    };
+  } catch (error) {
+    console.error("SOCIAL POST AI HEADER EXTRACTION ERROR:", error);
+    return {
+      jobTitle: "",
+      company: "",
+      companyDomain: "",
+    };
+  }
+}
+
 // Benefits 3–5 Stück via OpenAI extrahieren
 async function extractBenefits(html: string, apiKey: string): Promise<string[]> {
   try {
@@ -385,8 +528,10 @@ Anforderungen:
 
 function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialPostData, "captionText" | "benefits"> {
   const stableHeader = extractStableHeaderData(html);
-  let company = cleanCompanyName(stableHeader.company);
-  let jobTitle = cleanJobTitle(stableHeader.jobTitle || extractMeta(html, "og:title"));
+  const headerJobTitle = stableHeader.jobTitle || cleanJobTitle(extractMeta(html, "og:title"));
+  const directHeaderCompany = extractHeaderCompanyAfterTitle(html, headerJobTitle);
+  let company = cleanCompanyName(directHeaderCompany || stableHeader.company);
+  let jobTitle = cleanJobTitle(headerJobTitle);
   let teaserImageUrl = extractMainImage(html, url);
   let logoUrl = "";
   let location = "";
@@ -404,7 +549,10 @@ function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialP
       }
       location = location || findStringInJson(parsed, ["addressLocality", "jobLocation", "location", "address"]);
       employment = employment || findStringInJson(parsed, ["employmentType", "workHours", "jobType"]);
-      logoUrl = logoUrl || absoluteUrl(url, findStringInJson(parsed, ["logo", "image", "thumbnailUrl"]));
+      const jsonLogo = absoluteUrl(url, findStringInJson(parsed, ["logo", "image", "thumbnailUrl"]));
+      if (jsonLogo && !new URL(jsonLogo).hostname.includes("jobs-in-berlin-brandenburg.de")) {
+        logoUrl = logoUrl || jsonLogo;
+      }
       if (!teaserImageUrl) {
         teaserImageUrl = absoluteUrl(url, findStringInJson(parsed, ["image", "thumbnailUrl", "photo"]));
       }
@@ -436,8 +584,7 @@ function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialP
     150
   );
 
-  logoUrl =
-    logoUrl ||
+  const localLogoCandidate =
     absoluteUrl(
       url,
       html.match(/<img[^>]+(?:class|alt|id)=["'][^"']*(?:arbeitgeber|firma|company)[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] || ""
@@ -446,6 +593,10 @@ function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialP
       url,
       html.match(/<img[^>]+src=["']([^"']+)["'][^>]*(?:class|alt)=["'][^"']*(?:arbeitgeber|firma|company)[^"']*["']/i)?.[1] || ""
     );
+
+  if (localLogoCandidate && !new URL(localLogoCandidate).hostname.includes("jobs-in-berlin-brandenburg.de")) {
+    logoUrl = logoUrl || localLogoCandidate;
+  }
 
   if (looksLikePortalBranding(company)) {
     company = "";
@@ -515,6 +666,26 @@ export async function POST(req: Request) {
     const apiKey = process.env.OPENAI_API_KEY || "";
     const employerPageUrl = extractEmployerPageUrl(html, url);
     const siteHostname = parsedUrl.hostname;
+    const candidateDomains = extractCompanyDomains(html, siteHostname);
+
+    const aiHeader =
+      apiKey
+        ? await inferEmployerViaAi({
+            html,
+            apiKey,
+            candidateDomains,
+            fallbackJobTitle: baseData.jobTitle,
+            fallbackCompany: baseData.company,
+          })
+        : { jobTitle: "", company: "", companyDomain: "" };
+
+    if (aiHeader.jobTitle) {
+      baseData.jobTitle = aiHeader.jobTitle;
+    }
+
+    if (aiHeader.company && !looksLikePortalBranding(aiHeader.company)) {
+      baseData.company = aiHeader.company;
+    }
 
     // Employer-Seite, Caption und Benefits parallel laden
     const [employerLogoResult, captionResult, benefitsResult] = await Promise.allSettled([
@@ -549,14 +720,25 @@ export async function POST(req: Request) {
     ]);
 
     // Bestes Logo bestimmen: Arbeitgeberseite → Clearbit → Stellenanzeige
-    let bestLogo =
-      (employerLogoResult.status === "fulfilled" && employerLogoResult.value) ||
-      baseData.logoUrl;
+    let bestLogo = employerLogoResult.status === "fulfilled" ? employerLogoResult.value : "";
 
     if (!bestLogo) {
-      const domain = extractCompanyDomain(html, siteHostname);
+      const domain =
+        aiHeader.companyDomain ||
+        extractCompanyDomain(html, siteHostname);
       if (domain) {
         bestLogo = `https://logo.clearbit.com/${domain}`;
+      }
+    }
+
+    if (!bestLogo && baseData.logoUrl) {
+      try {
+        const logoHost = new URL(baseData.logoUrl).hostname;
+        if (!logoHost.includes(siteHostname)) {
+          bestLogo = baseData.logoUrl;
+        }
+      } catch {
+        // ignore
       }
     }
 
@@ -565,8 +747,14 @@ export async function POST(req: Request) {
         ? captionResult.value
         : baseData.shortText;
 
-    const finalBenefits =
-      benefitsResult.status === "fulfilled" ? benefitsResult.value : ([] as string[]);
+    const finalBenefits = Array.from(
+      new Set(
+        [
+          baseData.location ? `Einsatzort: ${baseData.location}` : "",
+          ...(benefitsResult.status === "fulfilled" ? benefitsResult.value : []),
+        ].filter(Boolean)
+      )
+    ).slice(0, 5);
 
     const data: ExtractedSocialPostData = {
       ...baseData,

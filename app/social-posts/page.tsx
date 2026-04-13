@@ -24,6 +24,7 @@ type SocialPostElementConfig = {
   width: number;
   height: number;
   fontSize: number;
+  fontPreset: string;
   color: string;
   textAlign: "left" | "center" | "right";
   objectFit: "cover" | "contain";
@@ -84,7 +85,6 @@ const ELEMENT_LABELS: Array<{ key: SocialPostElementKey; label: string; kind: "t
 const CONTENT_ELEMENT_KEYS: SocialPostElementKey[] = [
   "company",
   "jobTitle",
-  "location",
   "logo",
   "teaserImage",
 ];
@@ -103,6 +103,19 @@ const SAMPLE_DATA: ExtractedSocialPostData = {
     "Die IHK Ostbrandenburg sucht einen Referenten Wirtschaftspolitik (m/w/d) in Frankfurt (Oder) – eine Stelle mit echtem Gestaltungsspielraum. Jetzt bewerben und Teil der regionalen Wirtschaftsförderung werden.",
   benefits: ["Vollzeit, unbefristet", "Tarifliche Vergütung", "Hoher Gestaltungsspielraum"],
 };
+
+const FONT_PRESETS = [
+  { id: "arial", label: "Arial", family: "Arial, sans-serif", weight: 500 },
+  { id: "georgia", label: "Georgia", family: "Georgia, serif", weight: 500 },
+  { id: "trebuchet", label: "Trebuchet", family: "'Trebuchet MS', sans-serif", weight: 500 },
+  { id: "arial-black", label: "Arial Black (Heavy)", family: "'Arial Black', Gadget, sans-serif", weight: 700 },
+  { id: "impact", label: "Impact (Heavy)", family: "Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif", weight: 700 },
+  { id: "verdana-bold", label: "Verdana (Bold)", family: "Verdana, Geneva, sans-serif", weight: 700 },
+] as const;
+
+function getFontPreset(id: string) {
+  return FONT_PRESETS.find((preset) => preset.id === id) || FONT_PRESETS[0];
+}
 
 function formatDate(dateString: string) {
   try {
@@ -191,17 +204,20 @@ function drawWrappedText(args: {
   width: number;
   height: number;
   fontSize: number;
+  fontPreset: string;
   color: string;
   textAlign: "left" | "center" | "right";
   fontWeight?: number;
   lineHeight?: number;
 }) {
-  const { ctx, text, x, y, width, height, fontSize, color, textAlign, fontWeight = 500, lineHeight = 1.15 } =
+  const { ctx, text, x, y, width, height, fontSize, fontPreset, color, textAlign, fontWeight, lineHeight = 1.15 } =
     args;
   if (!text) return;
+  const preset = getFontPreset(fontPreset);
+  const effectiveWeight = fontWeight ?? preset.weight;
 
   ctx.save();
-  ctx.font = `${fontWeight} ${fontSize}px Arial`;
+  ctx.font = `${effectiveWeight} ${fontSize}px ${preset.family}`;
   ctx.fillStyle = color;
   ctx.textAlign = textAlign;
   ctx.textBaseline = "top";
@@ -247,12 +263,14 @@ function drawBenefitList(args: {
   width: number;
   height: number;
   fontSize: number;
+  fontPreset: string;
   color: string;
   lineHeight: number;
   iconSize: number;
 }) {
-  const { ctx, items, x, y, width, height, fontSize, color, lineHeight, iconSize } = args;
+  const { ctx, items, x, y, width, height, fontSize, fontPreset, color, lineHeight, iconSize } = args;
   if (items.length === 0) return;
+  const preset = getFontPreset(fontPreset);
 
   const rowHeight = fontSize * lineHeight;
   const maxRows = Math.max(1, Math.floor(height / rowHeight));
@@ -264,7 +282,7 @@ function drawBenefitList(args: {
 
   visibleItems.forEach((item, index) => {
     const rowY = y + index * rowHeight;
-    ctx.font = `700 ${iconSize}px Arial`;
+    ctx.font = `700 ${iconSize}px ${preset.family}`;
     ctx.fillText("✓", x, rowY);
     drawWrappedText({
       ctx,
@@ -274,9 +292,10 @@ function drawBenefitList(args: {
       width: width - iconSize - 10,
       height: rowHeight,
       fontSize,
+      fontPreset,
       color,
       textAlign: "left",
-      fontWeight: 500,
+      fontWeight: preset.weight,
       lineHeight: 1.2,
     });
   });
@@ -337,6 +356,7 @@ function BenefitList({
   items,
   color,
   fontSize,
+  fontPreset,
   lineHeight,
   iconSize,
   scale,
@@ -344,11 +364,13 @@ function BenefitList({
   items: string[];
   color: string;
   fontSize: number;
+  fontPreset: string;
   lineHeight: number;
   iconSize: number;
   scale: number;
 }) {
   if (items.length === 0) return null;
+  const preset = getFontPreset(fontPreset);
   const rowGap = (lineHeight - 1) * fontSize * scale * 1.4;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: rowGap }}>
@@ -364,6 +386,7 @@ function BenefitList({
           <span
             style={{
               fontSize: iconSize * scale,
+              fontFamily: preset.family,
               color,
               flexShrink: 0,
               lineHeight: 1.1,
@@ -375,8 +398,10 @@ function BenefitList({
           <span
             style={{
               fontSize: fontSize * scale,
+              fontFamily: preset.family,
               color,
               lineHeight: 1.2,
+              fontWeight: preset.weight,
             }}
           >
             {item}
@@ -447,6 +472,7 @@ function SocialPostPreview({
                 items={items}
                 color={config.color}
                 fontSize={config.fontSize}
+                fontPreset={config.fontPreset}
                 lineHeight={config.lineHeight ?? 1.6}
                 iconSize={config.iconSize ?? 18}
                 scale={scale}
@@ -515,9 +541,10 @@ function SocialPostPreview({
               height,
               color: config.color,
               fontSize: config.fontSize * scale,
+              fontFamily: getFontPreset(config.fontPreset).family,
               textAlign: config.textAlign,
               lineHeight: 1.15,
-              fontWeight: element.key === "jobTitle" ? 700 : 500,
+              fontWeight: element.key === "jobTitle" ? 700 : getFontPreset(config.fontPreset).weight,
               whiteSpace: "pre-wrap",
               overflow: "hidden",
               textShadow: "0 2px 10px rgba(15, 23, 42, 0.45)",
@@ -651,6 +678,8 @@ function SocialPostTemplateCanvas({
               cursor: drag && drag.key === element.key && drag.type === "move" ? "grabbing" : "grab",
               outline: isActive
                 ? "2px solid #3b82f6"
+                : element.kind === "image"
+                ? "1px solid rgba(107,114,128,0.9)"
                 : "1px solid rgba(255,255,255,0.10)",
               outlineOffset: isActive ? "1px" : "0px",
               borderRadius: element.kind === "image" ? "14px" : "4px",
@@ -658,8 +687,9 @@ function SocialPostTemplateCanvas({
               boxSizing: "border-box",
               ...(element.kind === "image"
                 ? {
-                    background: "rgba(255,255,255,0.12)",
+                    background: isActive ? "rgba(191,219,254,0.28)" : "rgba(148,163,184,0.22)",
                     backdropFilter: "blur(4px)",
+                    boxShadow: isActive ? "0 0 0 1px rgba(59,130,246,0.25) inset" : "0 0 0 1px rgba(107,114,128,0.22) inset",
                   }
                 : {}),
             }}
@@ -670,6 +700,7 @@ function SocialPostTemplateCanvas({
                   items={data.benefits?.length ? data.benefits : SAMPLE_DATA.benefits}
                   color={config.color}
                   fontSize={config.fontSize}
+                  fontPreset={config.fontPreset}
                   lineHeight={config.lineHeight ?? 1.6}
                   iconSize={config.iconSize ?? 18}
                   scale={scale}
@@ -694,13 +725,14 @@ function SocialPostTemplateCanvas({
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      color: "#ffffff",
+                      color: "#374151",
                       fontSize: Math.max(10, 12 * scale),
                       textAlign: "center",
                       padding: "6px",
                       boxSizing: "border-box",
                       pointerEvents: "none",
-                      opacity: 0.7,
+                      opacity: 0.95,
+                      background: "rgba(255,255,255,0.38)",
                     }}
                   >
                     {element.label}
@@ -714,9 +746,10 @@ function SocialPostTemplateCanvas({
                   height: "100%",
                   color: config.color,
                   fontSize: config.fontSize * scale,
+                  fontFamily: getFontPreset(config.fontPreset).family,
                   textAlign: config.textAlign,
                   lineHeight: 1.15,
-                  fontWeight: element.key === "jobTitle" ? 700 : 500,
+                  fontWeight: element.key === "jobTitle" ? 700 : getFontPreset(config.fontPreset).weight,
                   whiteSpace: "pre-wrap",
                   overflow: "hidden",
                   textShadow: "0 2px 10px rgba(15, 23, 42, 0.45)",
@@ -794,7 +827,6 @@ export default function SocialPostsPage() {
   const [selectedElements, setSelectedElements] = useState<Partial<Record<SocialPostElementKey, boolean>>>({
     company: true,
     jobTitle: true,
-    location: true,
     logo: true,
     teaserImage: true,
   });
@@ -912,7 +944,7 @@ export default function SocialPostsPage() {
       setExtractedData(data.data);
       // Automatisch die ersten 3 Benefits vorauswählen
       const initialBenefits: string[] = Array.isArray(data.data.benefits)
-        ? data.data.benefits.slice(0, 3)
+        ? data.data.benefits.slice(0, 4)
         : [];
       setSelectedBenefits(initialBenefits);
       setSuccessMessage("Stellenanzeige geladen.");
@@ -1010,6 +1042,7 @@ export default function SocialPostsPage() {
             width: config.width,
             height: config.height,
             fontSize: config.fontSize,
+            fontPreset: config.fontPreset,
             color: config.color,
             lineHeight: config.lineHeight ?? 1.6,
             iconSize: config.iconSize ?? 18,
@@ -1025,6 +1058,7 @@ export default function SocialPostsPage() {
           width: config.width,
           height: config.height,
           fontSize: config.fontSize,
+          fontPreset: config.fontPreset,
           color: config.color,
           textAlign: config.textAlign,
           fontWeight: element.key === "jobTitle" ? 700 : 500,
@@ -1131,6 +1165,20 @@ export default function SocialPostsPage() {
                 {/* Benefit-Liste: eigene Optionen */}
                 {activeElementKind === "list" && (
                   <>
+                    <div>
+                      <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Schriftart</label>
+                      <select
+                        value={activeElementConfig.fontPreset}
+                        onChange={(e) => updateElementConfig(activeElement, { fontPreset: e.target.value })}
+                        style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff" }}
+                      >
+                        {FONT_PRESETS.map((preset) => (
+                          <option key={preset.id} value={preset.id}>
+                            {preset.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <NumberField
                       label="Schriftgröße"
                       value={activeElementConfig.fontSize}
@@ -1162,6 +1210,20 @@ export default function SocialPostsPage() {
                 {/* Text-Elemente */}
                 {activeElementKind === "text" && (
                   <>
+                    <div>
+                      <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Schriftart</label>
+                      <select
+                        value={activeElementConfig.fontPreset}
+                        onChange={(e) => updateElementConfig(activeElement, { fontPreset: e.target.value })}
+                        style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff" }}
+                      >
+                        {FONT_PRESETS.map((preset) => (
+                          <option key={preset.id} value={preset.id}>
+                            {preset.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <NumberField
                       label="Schriftgröße"
                       value={activeElementConfig.fontSize}
