@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import OpenAI from "openai";
 
 type ExtractedSocialPostData = {
   company: string;
@@ -10,6 +11,7 @@ type ExtractedSocialPostData = {
   teaserImageUrl: string;
   link: string;
   shortText: string;
+  captionText: string;
 };
 
 function safeString(value: unknown) {
@@ -17,6 +19,7 @@ function safeString(value: unknown) {
 }
 
 function absoluteUrl(baseUrl: string, candidate: string) {
+  if (!candidate) return "";
   try {
     return new URL(candidate, baseUrl).toString();
   } catch {
@@ -49,14 +52,10 @@ function extractMeta(html: string, property: string) {
     new RegExp(`<meta[^>]+name=["']${property}["'][^>]+content=["']([^"']+)["']`, "i"),
     new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${property}["']`, "i"),
   ];
-
   for (const pattern of patterns) {
     const match = html.match(pattern);
-    if (match?.[1]) {
-      return decodeHtml(match[1]).trim();
-    }
+    if (match?.[1]) return decodeHtml(match[1]).trim();
   }
-
   return "";
 }
 
@@ -70,7 +69,6 @@ function extractJsonLdBlocks(html: string) {
 
 function findStringInJson(value: unknown, keys: string[]): string {
   if (!value || typeof value !== "object") return "";
-
   if (Array.isArray(value)) {
     for (const item of value) {
       const found = findStringInJson(item, keys);
@@ -78,19 +76,14 @@ function findStringInJson(value: unknown, keys: string[]): string {
     }
     return "";
   }
-
   for (const key of keys) {
     const direct = (value as Record<string, unknown>)[key];
-    if (typeof direct === "string" && direct.trim()) {
-      return direct.trim();
-    }
+    if (typeof direct === "string" && direct.trim()) return direct.trim();
   }
-
   for (const child of Object.values(value as Record<string, unknown>)) {
     const found = findStringInJson(child, keys);
     if (found) return found;
   }
-
   return "";
 }
 
@@ -103,8 +96,7 @@ function extractListText(html: string, label: string) {
 function extractParagraphAround(html: string, needle: string) {
   const index = html.toLowerCase().indexOf(needle.toLowerCase());
   if (index === -1) return "";
-  const windowText = stripTags(html.slice(index, index + 500));
-  return windowText;
+  return stripTags(html.slice(index, index + 500));
 }
 
 function trimSentence(value: string, maxLength = 130) {
@@ -114,10 +106,142 @@ function trimSentence(value: string, maxLength = 130) {
   return `${text.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-function extractSocialPostData(url: string, html: string): ExtractedSocialPostData {
+// Hauptbild: zuerst platform-spezifisches order_images-Muster, dann og:image, dann Fallbacks
+function extractMainImage(html: string, baseUrl: string): string {
+  // 1. Plattform-spezifisch: order_images / crop_hr URL (jobs-in-berlin-brandenburg.de)
+  const platformPatterns = [
+    /["'](https?:\/\/[^"']*order_images[^"']*\.(?:jpg|jpeg|png|webp)[^"']*)/i,
+    /["'](https?:\/\/[^"']*crop_hr[^"']*\.(?:jpg|jpeg|png|webp)[^"']*)/i,
+    /["'](https?:\/\/[^"']*_em_daten[^"']*\.(?:jpg|jpeg|png|webp)[^"']*)/i,
+  ];
+  for (const pattern of platformPatterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) return decodeHtml(match[1]);
+  }
+
+  // 2. og:image
+  const ogImage = extractMeta(html, "og:image");
+  if (ogImage) return absoluteUrl(baseUrl, ogImage);
+
+  // 3. Großes Bild in figure / header / hero-Bereich
+  const heroPatterns = [
+    /<figure[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["']/i,
+    /<div[^>]+(?:class|id)=["'][^"']*(?:hero|header|teaser|stage|banner|main-image)[^"']*["'][^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["']/i,
+    /<img[^>]+(?:class|id)=["'][^"']*(?:hero|header|teaser|main)[^"']*["'][^>]+src=["']([^"']+)["']/i,
+    /<img[^>]+src=["']([^"']+)["'][^>]*(?:class|id)=["'][^"']*(?:hero|header|teaser|main)[^"']*["']/i,
+  ];
+  for (const pattern of heroPatterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) return absoluteUrl(baseUrl, decodeHtml(match[1]));
+  }
+
+  return "";
+}
+
+// Arbeitgeberseiten-Link aus der Stellenanzeige extrahieren
+function extractEmployerPageUrl(html: string, baseUrl: string): string {
+  // jobs-in-berlin-brandenburg.de verlinkt auf Arbeitgeberprofile
+  const patterns = [
+    /href=["']([^"']*\/arbeitgeber\/[^"']+)["']/i,
+    /href=["']([^"']*\/unternehmen\/[^"']+)["']/i,
+    /href=["']([^"']*\/firma\/[^"']+)["']/i,
+    /href=["']([^"']*\/company\/[^"']+)["']/i,
+    /href=["']([^"']+)["'][^>]*>[\s\S]{0,60}?(?:Arbeitgeberprofil|Zum Arbeitgeber|Unternehmensprofil|Firmenprofil)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      const url = absoluteUrl(baseUrl, decodeHtml(match[1]));
+      if (url.startsWith("http")) return url;
+    }
+  }
+  return "";
+}
+
+// Logo aus der Arbeitgeberseite extrahieren
+function extractLogoFromEmployerPage(html: string, baseUrl: string): string {
+  // 1. og:image (häufig das Firmenlogo auf Profilseiten)
+  const ogImage = extractMeta(html, "og:image");
+  if (ogImage) return absoluteUrl(baseUrl, ogImage);
+
+  // 2. Img-Tag mit Logo-Signalen in class, alt, id oder src
+  const logoPatterns = [
+    /<img[^>]+src=["']([^"']+)["'][^>]*(?:class|alt|id|title)=["'][^"']*(?:logo|brand|marke|signet)[^"']*["']/i,
+    /<img[^>]*(?:class|alt|id|title)=["'][^"']*(?:logo|brand|marke|signet)[^"']*["'][^>]+src=["']([^"']+)["']/i,
+    /<img[^>]+src=["']([^"']*(?:logo|brand)[^"']*)["']/i,
+  ];
+  for (const pattern of logoPatterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      const url = absoluteUrl(baseUrl, decodeHtml(match[1]));
+      if (url.startsWith("http")) return url;
+    }
+  }
+
+  return "";
+}
+
+// Caption per OpenAI generieren (2 Sätze, natürlicher Social-Post-Stil)
+async function generateCaption(
+  jobTitle: string,
+  company: string,
+  location: string,
+  employment: string,
+  highlight: string,
+  fallback: string
+): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return fallback;
+
+  try {
+    const openai = new OpenAI({ apiKey });
+
+    const parts = [
+      jobTitle && `Jobtitel: ${jobTitle}`,
+      company && `Unternehmen: ${company}`,
+      location && `Ort: ${location}`,
+      employment && `Beschäftigung: ${employment}`,
+      highlight && `Besonderheit: ${highlight}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const response = await openai.responses.create({
+      model: "gpt-4o",
+      input: [
+        {
+          role: "system",
+          content:
+            "Du schreibst prägnante, authentische Social-Media-Texte auf Deutsch. Keine Floskeln, kein Spam, kein Auflisten von Feldern.",
+        },
+        {
+          role: "user",
+          content: `Schreibe genau 2 Sätze für einen Social-Media-Post zu dieser Stellenanzeige:
+
+${parts}
+
+Anforderungen:
+- Satz 1: Stelle, Unternehmen und Ort natürlich und ansprechend formulieren
+- Satz 2: Echter, persönlicher CTA oder kurzer Hinweis auf die Bewerbung
+- Natürlicher Stil, sachlich aber ansprechend
+- Kein Spam, keine Aufzählung, keine Template-Sprache
+- Nur die 2 Sätze ausgeben, keine Erklärung, kein Hashtag`,
+        },
+      ],
+    });
+
+    const text = response.output_text?.trim() || "";
+    return text || fallback;
+  } catch (error) {
+    console.error("SOCIAL POST CAPTION ERROR:", error);
+    return fallback;
+  }
+}
+
+function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialPostData, "captionText"> {
   let company = extractMeta(html, "og:site_name");
   let jobTitle = extractMeta(html, "og:title");
-  let teaserImageUrl = absoluteUrl(url, extractMeta(html, "og:image"));
+  let teaserImageUrl = extractMainImage(html, url);
   let logoUrl = "";
   let location = "";
   let employment = "";
@@ -138,9 +262,11 @@ function extractSocialPostData(url: string, html: string): ExtractedSocialPostDa
       logoUrl =
         logoUrl ||
         absoluteUrl(url, findStringInJson(parsed, ["logo", "image", "thumbnailUrl"]));
-      teaserImageUrl =
-        teaserImageUrl ||
-        absoluteUrl(url, findStringInJson(parsed, ["image", "thumbnailUrl", "photo"]));
+      // teaserImageUrl nur überschreiben, wenn noch nicht per Hauptbild-Logik gefunden
+      if (!teaserImageUrl) {
+        teaserImageUrl =
+          absoluteUrl(url, findStringInJson(parsed, ["image", "thumbnailUrl", "photo"]));
+      }
       highlight =
         highlight ||
         trimSentence(findStringInJson(parsed, ["description", "summary", "qualifications"]), 150);
@@ -178,17 +304,16 @@ function extractSocialPostData(url: string, html: string): ExtractedSocialPostDa
       150
     );
 
+  // Logo aus JSON-LD oder Img-Tags (wird ggf. durch Arbeitgeberseite überschrieben)
   logoUrl =
     logoUrl ||
     absoluteUrl(
       url,
-      html.match(/<img[^>]+(?:logo|arbeitgeber)[^>]+src=["']([^"']+)["']/i)?.[1] || ""
-    );
-  teaserImageUrl =
-    teaserImageUrl ||
+      html.match(/<img[^>]+(?:class|alt|id)=["'][^"']*(?:logo|arbeitgeber)[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] || ""
+    ) ||
     absoluteUrl(
       url,
-      html.match(/<img[^>]+(?:teaser|hero|header)[^>]+src=["']([^"']+)["']/i)?.[1] || ""
+      html.match(/<img[^>]+src=["']([^"']+)["'][^>]*(?:class|alt)=["'][^"']*(?:logo|arbeitgeber)[^"']*["']/i)?.[1] || ""
     );
 
   const shortText = [
@@ -230,10 +355,9 @@ export async function POST(req: Request) {
       );
     }
 
+    // Hauptseite laden
     const response = await fetch(url, {
-      headers: {
-        "User-Agent": "jobs-flow-api social-post extractor",
-      },
+      headers: { "User-Agent": "jobs-flow-api social-post extractor" },
       cache: "no-store",
     });
 
@@ -245,14 +369,57 @@ export async function POST(req: Request) {
     }
 
     const html = await response.text();
-    const data = extractSocialPostData(url, html);
+    const baseData = extractSocialPostData(url, html);
 
-    if (!data.company && !data.jobTitle && !data.location) {
+    if (!baseData.company && !baseData.jobTitle && !baseData.location) {
       return NextResponse.json(
         { error: "Es konnten nicht genug Daten aus der Stellenanzeige gelesen werden." },
         { status: 422 }
       );
     }
+
+    // Arbeitgeberseite + Caption parallel laden
+    const employerPageUrl = extractEmployerPageUrl(html, url);
+
+    const [employerLogoResult, captionText] = await Promise.allSettled([
+      employerPageUrl
+        ? fetch(employerPageUrl, {
+            headers: { "User-Agent": "jobs-flow-api social-post extractor" },
+            cache: "no-store",
+          })
+            .then(async (res) => {
+              if (!res.ok) return "";
+              const employerHtml = await res.text();
+              return extractLogoFromEmployerPage(employerHtml, employerPageUrl);
+            })
+            .catch(() => "")
+        : Promise.resolve(""),
+
+      generateCaption(
+        baseData.jobTitle,
+        baseData.company,
+        baseData.location,
+        baseData.employment,
+        baseData.highlight,
+        baseData.shortText
+      ),
+    ]);
+
+    // Bestes Logo: bevorzugt von Arbeitgeberseite, sonst aus Stellenanzeige
+    const betterLogoUrl =
+      (employerLogoResult.status === "fulfilled" && employerLogoResult.value) ||
+      baseData.logoUrl;
+
+    const finalCaption =
+      captionText.status === "fulfilled" && captionText.value
+        ? captionText.value
+        : baseData.shortText;
+
+    const data: ExtractedSocialPostData = {
+      ...baseData,
+      logoUrl: safeString(betterLogoUrl),
+      captionText: safeString(finalCaption),
+    };
 
     return NextResponse.json({ data });
   } catch (error: unknown) {

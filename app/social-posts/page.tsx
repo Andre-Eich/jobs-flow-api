@@ -48,6 +48,7 @@ type ExtractedSocialPostData = {
   teaserImageUrl: string;
   link: string;
   shortText: string;
+  captionText: string;
 };
 
 type DragState = {
@@ -84,6 +85,8 @@ const SAMPLE_DATA: ExtractedSocialPostData = {
   link: "https://jobs-in-berlin-brandenburg.de/",
   shortText:
     "Referent Wirtschaftspolitik (m/w/d) bei IHK Ostbrandenburg. Frankfurt (Oder) • Vollzeit, unbefristet • Hoher Gestaltungsspielraum und direkte Wirkung auf wirtschaftspolitische Entscheidungsprozesse",
+  captionText:
+    "Die IHK Ostbrandenburg sucht einen Referenten Wirtschaftspolitik (m/w/d) in Frankfurt (Oder) – eine Stelle mit echtem Gestaltungsspielraum. Jetzt bewerben und Teil der regionalen Wirtschaftsförderung werden.",
 };
 
 function formatDate(dateString: string) {
@@ -945,7 +948,34 @@ export default function SocialPostsPage() {
               </div>
 
               {template && extractedData ? (
-                <SocialPostPreview template={template} data={extractedData} selectedElements={selectedElements} />
+                <>
+                  <SocialPostPreview template={template} data={extractedData} selectedElements={selectedElements} />
+                  <div style={{ marginTop: "14px" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const imgUrl = extractedData.teaserImageUrl;
+                        if (imgUrl) {
+                          window.open(imgUrl, "_blank", "noopener,noreferrer");
+                        } else {
+                          alert("Kein Bild verfügbar.");
+                        }
+                      }}
+                      style={{
+                        padding: "10px 18px",
+                        border: "none",
+                        borderRadius: "8px",
+                        background: "#111827",
+                        color: "#ffffff",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Bild speichern
+                    </button>
+                  </div>
+                </>
               ) : (
                 <div style={{ color: "#6b7280" }}>
                   Lade zuerst eine Stellenanzeige und stelle sicher, dass ein Template gespeichert ist.
@@ -953,15 +983,55 @@ export default function SocialPostsPage() {
               )}
             </div>
 
-            <div style={panelStyle()}>
-              <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "10px" }}>Kurztext</div>
-              <div style={{ color: "#374151", lineHeight: 1.6 }}>
-                {extractedData?.shortText || "Hier erscheint optional ein kurzer 2-Satz-Text aus der geladenen Anzeige."}
-              </div>
-            </div>
+            <CaptionPanel captionText={extractedData?.captionText || extractedData?.shortText || ""} />
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function CaptionPanel({ captionText }: { captionText: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    if (!captionText) return;
+    try {
+      await navigator.clipboard.writeText(captionText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
+  }
+
+  return (
+    <div style={{ ...panelStyle() }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", gap: "12px" }}>
+        <div style={{ fontSize: "18px", fontWeight: 700 }}>Post-Text</div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          disabled={!captionText}
+          style={{
+            padding: "8px 14px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "8px",
+            background: copied ? "#f0fdf4" : "#ffffff",
+            color: copied ? "#166534" : "#111827",
+            cursor: captionText ? "pointer" : "not-allowed",
+            fontSize: "13px",
+            fontWeight: 600,
+            opacity: captionText ? 1 : 0.5,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {copied ? "Kopiert ✓" : "Text kopieren"}
+        </button>
+      </div>
+      <div style={{ color: "#000000", lineHeight: 1.7, fontSize: "15px" }}>
+        {captionText || "Hier erscheint der generierte Post-Text nach dem Laden einer Stellenanzeige."}
+      </div>
     </div>
   );
 }
