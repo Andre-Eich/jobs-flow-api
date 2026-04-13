@@ -1899,7 +1899,7 @@ export default function PhotoToMailPage({
             top: "20px",
           }}
         >
-          <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "12px" }}>CRM</div>
+          <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "12px" }}>Historie</div>
 
           <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
             <button
@@ -1938,7 +1938,7 @@ export default function PhotoToMailPage({
           </div>
 
           {loadingCrm ? (
-            <div style={{ fontSize: "13px", color: "#6b7280" }}>CRM wird geladen...</div>
+            <div style={{ fontSize: "13px", color: "#6b7280" }}>Historie wird geladen...</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: isMobile ? "none" : "70vh", overflowY: "auto", paddingRight: "2px" }}>
               {mailHistory.length === 0 ? (

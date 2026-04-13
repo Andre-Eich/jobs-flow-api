@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
+import { upsertLeadMail } from "@/lib/leadStore";
 
 function escapeHtml(value: string) {
   return value
@@ -131,6 +132,12 @@ export async function POST(req: Request) {
       testMode,
       jobTitle,
       company,
+      contactPerson,
+      phone,
+      website,
+      postalCode,
+      city,
+      industry,
       sendCopy,
       followUp,
       originalEmailId,
@@ -138,6 +145,8 @@ export async function POST(req: Request) {
       hookBaseLabel,
       hookVariantId,
       hookText,
+      textBlockTitles = [],
+      shortMode = false,
     } = await req.json();
 
     if (!text) {
@@ -178,9 +187,13 @@ export async function POST(req: Request) {
       kind: "single" as const,
       jobTitle: String(jobTitle || "").trim(),
       company: String(company || "").trim(),
-      contactPerson: "",
+      contactPerson: String(contactPerson || "").trim(),
+      phone: String(phone || "").trim(),
       followUp: Boolean(followUp),
       originalEmailId: String(originalEmailId || "").trim(),
+      textBlockTitles: Array.isArray(textBlockTitles) ? textBlockTitles : [],
+      shortMode: Boolean(shortMode),
+      testMode: Boolean(testMode),
     };
 
     const html = `
@@ -233,9 +246,15 @@ export async function POST(req: Request) {
       emailId: String(emailId || ""),
       jobTitle: String(jobTitle || "").trim(),
       company: String(company || "").trim(),
-      contactPerson: "",
+      postalCode: String(postalCode || "").trim(),
+      city: String(city || "").trim(),
+      contactPerson: String(contactPerson || "").trim(),
+      phone: String(phone || "").trim(),
+      website: String(website || "").trim(),
+      industry: String(industry || "").trim(),
       recipientEmail: actualRecipient,
       subject: finalSubject,
+      bodyText: finalText,
       hookBaseId: String(hookBaseId || "unknown"),
       hookBaseLabel: String(hookBaseLabel || "Unbekannt"),
       hookVariantId: String(hookVariantId || "unknown"),
@@ -243,9 +262,37 @@ export async function POST(req: Request) {
       followUp: Boolean(followUp),
       originalEmailId: String(originalEmailId || "").trim(),
       kind: "single",
+      textBlockTitles: Array.isArray(textBlockTitles) ? textBlockTitles : [],
+      shortMode: Boolean(shortMode),
+      testMode: Boolean(testMode),
       opened: false,
       lastEvent: "",
       reminderSent: false,
+    });
+
+    upsertLeadMail({
+      company: String(company || "").trim(),
+      postalCode: String(postalCode || "").trim(),
+      city: String(city || "").trim(),
+      recipientEmail: String(to || "").trim() || actualRecipient,
+      phone: String(phone || "").trim(),
+      website: String(website || "").trim(),
+      contactPerson: String(contactPerson || "").trim(),
+      industry: String(industry || "").trim(),
+      channel: "kaltakquise",
+      mail: {
+        id: crypto.randomUUID(),
+        emailId: String(emailId || ""),
+        createdAt: new Date().toISOString(),
+        subject: finalSubject,
+        bodyText: finalText,
+        textBlockTitles: Array.isArray(textBlockTitles) ? textBlockTitles : [],
+        shortMode: Boolean(shortMode),
+        testMode: Boolean(testMode),
+        channel: "kaltakquise",
+        followUp: Boolean(followUp),
+        originalEmailId: String(originalEmailId || "").trim(),
+      },
     });
 
     return NextResponse.json({

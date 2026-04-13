@@ -531,6 +531,7 @@ export default function BulkMailServicePage() {
           company: lead.company,
           industry: lead.industry,
           analysisSummary: lead.analysisSummary,
+          contactPerson: lead.contactPerson,
           shortMode: bulkShortMode,
           textBlocks: activeBulkTextBlocks,
         }),
@@ -554,6 +555,9 @@ export default function BulkMailServicePage() {
           company: lead.company,
           contactPerson: lead.contactPerson,
           phone: lead.phone || "",
+          website: lead.website || "",
+          city: lead.city || "",
+          industry: lead.industry || "",
           hookText:
             activeBulkTextBlocks.map((block) => block.title).join(", ") || generated.subject,
           textBlockTitles: activeBulkTextBlocks.map((block) => block.title),
@@ -664,9 +668,9 @@ export default function BulkMailServicePage() {
         </div>
 
         <div style={{ width: isMobile ? "100%" : "340px", minWidth: isMobile ? "100%" : "340px", background: "#ffffff", border: "1px solid #d1d5db", borderRadius: "14px", padding: "16px", boxSizing: "border-box", position: isMobile ? "static" : "sticky", top: "20px" }}>
-          <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "12px" }}>CRM</div>
+          <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "12px" }}>Historie</div>
           {loadingCrm ? (
-            <div style={{ fontSize: "13px", color: "#6b7280" }}>CRM wird geladen...</div>
+            <div style={{ fontSize: "13px", color: "#6b7280" }}>Historie wird geladen...</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: isMobile ? "none" : "70vh", overflowY: "auto", paddingRight: "2px" }}>
               {bulkPackages.length === 0 ? (

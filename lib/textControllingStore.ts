@@ -9,10 +9,15 @@ export type TextControllingEntry = {
   emailId?: string;
   jobTitle: string;
   company: string;
+  postalCode?: string;
+  city?: string;
   contactPerson?: string;
   phone?: string;
+  website?: string;
+  industry?: string;
   recipientEmail: string;
   subject: string;
+  bodyText?: string;
   hookBaseId: string;
   hookBaseLabel: string;
   hookVariantId: string;

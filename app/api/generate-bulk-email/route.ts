@@ -43,10 +43,6 @@ export async function POST(req: Request) {
     const client = new OpenAI({ apiKey: openaiKey });
     const subject = shortMode ? pickRandom(SUBJECT_VARIANTS_SHORT) : pickRandom(SUBJECT_VARIANTS_STANDARD);
 
-    const greeting = contactPerson
-      ? `Guten Tag ${contactPerson},`
-      : "Guten Tag,";
-
     const blockTexts = textBlocks.map((block) => String(block?.text || "").trim()).filter(Boolean);
 
     const prompt = `
@@ -54,6 +50,7 @@ Erstelle eine professionelle deutsche Vertriebs-E-Mail für ein regionales Stell
 
 Kontext:
 - Unternehmen: ${company || "das Unternehmen"}
+- Ansprechpartner: ${contactPerson || "nicht bekannt"}
 - Branche: ${industry || "unbekannt"}
 - Analysehinweis: ${analysisSummary || "keine Zusatzanalyse"}
 - Modus: ${shortMode ? "Kurze Mail" : "Standard"}
@@ -65,8 +62,9 @@ WICHTIG:
 - Keine Bewerbung
 - Kein Betreff
 - Keine Signatur
+- Keine Anrede am Anfang
 - Keine Grußformel am Ende, die kommt später separat
-- Nach der Begrüßung beginnt ein neuer Absatz
+- Kein "Guten Tag", kein "Hallo", keine direkte Begruessung
 - Formuliere weich und unaufdringlich
 - Vermeide harte Formulierungen wie "wir platzieren" oder "wir erhöhen"
 - Besser: "kann helfen", "lässt sich ergänzen", "zusätzliche Sichtbarkeit", "regional sichtbar machen"
@@ -131,8 +129,6 @@ Antworte nur als JSON mit diesem Format:
     }
 
     const finalText = [
-      greeting,
-      "",
       bodyText,
       ...(blockTexts.length ? ["", ...blockTexts] : []),
       "",
@@ -145,8 +141,11 @@ Antworte nur als JSON mit diesem Format:
       shortMode,
       usedTextBlocks: blockTexts.length,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("GENERATE BULK EMAIL V2 ERROR:", error);
-    return NextResponse.json({ error: error?.message || "Bulk-Text konnte nicht erzeugt werden." }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Bulk-Text konnte nicht erzeugt werden." },
+      { status: 500 }
+    );
   }
 }

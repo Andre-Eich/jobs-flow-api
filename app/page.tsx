@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import BulkMailPage from "./photo/page";
 import ColdMailPage from "./photo/page.replacement";
+import CrmPage from "./crm/page";
 
 const DEFAULT_SERVICE_TASK = `Erstelle einen natürlichen deutschen Text mit genau {count} Wörtern.
 
@@ -15,7 +16,7 @@ Vorgaben:
 - Gib nur den finalen Text aus.
 - Genau {count} Wörter.`;
 
-type ToolKey = "service-text" | "text-generator" | "photo-mail" | "bulk-mail";
+type ToolKey = "service-text" | "text-generator" | "photo-mail" | "bulk-mail" | "crm";
 
 export default function Home() {
   const [activeTool, setActiveTool] = useState<ToolKey>("service-text");
@@ -82,6 +83,12 @@ export default function Home() {
             active={activeTool === "bulk-mail"}
             onClick={() => handleSelectTool("bulk-mail")}
             label="Streumails"
+          />
+
+          <SidebarButton
+            active={activeTool === "crm"}
+            onClick={() => handleSelectTool("crm")}
+            label="CRM"
           />
         </aside>
       )}
@@ -158,6 +165,12 @@ export default function Home() {
                   onClick={() => handleSelectTool("bulk-mail")}
                   label="Streumails"
                 />
+
+                <SidebarButton
+                  active={activeTool === "crm"}
+                  onClick={() => handleSelectTool("crm")}
+                  label="CRM"
+                />
               </div>
             )}
           </>
@@ -169,6 +182,7 @@ export default function Home() {
         )}
         {activeTool === "photo-mail" && <ColdMailPage serviceMode="cold" />}
         {activeTool === "bulk-mail" && <BulkMailPage />}
+        {activeTool === "crm" && <CrmPage />}
       </main>
     </div>
   );
