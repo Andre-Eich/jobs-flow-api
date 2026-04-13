@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
 
 function escapeHtml(value: string) {
@@ -20,16 +21,33 @@ function ensureGreetingAndClosing(text: string) {
   if (!trimmed) return trimmed;
 
   const hasGreeting = /^(guten tag|sehr geehrte|sehr geehrter)/i.test(trimmed);
-  const hasClosing = /mit freundlichen grüßen/i.test(trimmed);
+  const hasClosing = /mit freundlichen gruessen/i.test(trimmed);
 
   let result = trimmed;
   if (!hasGreeting) {
     result = `Guten Tag,\n\n${result}`;
   }
   if (!hasClosing) {
-    result = `${result}\n\nMit freundlichen Grüßen`;
+    result = `${result}\n\nMit freundlichen Gruessen`;
   }
   return result;
+}
+
+function getEmailId(result: unknown) {
+  if (!result || typeof result !== "object") return "";
+
+  const topLevelId =
+    "id" in result && typeof result.id === "string" ? result.id : "";
+
+  const data =
+    "data" in result && result.data && typeof result.data === "object"
+      ? result.data
+      : null;
+
+  const nestedId =
+    data && "id" in data && typeof data.id === "string" ? data.id : "";
+
+  return nestedId || topLevelId;
 }
 
 export async function POST(req: Request) {
@@ -70,21 +88,32 @@ export async function POST(req: Request) {
     }
 
     const preparedText = ensureGreetingAndClosing(String(text || ""));
+    const normalizedTextBlockTitles = Array.isArray(textBlockTitles) ? textBlockTitles : [];
 
     const bulkMeta = {
       type: "bulk_package",
       batchId,
       company: String(company || "").trim(),
-      textBlockTitles: Array.isArray(textBlockTitles) ? textBlockTitles : [],
+      textBlockTitles: normalizedTextBlockTitles,
       shortMode: Boolean(shortMode),
       testMode: Boolean(testMode),
       contactPerson: String(contactPerson || "").trim(),
     };
 
+    const crmMeta = {
+      kind: "bulk" as const,
+      company: String(company || "").trim(),
+      contactPerson: String(contactPerson || "").trim(),
+      batchId: String(batchId || "").trim(),
+      textBlockTitles: normalizedTextBlockTitles,
+      shortMode: Boolean(shortMode),
+      testMode: Boolean(testMode),
+    };
+
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
         <div style="margin-bottom: 24px;">${textToHtml(preparedText)}</div>
-        <div style="margin-top: 18px; font-weight: 700;">Andre Eichstädt</div>
+        <div style="margin-top: 18px; font-weight: 700;">Andre Eichstaedt</div>
         <div>Anzeigenberater</div>
         <div>Jobs in Berlin-Brandenburg</div>
         <div>Tel. 0335/629797-38</div>
@@ -92,21 +121,22 @@ export async function POST(req: Request) {
         <div style="margin-top: 12px;">Leipziger Str. 56</div>
         <div>15236 Frankfurt (Oder)</div>
         <div><a href="https://www.jobs-in-berlin-brandenburg.de" target="_blank" style="color:#111111; text-decoration:none;">www.jobs-in-berlin-brandenburg.de</a></div>
+        ${buildCrmMetaHtmlComment(crmMeta)}
         <!-- BULK_META:${escapeHtml(JSON.stringify(bulkMeta))} -->
       </div>
     `;
 
     const result = await resend.emails.send({
-      from: "Andre Eichstädt <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
+      from: "Andre Eichstaedt <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
       replyTo: "a.eichstaedt@jobs-in-berlin-brandenburg.de",
       to: actualRecipient,
       subject,
       html,
-      text: `${preparedText}\nAndre Eichstädt\n\n[BULK_META:${JSON.stringify(bulkMeta)}]`,
+      text: `${preparedText}\nAndre Eichstaedt\n\n${buildCrmMetaText(crmMeta)}\n[BULK_META:${JSON.stringify(bulkMeta)}]`,
       bcc: isTestMode ? testRecipient || undefined : sendCopy ? "a.eichstaedt@jobs-in-berlin-brandenburg.de" : undefined,
     });
 
-    const emailId = (result as any)?.data?.id || (result as any)?.id || "";
+    const emailId = getEmailId(result);
 
     saveTextControllingEntry({
       id: crypto.randomUUID(),
@@ -114,6 +144,7 @@ export async function POST(req: Request) {
       emailId: String(emailId || ""),
       jobTitle: "",
       company: String(company || "").trim(),
+      contactPerson: String(contactPerson || "").trim(),
       recipientEmail: actualRecipient,
       subject: String(subject || "").trim(),
       hookBaseId: "bulk",
@@ -121,14 +152,22 @@ export async function POST(req: Request) {
       hookVariantId: "bulk_v4",
       hookText: String(hookText || "").trim(),
       followUp: false,
+      batchId: String(batchId || "").trim(),
+      kind: "bulk",
+      textBlockTitles: normalizedTextBlockTitles,
+      shortMode: Boolean(shortMode),
+      testMode: Boolean(testMode),
       opened: false,
       lastEvent: "",
       reminderSent: false,
     });
 
     return NextResponse.json({ success: true, data: result, actualRecipient, emailId, testMode: isTestMode, batchId });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("SEND BULK MAIL V3 ERROR:", error);
-    return NextResponse.json({ error: error?.message || "Bulk-Mail konnte nicht gesendet werden." }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Bulk-Mail konnte nicht gesendet werden." },
+      { status: 500 }
+    );
   }
 }

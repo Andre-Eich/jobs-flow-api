@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import PhotoToMailPage from "./photo/page";
+import BulkMailPage from "./photo/page";
+import ColdMailPage from "./photo/page.replacement";
 
 const DEFAULT_SERVICE_TASK = `Erstelle einen natürlichen deutschen Text mit genau {count} Wörtern.
 
@@ -14,7 +15,7 @@ Vorgaben:
 - Gib nur den finalen Text aus.
 - Genau {count} Wörter.`;
 
-type ToolKey = "service-text" | "text-generator" | "photo-mail";
+type ToolKey = "service-text" | "text-generator" | "photo-mail" | "bulk-mail";
 
 export default function Home() {
   const [activeTool, setActiveTool] = useState<ToolKey>("service-text");
@@ -75,6 +76,12 @@ export default function Home() {
             active={activeTool === "photo-mail"}
             onClick={() => handleSelectTool("photo-mail")}
             label="Kaltakquise-Mails"
+          />
+
+          <SidebarButton
+            active={activeTool === "bulk-mail"}
+            onClick={() => handleSelectTool("bulk-mail")}
+            label="Streumails"
           />
         </aside>
       )}
@@ -145,6 +152,12 @@ export default function Home() {
                   onClick={() => handleSelectTool("photo-mail")}
                   label="Kaltakquise-Mails"
                 />
+
+                <SidebarButton
+                  active={activeTool === "bulk-mail"}
+                  onClick={() => handleSelectTool("bulk-mail")}
+                  label="Streumails"
+                />
               </div>
             )}
           </>
@@ -154,7 +167,8 @@ export default function Home() {
         {activeTool === "text-generator" && (
           <TextGeneratorPlaceholder isMobile={isMobile} />
         )}
-        {activeTool === "photo-mail" && <PhotoToMailPage />}
+        {activeTool === "photo-mail" && <ColdMailPage serviceMode="cold" />}
+        {activeTool === "bulk-mail" && <BulkMailPage />}
       </main>
     </div>
   );

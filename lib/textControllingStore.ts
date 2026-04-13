@@ -9,6 +9,7 @@ export type TextControllingEntry = {
   emailId?: string;
   jobTitle: string;
   company: string;
+  contactPerson?: string;
   recipientEmail: string;
   subject: string;
   hookBaseId: string;
@@ -16,6 +17,12 @@ export type TextControllingEntry = {
   hookVariantId: string;
   hookText: string;
   followUp: boolean;
+  originalEmailId?: string;
+  batchId?: string;
+  kind?: "single" | "bulk";
+  textBlockTitles?: string[];
+  shortMode?: boolean;
+  testMode?: boolean;
   opened?: boolean;
   lastEvent?: string;
   reminderSent?: boolean;

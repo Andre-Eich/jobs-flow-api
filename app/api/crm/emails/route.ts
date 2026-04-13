@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { extractCrmMeta, type CrmMeta } from "@/lib/crmMeta";
+import { getTextControllingEntries } from "@/lib/textControllingStore";
 
-type CrmMeta = {
-  jobTitle?: string;
-  company?: string;
-  contactPerson?: string;
-  followUp?: boolean;
-  originalEmailId?: string;
+type RawEmailListItem = {
+  id?: string;
+  to?: string | string[];
+  subject?: string;
+  created_at?: string;
+  last_event?: string;
 };
 
 function getDomain(email: string) {
@@ -48,30 +50,6 @@ function inferStatus(lastEvent: string): "sent" | "test" | "failed" | "draft" {
   return "draft";
 }
 
-function extractCrmMeta(text: string): CrmMeta {
-  if (!text) return {};
-
-  const plainTextMatch = text.match(/\[CRM_META\]\s*(\{[\s\S]*\})/);
-  if (plainTextMatch?.[1]) {
-    try {
-      return JSON.parse(plainTextMatch[1]);
-    } catch {
-      // ignore
-    }
-  }
-
-  const htmlCommentMatch = text.match(/CRM_META\s+(\{[\s\S]*?\})/);
-  if (htmlCommentMatch?.[1]) {
-    try {
-      return JSON.parse(htmlCommentMatch[1]);
-    } catch {
-      // ignore
-    }
-  }
-
-  return {};
-}
-
 export async function GET(req: Request) {
   try {
     const apiKey = process.env.RESEND_CRM_API_KEY || process.env.RESEND_API_KEY;
@@ -100,10 +78,18 @@ export async function GET(req: Request) {
       );
     }
 
-    const rawEmails = Array.isArray(result.data?.data) ? result.data.data : [];
+    const rawEmails: RawEmailListItem[] = Array.isArray(result.data?.data)
+      ? (result.data.data as RawEmailListItem[])
+      : [];
+    const entries = getTextControllingEntries();
+    const entryByEmailId = new Map(
+      entries
+        .filter((entry) => entry.emailId)
+        .map((entry) => [String(entry.emailId), entry] as const)
+    );
 
     const sortedRawEmails = rawEmails.sort(
-      (a: any, b: any) =>
+      (a, b) =>
         new Date(safeString(b?.created_at)).getTime() -
         new Date(safeString(a?.created_at)).getTime()
     );
@@ -111,13 +97,14 @@ export async function GET(req: Request) {
     const limitedRawEmails = sortedRawEmails.slice(0, 25);
 
     const detailedEmails = await Promise.all(
-      limitedRawEmails.map(async (item: any) => {
+      limitedRawEmails.map(async (item) => {
         const id = safeString(item?.id);
         const toValue = Array.isArray(item?.to) ? item.to[0] || "" : item?.to || "";
         const recipientEmail = safeString(toValue);
         const subject = safeString(item?.subject) || "Ohne Betreff";
         const createdAt = safeString(item?.created_at) || new Date().toISOString();
         const lastEvent = safeString(item?.last_event);
+        const entry = entryByEmailId.get(id);
 
         let meta: CrmMeta = {};
 
@@ -138,13 +125,34 @@ export async function GET(req: Request) {
           console.error("CRM DETAIL ERROR", { id, err });
         }
 
+        const effectiveJobTitle = safeString(meta.jobTitle) || safeString(entry?.jobTitle);
+        const effectiveCompany = safeString(meta.company) || safeString(entry?.company);
+        const effectiveContactPerson =
+          safeString(meta.contactPerson) || safeString(entry?.contactPerson);
+        const effectiveFollowUp =
+          typeof meta.followUp === "boolean" ? meta.followUp : Boolean(entry?.followUp);
+        const effectiveOriginalEmailId =
+          safeString(meta.originalEmailId) || safeString(entry?.originalEmailId);
+        const effectiveKind =
+          meta.kind === "bulk" || entry?.kind === "bulk" ? "bulk" : "single";
+        const effectiveBatchId = safeString(meta.batchId) || safeString(entry?.batchId);
+        const effectiveTextBlockTitles = Array.isArray(meta.textBlockTitles) && meta.textBlockTitles.length > 0
+          ? meta.textBlockTitles
+          : Array.isArray(entry?.textBlockTitles)
+          ? entry.textBlockTitles
+          : [];
+        const effectiveShortMode =
+          typeof meta.shortMode === "boolean" ? meta.shortMode : Boolean(entry?.shortMode);
+        const effectiveTestMode =
+          typeof meta.testMode === "boolean" ? meta.testMode : Boolean(entry?.testMode);
+
         return {
           id,
           subject,
-          jobTitle: safeString(meta.jobTitle),
-          company: safeString(meta.company),
-          normalizedCompany: normalizeCompany(safeString(meta.company)),
-          contactPerson: safeString(meta.contactPerson),
+          jobTitle: effectiveJobTitle,
+          company: effectiveCompany,
+          normalizedCompany: normalizeCompany(effectiveCompany),
+          contactPerson: effectiveContactPerson,
           recipientEmail,
           recipientLabel: recipientEmail,
           domain: getDomain(recipientEmail),
@@ -152,8 +160,13 @@ export async function GET(req: Request) {
           status: inferStatus(lastEvent),
           createdAt,
           lastEvent: lastEvent.toLowerCase(),
-          followUp: !!meta.followUp,
-          originalEmailId: safeString(meta.originalEmailId),
+          followUp: effectiveFollowUp,
+          originalEmailId: effectiveOriginalEmailId,
+          kind: effectiveKind,
+          batchId: effectiveBatchId,
+          textBlockTitles: effectiveTextBlockTitles,
+          shortMode: effectiveShortMode,
+          testMode: effectiveTestMode,
         };
       })
     );
@@ -234,11 +247,11 @@ export async function GET(req: Request) {
       emails: limited,
       reminders,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("CRM EMAILS ERROR:", error);
 
     return NextResponse.json(
-      { error: error?.message || "Server Fehler" },
+      { error: error instanceof Error ? error.message : "Server Fehler" },
       { status: 500 }
     );
   }

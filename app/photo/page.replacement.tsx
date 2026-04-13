@@ -69,6 +69,7 @@ type MailRecord = {
   reminded?: boolean;
   reminderSentAt?: string;
   reminderSubject?: string;
+  kind?: "single" | "bulk";
 };
 
 type MailDetail = {
@@ -532,7 +533,11 @@ function buildMockBulkLeads(location: string, count: number): BulkLead[] {
   });
 }
 
-export default function PhotoToMailPage() {
+export default function PhotoToMailPage({
+  serviceMode = "full",
+}: {
+  serviceMode?: "cold" | "full";
+}) {
   const [mainView, setMainView] = useState<MainView>("mails");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -620,6 +625,7 @@ export default function PhotoToMailPage() {
     () =>
       reminders.filter(
         (item) =>
+          item.kind !== "bulk" &&
           !completedReminders.includes(item.id) &&
           !dismissedReminderIds.includes(item.id)
       ),
@@ -679,8 +685,16 @@ export default function PhotoToMailPage() {
       const loadedEmails = Array.isArray(data.emails) ? data.emails : [];
       const loadedReminders = Array.isArray(data.reminders) ? data.reminders : [];
 
-      setMailHistory(loadedEmails);
-      setReminders(loadedReminders);
+      setMailHistory(
+        serviceMode === "cold"
+          ? loadedEmails.filter((mail: MailRecord) => mail.kind !== "bulk")
+          : loadedEmails
+      );
+      setReminders(
+        serviceMode === "cold"
+          ? loadedReminders.filter((mail: MailRecord) => mail.kind !== "bulk")
+          : loadedReminders
+      );
 
       const preCompleted = loadedEmails
         .filter((mail: MailRecord) => mail.reminded)
@@ -730,6 +744,12 @@ export default function PhotoToMailPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainView]);
+
+  useEffect(() => {
+    if (serviceMode === "cold" && mainView === "bulk") {
+      setMainView("mails");
+    }
+  }, [mainView, serviceMode]);
 
   async function handlePasteUrl() {
     setError("");
@@ -1295,9 +1315,11 @@ export default function PhotoToMailPage() {
         <button type="button" onClick={() => setMainView("mails")} style={topMenuButtonStyle(mainView === "mails")}>
           Kaltakquise-Mails
         </button>
-        <button type="button" onClick={() => setMainView("bulk")} style={topMenuButtonStyle(mainView === "bulk")}>
-          Streumail
-        </button>
+        {serviceMode !== "cold" ? (
+          <button type="button" onClick={() => setMainView("bulk")} style={topMenuButtonStyle(mainView === "bulk")}>
+            Streumail
+          </button>
+        ) : null}
         <button type="button" onClick={() => setMainView("reminders")} style={topMenuButtonStyle(mainView === "reminders")}>
           Erinnerungen
         </button>

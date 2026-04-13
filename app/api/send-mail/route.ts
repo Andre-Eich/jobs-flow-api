@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
 
 function escapeHtml(value: string) {
@@ -32,18 +33,18 @@ function buildFinalText(text: string, hiddenMarker?: string) {
   let cleanedText = normalizeGreeting(text);
 
   cleanedText = cleanedText.replace(
-    /(mit freundlichen grüßen[,!]?|freundliche grüße[,!]?)\s*$/i,
+    /(mit freundlichen gruessen[,!]?|freundliche gruesse[,!]?)\s*$/i,
     ""
   ).trim();
 
   const infoBlock =
-    "Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-berlin-brandenburg.de";
+    "Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenboerse finden Sie hier: www.jobs-berlin-brandenburg.de";
 
   if (!cleanedText.includes("Informationen zu unseren Anzeigenpreisen")) {
     cleanedText += `\n\n${infoBlock}`;
   }
 
-  let final = `${cleanedText}\n\nMit freundlichen Grüßen`;
+  let final = `${cleanedText}\n\nMit freundlichen Gruessen`;
 
   if (hiddenMarker) {
     final += `\n\n<!-- ${hiddenMarker} -->`;
@@ -78,20 +79,37 @@ function buildSubject(jobTitle?: string, followUp?: boolean) {
   const subjectVariants = safe
     ? [
         `Zur Position ${safe}: mehr passende Bewerber`,
-        `${safe}: zusätzliche Bewerber erreichen`,
-        `Ihre ${safe}-Anzeige: mehr Reichweite möglich`,
+        `${safe}: zusaetzliche Bewerber erreichen`,
+        `Ihre ${safe}-Anzeige: mehr Reichweite moeglich`,
         `Kurze Idee zu Ihrer ${safe}-Anzeige`,
-        `Mehr passende Bewerbungen für ${safe}`,
+        `Mehr passende Bewerbungen fuer ${safe}`,
       ]
     : [
-        "Mehr Bewerber für Ihre Stellenanzeige",
-        "Zusätzliche Bewerber für Ihre Anzeige",
-        "Ihre Stellenanzeige: mehr Reichweite möglich",
+        "Mehr Bewerber fuer Ihre Stellenanzeige",
+        "Zusaetzliche Bewerber fuer Ihre Anzeige",
+        "Ihre Stellenanzeige: mehr Reichweite moeglich",
         "Kurze Idee zu Ihrer Stellenanzeige",
-        "Mehr passende Bewerbungen für Ihre Anzeige",
+        "Mehr passende Bewerbungen fuer Ihre Anzeige",
       ];
 
   return getRandomItem(subjectVariants);
+}
+
+function getEmailId(result: unknown) {
+  if (!result || typeof result !== "object") return "";
+
+  const topLevelId =
+    "id" in result && typeof result.id === "string" ? result.id : "";
+
+  const data =
+    "data" in result && result.data && typeof result.data === "object"
+      ? result.data
+      : null;
+
+  const nestedId =
+    data && "id" in data && typeof data.id === "string" ? data.id : "";
+
+  return nestedId || topLevelId;
 }
 
 export async function POST(req: Request) {
@@ -146,7 +164,7 @@ export async function POST(req: Request) {
 
     if (!actualRecipient) {
       return NextResponse.json(
-        { error: "Kein Empfänger vorhanden." },
+        { error: "Kein Empfaenger vorhanden." },
         { status: 400 }
       );
     }
@@ -156,6 +174,14 @@ export async function POST(req: Request) {
 
     const finalText = buildFinalText(text, hiddenMarker);
     const finalSubject = buildSubject(jobTitle, followUp);
+    const crmMeta = {
+      kind: "single" as const,
+      jobTitle: String(jobTitle || "").trim(),
+      company: String(company || "").trim(),
+      contactPerson: "",
+      followUp: Boolean(followUp),
+      originalEmailId: String(originalEmailId || "").trim(),
+    };
 
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
@@ -164,7 +190,7 @@ export async function POST(req: Request) {
         </div>
 
         <div style="margin-top: 28px;">
-          <div style="font-weight: 700;">Andre Eichstädt</div>
+          <div style="font-weight: 700;">Andre Eichstaedt</div>
           <div>Anzeigenberater</div>
           <div>Jobs in Berlin-Brandenburg</div>
           <div>Tel. 0335/629797-38</div>
@@ -180,17 +206,18 @@ export async function POST(req: Request) {
               www.jobs-in-berlin-brandenburg.de
             </a>
           </div>
+          ${buildCrmMetaHtmlComment(crmMeta)}
         </div>
       </div>
     `;
 
     const result = await resend.emails.send({
-      from: "Andre Eichstädt <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
+      from: "Andre Eichstaedt <a.eichstaedt@jobs-in-berlin-brandenburg.de>",
       replyTo: "a.eichstaedt@jobs-in-berlin-brandenburg.de",
       to: actualRecipient,
       subject: finalSubject,
       html,
-      text: finalText,
+      text: `${finalText}\n\n${buildCrmMetaText(crmMeta)}`,
       bcc: isTestMode
         ? testRecipient || undefined
         : sendCopy
@@ -198,10 +225,7 @@ export async function POST(req: Request) {
         : undefined,
     });
 
-    const emailId =
-      (result as any)?.data?.id ||
-      (result as any)?.id ||
-      "";
+    const emailId = getEmailId(result);
 
     saveTextControllingEntry({
       id: crypto.randomUUID(),
@@ -209,6 +233,7 @@ export async function POST(req: Request) {
       emailId: String(emailId || ""),
       jobTitle: String(jobTitle || "").trim(),
       company: String(company || "").trim(),
+      contactPerson: "",
       recipientEmail: actualRecipient,
       subject: finalSubject,
       hookBaseId: String(hookBaseId || "unknown"),
@@ -216,6 +241,8 @@ export async function POST(req: Request) {
       hookVariantId: String(hookVariantId || "unknown"),
       hookText: String(hookText || "").trim(),
       followUp: Boolean(followUp),
+      originalEmailId: String(originalEmailId || "").trim(),
+      kind: "single",
       opened: false,
       lastEvent: "",
       reminderSent: false,
@@ -228,11 +255,11 @@ export async function POST(req: Request) {
       subject: finalSubject,
       emailId,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("RESEND ERROR:", error);
 
     return NextResponse.json(
-      { error: error?.message || "Fehler beim Mailversand." },
+      { error: error instanceof Error ? error.message : "Fehler beim Mailversand." },
       { status: 500 }
     );
   }
