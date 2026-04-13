@@ -100,6 +100,64 @@ function extractParagraphAround(html: string, needle: string) {
   return stripTags(html.slice(index, index + 500));
 }
 
+function normalizeWhitespace(value: string) {
+  return stripTags(value).replace(/\s+/g, " ").trim();
+}
+
+function cleanCompanyName(raw: string): string {
+  return safeString(raw)
+    .replace(/\s*[|â€“-]\s*Jobs?\s+in\s+Berlin[\s\S]*$/i, "")
+    .replace(/\s*[|â€“-]\s*Jobs-in-Berlin-Brandenburg\.de\s*$/i, "")
+    .replace(/\bJobs in Berlin-Brandenburg(?:\.de)?\b/gi, "")
+    .trim();
+}
+
+function looksLikePortalBranding(value: string) {
+  const text = safeString(value).toLowerCase();
+  if (!text) return true;
+  return (
+    text.includes("jobs in berlin-brandenburg") ||
+    text.includes("jobs-in-berlin-brandenburg") ||
+    text === "jobs" ||
+    text === "stellenangebote"
+  );
+}
+
+function extractStableHeaderData(html: string) {
+  const headerChunk = html.slice(0, 120000);
+  const h1Candidates = Array.from(headerChunk.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi))
+    .map((match) => cleanJobTitle(normalizeWhitespace(match[1])))
+    .filter(Boolean)
+    .filter((text) => !looksLikePortalBranding(text));
+
+  const jobTitle = h1Candidates[0] || "";
+  if (!jobTitle) {
+    return { jobTitle: "", company: "" };
+  }
+
+  const titleIndex = headerChunk.indexOf(jobTitle);
+  const nearbyChunk =
+    titleIndex >= 0
+      ? headerChunk.slice(titleIndex, Math.min(headerChunk.length, titleIndex + 5000))
+      : headerChunk.slice(0, 5000);
+
+  const companyCandidates = Array.from(
+    nearbyChunk.matchAll(/<(h2|h3|p|div|span|a)[^>]*>([\s\S]*?)<\/\1>/gi)
+  )
+    .map((match) => cleanCompanyName(normalizeWhitespace(match[2])))
+    .filter(Boolean)
+    .filter((text) => text !== jobTitle)
+    .filter((text) => !looksLikePortalBranding(text))
+    .filter((text) => text.length <= 120)
+    .filter((text) => !/^(merken|bewerben|teilen|zurück|zurueck|meine notiz|my notes)$/i.test(text))
+    .filter((text) => !/^(einsatzort|arbeitszeit|branche|kontaktdaten|anzeigen-id)/i.test(text));
+
+  return {
+    jobTitle,
+    company: companyCandidates[0] || "",
+  };
+}
+
 function trimSentence(value: string, maxLength = 130) {
   const text = safeString(value);
   if (!text) return "";
@@ -326,8 +384,9 @@ Anforderungen:
 }
 
 function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialPostData, "captionText" | "benefits"> {
-  let company = extractMeta(html, "og:site_name");
-  let jobTitle = cleanJobTitle(extractMeta(html, "og:title"));
+  const stableHeader = extractStableHeaderData(html);
+  let company = cleanCompanyName(stableHeader.company);
+  let jobTitle = cleanJobTitle(stableHeader.jobTitle || extractMeta(html, "og:title"));
   let teaserImageUrl = extractMainImage(html, url);
   let logoUrl = "";
   let location = "";
@@ -337,7 +396,9 @@ function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialP
   for (const block of extractJsonLdBlocks(html)) {
     try {
       const parsed = JSON.parse(block);
-      company = company || findStringInJson(parsed, ["hiringOrganization", "name", "organization", "title"]);
+      company =
+        company ||
+        cleanCompanyName(findStringInJson(parsed, ["hiringOrganization", "name", "organization", "title"]));
       if (!jobTitle) {
         jobTitle = cleanJobTitle(findStringInJson(parsed, ["title", "name"]));
       }
@@ -361,7 +422,11 @@ function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialP
     jobTitle = cleanJobTitle(stripTags(titleHeading));
   }
 
-  company = company || extractListText(html, "Unternehmen") || extractListText(html, "Arbeitgeber") || "";
+  company =
+    company ||
+    cleanCompanyName(extractListText(html, "Unternehmen")) ||
+    cleanCompanyName(extractListText(html, "Arbeitgeber")) ||
+    "";
   location = location || extractListText(html, "Ort") || extractListText(html, "Standort") || "";
   employment = employment || extractListText(html, "Arbeitszeit") || extractListText(html, "Vertragsart") || "";
   highlight = highlight || trimSentence(
@@ -371,9 +436,20 @@ function extractSocialPostData(url: string, html: string): Omit<ExtractedSocialP
     150
   );
 
-  logoUrl = logoUrl ||
-    absoluteUrl(url, html.match(/<img[^>]+(?:class|alt|id)=["'][^"']*(?:logo|arbeitgeber)[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] || "") ||
-    absoluteUrl(url, html.match(/<img[^>]+src=["']([^"']+)["'][^>]*(?:class|alt)=["'][^"']*(?:logo|arbeitgeber)[^"']*["']/i)?.[1] || "");
+  logoUrl =
+    logoUrl ||
+    absoluteUrl(
+      url,
+      html.match(/<img[^>]+(?:class|alt|id)=["'][^"']*(?:arbeitgeber|firma|company)[^"']*["'][^>]+src=["']([^"']+)["']/i)?.[1] || ""
+    ) ||
+    absoluteUrl(
+      url,
+      html.match(/<img[^>]+src=["']([^"']+)["'][^>]*(?:class|alt)=["'][^"']*(?:arbeitgeber|firma|company)[^"']*["']/i)?.[1] || ""
+    );
+
+  if (looksLikePortalBranding(company)) {
+    company = "";
+  }
 
   const shortText = [
     jobTitle && company ? `${jobTitle} bei ${company}.` : "",

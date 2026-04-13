@@ -158,6 +158,180 @@ function buildImageSource(key: SocialPostElementKey, data: ExtractedSocialPostDa
   return "";
 }
 
+function getProxiedImageUrl(src: string) {
+  if (!src || src.startsWith("data:") || src.startsWith("blob:")) {
+    return src;
+  }
+
+  if (src.startsWith("/")) {
+    return src;
+  }
+
+  return `/api/social-posts/image-proxy?url=${encodeURIComponent(src)}`;
+}
+
+async function loadExportImage(src: string) {
+  const finalSrc = getProxiedImageUrl(src);
+  if (!finalSrc) return null;
+
+  return await new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new window.Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = finalSrc;
+  });
+}
+
+function drawWrappedText(args: {
+  ctx: CanvasRenderingContext2D;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  color: string;
+  textAlign: "left" | "center" | "right";
+  fontWeight?: number;
+  lineHeight?: number;
+}) {
+  const { ctx, text, x, y, width, height, fontSize, color, textAlign, fontWeight = 500, lineHeight = 1.15 } =
+    args;
+  if (!text) return;
+
+  ctx.save();
+  ctx.font = `${fontWeight} ${fontSize}px Arial`;
+  ctx.fillStyle = color;
+  ctx.textAlign = textAlign;
+  ctx.textBaseline = "top";
+
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (ctx.measureText(next).width <= width || !current) {
+      current = next;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+
+  const lineHeightPx = fontSize * lineHeight;
+  const maxLines = Math.max(1, Math.floor(height / lineHeightPx));
+  const visibleLines = lines.slice(0, maxLines);
+  if (lines.length > maxLines && visibleLines.length > 0) {
+    let lastLine = visibleLines[visibleLines.length - 1];
+    while (lastLine.length > 1 && ctx.measureText(`${lastLine}…`).width > width) {
+      lastLine = lastLine.slice(0, -1).trimEnd();
+    }
+    visibleLines[visibleLines.length - 1] = `${lastLine}…`;
+  }
+
+  const textX = textAlign === "center" ? x + width / 2 : textAlign === "right" ? x + width : x;
+  visibleLines.forEach((line, index) => {
+    ctx.fillText(line, textX, y + index * lineHeightPx);
+  });
+  ctx.restore();
+}
+
+function drawBenefitList(args: {
+  ctx: CanvasRenderingContext2D;
+  items: string[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  color: string;
+  lineHeight: number;
+  iconSize: number;
+}) {
+  const { ctx, items, x, y, width, height, fontSize, color, lineHeight, iconSize } = args;
+  if (items.length === 0) return;
+
+  const rowHeight = fontSize * lineHeight;
+  const maxRows = Math.max(1, Math.floor(height / rowHeight));
+  const visibleItems = items.slice(0, maxRows);
+
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.textBaseline = "top";
+
+  visibleItems.forEach((item, index) => {
+    const rowY = y + index * rowHeight;
+    ctx.font = `700 ${iconSize}px Arial`;
+    ctx.fillText("✓", x, rowY);
+    drawWrappedText({
+      ctx,
+      text: item,
+      x: x + iconSize + 10,
+      y: rowY,
+      width: width - iconSize - 10,
+      height: rowHeight,
+      fontSize,
+      color,
+      textAlign: "left",
+      fontWeight: 500,
+      lineHeight: 1.2,
+    });
+  });
+
+  ctx.restore();
+}
+
+function drawImageWithFit(args: {
+  ctx: CanvasRenderingContext2D;
+  image: HTMLImageElement;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  objectFit: "cover" | "contain";
+}) {
+  const { ctx, image, x, y, width, height, objectFit } = args;
+  const imageRatio = image.width / image.height;
+  const boxRatio = width / height;
+
+  let drawWidth = width;
+  let drawHeight = height;
+  let drawX = x;
+  let drawY = y;
+
+  if (objectFit === "cover") {
+    if (imageRatio > boxRatio) {
+      drawHeight = height;
+      drawWidth = height * imageRatio;
+      drawX = x - (drawWidth - width) / 2;
+    } else {
+      drawWidth = width;
+      drawHeight = width / imageRatio;
+      drawY = y - (drawHeight - height) / 2;
+    }
+  } else {
+    if (imageRatio > boxRatio) {
+      drawWidth = width;
+      drawHeight = width / imageRatio;
+      drawY = y + (height - drawHeight) / 2;
+    } else {
+      drawHeight = height;
+      drawWidth = height * imageRatio;
+      drawX = x + (width - drawWidth) / 2;
+    }
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, width, height);
+  ctx.clip();
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  ctx.restore();
+}
+
 // Benefit-Liste als Häkchen-Zeilen rendern
 function BenefitList({
   items,
@@ -218,12 +392,14 @@ function SocialPostPreview({
   template,
   data,
   selectedElements,
+  targetWidth = 760,
 }: {
   template: SocialPostTemplate;
   data: ExtractedSocialPostData;
   selectedElements?: Partial<Record<SocialPostElementKey, boolean>>;
+  targetWidth?: number;
 }) {
-  const scale = 420 / template.width;
+  const scale = targetWidth / template.width;
 
   return (
     <div
@@ -362,14 +538,16 @@ function SocialPostTemplateCanvas({
   activeElement,
   onSelectElement,
   onUpdateElement,
+  targetWidth = 760,
 }: {
   template: SocialPostTemplate;
   data: ExtractedSocialPostData;
   activeElement: SocialPostElementKey;
   onSelectElement: (key: SocialPostElementKey) => void;
   onUpdateElement: (key: SocialPostElementKey, patch: Partial<SocialPostElementConfig>) => void;
+  targetWidth?: number;
 }) {
-  const scale = 420 / template.width;
+  const scale = targetWidth / template.width;
   const [drag, setDrag] = useState<DragState | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -762,6 +940,108 @@ export default function SocialPostsPage() {
     benefits: selectedBenefits.length > 0,
   };
 
+  async function handleSaveRenderedImage() {
+    if (!template || !extractedData) {
+      setError("Bitte zuerst eine Stellenanzeige laden.");
+      return;
+    }
+
+    try {
+      setError("");
+      setSuccessMessage("");
+
+      const canvas = document.createElement("canvas");
+      canvas.width = template.width;
+      canvas.height = template.height;
+      const ctx = canvas.getContext("2d");
+
+      if (!ctx) {
+        setError("Das finale Bild konnte nicht gerendert werden.");
+        return;
+      }
+
+      if (template.backgroundImage) {
+        const background = await loadExportImage(template.backgroundImage);
+        if (background) {
+          drawImageWithFit({
+            ctx,
+            image: background,
+            x: 0,
+            y: 0,
+            width: template.width,
+            height: template.height,
+            objectFit: "cover",
+          });
+        }
+      } else {
+        const gradient = ctx.createLinearGradient(0, 0, template.width, template.height);
+        gradient.addColorStop(0, "#0f172a");
+        gradient.addColorStop(1, "#334155");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, template.width, template.height);
+      }
+
+      for (const element of ELEMENT_LABELS) {
+        const config = template.elements[element.key];
+        if (!config.visible || !effectiveSelectedElements[element.key]) continue;
+
+        if (element.kind === "image") {
+          const src = buildImageSource(element.key, previewData);
+          const image = await loadExportImage(src);
+          if (!image) continue;
+          drawImageWithFit({
+            ctx,
+            image,
+            x: config.x,
+            y: config.y,
+            width: config.width,
+            height: config.height,
+            objectFit: config.objectFit,
+          });
+          continue;
+        }
+
+        if (element.kind === "list") {
+          drawBenefitList({
+            ctx,
+            items: previewData.benefits,
+            x: config.x,
+            y: config.y,
+            width: config.width,
+            height: config.height,
+            fontSize: config.fontSize,
+            color: config.color,
+            lineHeight: config.lineHeight ?? 1.6,
+            iconSize: config.iconSize ?? 18,
+          });
+          continue;
+        }
+
+        drawWrappedText({
+          ctx,
+          text: buildElementText(element.key, previewData),
+          x: config.x,
+          y: config.y,
+          width: config.width,
+          height: config.height,
+          fontSize: config.fontSize,
+          color: config.color,
+          textAlign: config.textAlign,
+          fontWeight: element.key === "jobTitle" ? 700 : 500,
+        });
+      }
+
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = `${(previewData.company || "social-post").replace(/[^\w-]+/g, "-").toLowerCase()}-${(previewData.jobTitle || "job").replace(/[^\w-]+/g, "-").toLowerCase()}.png`;
+      link.click();
+
+      setSuccessMessage("Das finale gerenderte Bild wurde als PNG exportiert.");
+    } catch {
+      setError("Das finale Bild konnte nicht gespeichert werden.");
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
       <div>
@@ -785,8 +1065,8 @@ export default function SocialPostsPage() {
 
       {/* ───────────── TEMPLATE BEARBEITEN ───────────── */}
       {activeTab === "template" ? (
-        <div style={{ display: "flex", gap: "18px", alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={{ ...panelStyle(), width: 300, flexShrink: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) minmax(560px, 2fr)", gap: "18px", alignItems: "start" }}>
+          <div style={{ ...panelStyle(), minWidth: 0 }}>
             <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Einstellungen</div>
 
             <div style={{ marginBottom: "14px" }}>
@@ -974,7 +1254,7 @@ export default function SocialPostsPage() {
           </div>
 
           {/* Canvas */}
-          <div style={{ ...panelStyle(), flex: 1, minWidth: 0 }}>
+          <div style={{ ...panelStyle(), minWidth: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", marginBottom: "12px", flexWrap: "wrap", alignItems: "flex-end" }}>
               <div>
                 <div style={{ fontSize: "18px", fontWeight: 700 }}>Canvas</div>
@@ -990,19 +1270,22 @@ export default function SocialPostsPage() {
             {loadingTemplate || !templateDraft ? (
               <div style={{ color: "#6b7280" }}>Template wird geladen...</div>
             ) : (
-              <SocialPostTemplateCanvas
-                template={templateDraft}
-                data={SAMPLE_DATA}
-                activeElement={activeElement}
-                onSelectElement={setActiveElement}
-                onUpdateElement={updateElementConfig}
-              />
+              <div style={{ overflowX: "auto" }}>
+                <SocialPostTemplateCanvas
+                  template={templateDraft}
+                  data={SAMPLE_DATA}
+                  activeElement={activeElement}
+                  onSelectElement={setActiveElement}
+                  onUpdateElement={updateElementConfig}
+                  targetWidth={760}
+                />
+              </div>
             )}
           </div>
         </div>
       ) : (
         /* ───────────── CONTENT ERSTELLEN ───────────── */
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 440px) 1fr", gap: "18px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) minmax(560px, 2fr)", gap: "18px" }}>
           {/* Linkes Panel */}
           <div style={panelStyle()}>
             <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Content erstellen</div>
@@ -1132,22 +1415,18 @@ export default function SocialPostsPage() {
 
               {template && extractedData ? (
                 <>
-                  <SocialPostPreview
-                    template={template}
-                    data={previewData}
-                    selectedElements={effectiveSelectedElements}
-                  />
+                  <div style={{ overflowX: "auto" }}>
+                    <SocialPostPreview
+                      template={template}
+                      data={previewData}
+                      selectedElements={effectiveSelectedElements}
+                      targetWidth={760}
+                    />
+                  </div>
                   <div style={{ marginTop: "14px" }}>
                     <button
                       type="button"
-                      onClick={() => {
-                        const imgUrl = extractedData.teaserImageUrl;
-                        if (imgUrl) {
-                          window.open(imgUrl, "_blank", "noopener,noreferrer");
-                        } else {
-                          alert("Kein Hauptbild verfügbar.");
-                        }
-                      }}
+                      onClick={handleSaveRenderedImage}
                       style={{
                         padding: "10px 18px",
                         border: "none",
@@ -1159,7 +1438,7 @@ export default function SocialPostsPage() {
                         fontWeight: 600,
                       }}
                     >
-                      Bild speichern
+                      Finales Bild speichern
                     </button>
                   </div>
                 </>
@@ -1265,3 +1544,4 @@ function PreviewRow({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
