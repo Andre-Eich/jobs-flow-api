@@ -45,6 +45,7 @@ type Props = {
   onCollectOne: (id: string) => Promise<void> | void;
   onQualityOne: (id: string) => Promise<void> | void;
   onSendOne: (id: string) => Promise<void> | void;
+  onSendBatch?: (ids: string[]) => Promise<void> | void;
   onChooseEmail: (id: string, value: string) => void;
   onChooseContactPerson: (id: string, value: string) => void;
 };
@@ -90,7 +91,7 @@ function badgeStyle(active: boolean, warning = false): React.CSSProperties {
 }
 
 function stars(value: 0 | 1 | 2 | 3) {
-  if (value === 0) return "–";
+  if (value === 0) return "-";
   return "★".repeat(value);
 }
 
@@ -103,7 +104,6 @@ function statusRank(status: "idle" | "loading" | "done" | "error") {
     case "done":
       return 1;
     case "idle":
-      return 0;
     default:
       return 0;
   }
@@ -169,12 +169,31 @@ function sortLeads(leads: BulkLead[], key: BulkSortKey, direction: BulkSortDirec
   return sorted;
 }
 
-function SortLabel({ label, active, direction, onClick }: { label: string; active: boolean; direction: BulkSortDirection; onClick: () => void }) {
+function SortLabel({
+  label,
+  active,
+  direction,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  direction: BulkSortDirection;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", fontSize: "13px", fontWeight: 700, color: "#111827", textAlign: "left" }}
+      style={{
+        border: "none",
+        background: "transparent",
+        padding: 0,
+        cursor: "pointer",
+        fontSize: "13px",
+        fontWeight: 700,
+        color: "#111827",
+        textAlign: "left",
+      }}
     >
       {label} {active ? (direction === "asc" ? "↑" : "↓") : "↕"}
     </button>
@@ -189,20 +208,42 @@ export default function BulkLeadsTableReplacementV4({
   onCollectOne,
   onQualityOne,
   onSendOne,
+  onSendBatch,
   onChooseEmail,
   onChooseContactPerson,
 }: Props) {
   const [sortKey, setSortKey] = useState<BulkSortKey>("analysis");
   const [sortDirection, setSortDirection] = useState<BulkSortDirection>("asc");
-  const [analyzeBatch, setAnalyzeBatch] = useState<BatchState>({ active: false, current: 0, total: 0 });
-  const [collectBatch, setCollectBatch] = useState<BatchState>({ active: false, current: 0, total: 0 });
-  const [qualityBatch, setQualityBatch] = useState<BatchState>({ active: false, current: 0, total: 0 });
-  const [sendBatch, setSendBatch] = useState<BatchState>({ active: false, current: 0, total: 0 });
+  const [analyzeBatch, setAnalyzeBatch] = useState<BatchState>({
+    active: false,
+    current: 0,
+    total: 0,
+  });
+  const [collectBatch, setCollectBatch] = useState<BatchState>({
+    active: false,
+    current: 0,
+    total: 0,
+  });
+  const [qualityBatch, setQualityBatch] = useState<BatchState>({
+    active: false,
+    current: 0,
+    total: 0,
+  });
+  const [sendBatch, setSendBatch] = useState<BatchState>({
+    active: false,
+    current: 0,
+    total: 0,
+  });
 
   const selectedLeads = useMemo(() => leads.filter((lead) => lead.selected), [leads]);
   const allSelected = leads.length > 0 && selectedLeads.length === leads.length;
-  const sendableSelected = selectedLeads.filter((lead) => lead.email && lead.qualityStatus === "done" && lead.sendStatus !== "sent");
-  const sortedLeads = useMemo(() => sortLeads(leads, sortKey, sortDirection), [leads, sortKey, sortDirection]);
+  const sendableSelected = selectedLeads.filter(
+    (lead) => lead.email && lead.qualityStatus === "done" && lead.sendStatus !== "sent"
+  );
+  const sortedLeads = useMemo(
+    () => sortLeads(leads, sortKey, sortDirection),
+    [leads, sortKey, sortDirection]
+  );
 
   function toggleSort(nextKey: BulkSortKey) {
     if (sortKey === nextKey) {
@@ -213,7 +254,11 @@ export default function BulkLeadsTableReplacementV4({
     setSortDirection("asc");
   }
 
-  async function runBatch(items: BulkLead[], setState: React.Dispatch<React.SetStateAction<BatchState>>, runner: (id: string) => Promise<void> | void) {
+  async function runBatch(
+    items: BulkLead[],
+    setState: React.Dispatch<React.SetStateAction<BatchState>>,
+    runner: (id: string) => Promise<void> | void
+  ) {
     setState({ active: true, current: 0, total: items.length });
     try {
       let index = 0;
@@ -238,33 +283,144 @@ export default function BulkLeadsTableReplacementV4({
           <thead>
             <tr style={{ background: "#f9fafb", textAlign: "left" }}>
               <th style={tableHeadStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "flex-start" }}>
-                  <SortLabel label="Auswahl / Unternehmen" active={sortKey === "company"} direction={sortDirection} onClick={() => toggleSort("company")} />
-                  <button type="button" onClick={() => onSetAllSelected(!allSelected)} style={smallButtonStyle(false)}>{allSelected ? "Alle abwählen" : "Alle auswählen"}</button>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <SortLabel
+                    label="Auswahl / Unternehmen"
+                    active={sortKey === "company"}
+                    direction={sortDirection}
+                    onClick={() => toggleSort("company")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onSetAllSelected(!allSelected)}
+                    style={smallButtonStyle(false)}
+                  >
+                    {allSelected ? "Alle abwaehlen" : "Alle auswaehlen"}
+                  </button>
                 </div>
               </th>
               <th style={tableHeadStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "flex-start" }}>
-                  <SortLabel label="Analysieren" active={sortKey === "analysis"} direction={sortDirection} onClick={() => toggleSort("analysis")} />
-                  <button type="button" onClick={() => runBatch(selectedLeads, setAnalyzeBatch, onAnalyzeOne)} disabled={analyzeBatch.active || selectedLeads.length === 0} style={smallButtonStyle(analyzeBatch.active || selectedLeads.length === 0)}>{analyzeBatch.active ? `Analysiere ${analyzeBatch.current}/${analyzeBatch.total}` : "Alle analysieren"}</button>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <SortLabel
+                    label="Analysieren"
+                    active={sortKey === "analysis"}
+                    direction={sortDirection}
+                    onClick={() => toggleSort("analysis")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => runBatch(selectedLeads, setAnalyzeBatch, onAnalyzeOne)}
+                    disabled={analyzeBatch.active || selectedLeads.length === 0}
+                    style={smallButtonStyle(analyzeBatch.active || selectedLeads.length === 0)}
+                  >
+                    {analyzeBatch.active
+                      ? `Analysiere ${analyzeBatch.current}/${analyzeBatch.total}`
+                      : "Alle analysieren"}
+                  </button>
                 </div>
               </th>
               <th style={tableHeadStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "flex-start" }}>
-                  <SortLabel label="Kontaktdaten" active={sortKey === "contacts"} direction={sortDirection} onClick={() => toggleSort("contacts")} />
-                  <button type="button" onClick={() => runBatch(selectedLeads, setCollectBatch, onCollectOne)} disabled={collectBatch.active || selectedLeads.length === 0} style={smallButtonStyle(collectBatch.active || selectedLeads.length === 0)}>{collectBatch.active ? `Sammle ${collectBatch.current}/${collectBatch.total}` : "Für alle Daten sammeln"}</button>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <SortLabel
+                    label="Kontaktdaten"
+                    active={sortKey === "contacts"}
+                    direction={sortDirection}
+                    onClick={() => toggleSort("contacts")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => runBatch(selectedLeads, setCollectBatch, onCollectOne)}
+                    disabled={collectBatch.active || selectedLeads.length === 0}
+                    style={smallButtonStyle(collectBatch.active || selectedLeads.length === 0)}
+                  >
+                    {collectBatch.active
+                      ? `Sammle ${collectBatch.current}/${collectBatch.total}`
+                      : "Fuer alle Daten sammeln"}
+                  </button>
                 </div>
               </th>
               <th style={tableHeadStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "flex-start" }}>
-                  <SortLabel label="Qualität einschätzen" active={sortKey === "quality"} direction={sortDirection} onClick={() => toggleSort("quality")} />
-                  <button type="button" onClick={() => runBatch(selectedLeads, setQualityBatch, onQualityOne)} disabled={qualityBatch.active || selectedLeads.length === 0} style={smallButtonStyle(qualityBatch.active || selectedLeads.length === 0)}>{qualityBatch.active ? `Prüfe ${qualityBatch.current}/${qualityBatch.total}` : "Für alle Qualität prüfen"}</button>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <SortLabel
+                    label="Qualitaet einschaetzen"
+                    active={sortKey === "quality"}
+                    direction={sortDirection}
+                    onClick={() => toggleSort("quality")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => runBatch(selectedLeads, setQualityBatch, onQualityOne)}
+                    disabled={qualityBatch.active || selectedLeads.length === 0}
+                    style={smallButtonStyle(qualityBatch.active || selectedLeads.length === 0)}
+                  >
+                    {qualityBatch.active
+                      ? `Pruefe ${qualityBatch.current}/${qualityBatch.total}`
+                      : "Fuer alle Qualitaet pruefen"}
+                  </button>
                 </div>
               </th>
               <th style={tableHeadStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "flex-start" }}>
-                  <SortLabel label="Email erstellen und senden" active={sortKey === "send"} direction={sortDirection} onClick={() => toggleSort("send")} />
-                  <button type="button" onClick={() => runBatch(sendableSelected, setSendBatch, onSendOne)} disabled={sendBatch.active || sendableSelected.length === 0} style={smallButtonStyle(sendBatch.active || sendableSelected.length === 0)}>{sendBatch.active ? `Sende ${sendBatch.current}/${sendBatch.total}` : "Für alle senden"}</button>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "10px",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <SortLabel
+                    label="Email erstellen und senden"
+                    active={sortKey === "send"}
+                    direction={sortDirection}
+                    onClick={() => toggleSort("send")}
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setSendBatch({ active: true, current: 0, total: sendableSelected.length });
+                      try {
+                        if (onSendBatch) {
+                          await onSendBatch(sendableSelected.map((lead) => lead.id));
+                        } else {
+                          await runBatch(sendableSelected, setSendBatch, onSendOne);
+                        }
+                      } finally {
+                        setSendBatch({ active: false, current: 0, total: 0 });
+                      }
+                    }}
+                    disabled={sendBatch.active || sendableSelected.length === 0}
+                    style={smallButtonStyle(sendBatch.active || sendableSelected.length === 0)}
+                  >
+                    {sendBatch.active ? "Paket wird gesendet..." : "Fuer alle senden"}
+                  </button>
                 </div>
               </th>
             </tr>
@@ -274,55 +430,193 @@ export default function BulkLeadsTableReplacementV4({
               <tr key={lead.id}>
                 <td style={tableCellStyle}>
                   <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                    <input type="checkbox" checked={lead.selected} onChange={(e) => onToggleSelected(lead.id, e.target.checked)} style={{ marginTop: "3px" }} />
+                    <input
+                      type="checkbox"
+                      checked={lead.selected}
+                      onChange={(e) => onToggleSelected(lead.id, e.target.checked)}
+                      style={{ marginTop: "3px" }}
+                    />
                     <div>
                       <div style={{ fontWeight: 700, marginBottom: "4px" }}>{lead.company}</div>
-                      <div style={{ fontSize: "12px", color: "#6b7280", lineHeight: 1.4 }}>{lead.city}</div>
-                      <div style={{ marginTop: "4px", fontSize: "12px", color: "#6b7280", lineHeight: 1.4, wordBreak: "break-all" }}>{lead.website}</div>
+                      <div style={{ fontSize: "12px", color: "#6b7280", lineHeight: 1.4 }}>
+                        {lead.city}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: "4px",
+                          fontSize: "12px",
+                          color: "#6b7280",
+                          lineHeight: 1.4,
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {lead.website}
+                      </div>
                     </div>
                   </div>
                 </td>
                 <td style={tableCellStyle}>
-                  <div style={{ fontSize: "18px", fontWeight: 700, color: lead.analysisStars >= 2 ? "#111827" : "#6b7280" }}>{stars(lead.analysisStars)}</div>
-                  {lead.analysisSummary && <div style={{ marginTop: "6px", fontSize: "12px", color: "#6b7280", lineHeight: 1.4 }}>{lead.analysisSummary}</div>}
-                  {lead.foundJobTitles?.length ? <div style={{ marginTop: "6px", fontSize: "12px", color: "#374151" }}><strong>Titel:</strong> {lead.foundJobTitles.join(", ")}</div> : null}
-                  {lead.foundCareerUrls?.length ? <div style={{ marginTop: "6px", fontSize: "12px", color: "#374151", wordBreak: "break-all" }}><strong>Karriere:</strong> {lead.foundCareerUrls[0]}</div> : null}
+                  <div
+                    style={{
+                      fontSize: "18px",
+                      fontWeight: 700,
+                      color: lead.analysisStars >= 2 ? "#111827" : "#6b7280",
+                    }}
+                  >
+                    {stars(lead.analysisStars)}
+                  </div>
+                  {lead.analysisSummary ? (
+                    <div
+                      style={{
+                        marginTop: "6px",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {lead.analysisSummary}
+                    </div>
+                  ) : null}
+                  {lead.foundJobTitles?.length ? (
+                    <div style={{ marginTop: "6px", fontSize: "12px", color: "#374151" }}>
+                      <strong>Titel:</strong> {lead.foundJobTitles.join(", ")}
+                    </div>
+                  ) : null}
+                  {lead.foundCareerUrls?.length ? (
+                    <div
+                      style={{
+                        marginTop: "6px",
+                        fontSize: "12px",
+                        color: "#374151",
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      <strong>Karriere:</strong> {lead.foundCareerUrls[0]}
+                    </div>
+                  ) : null}
                 </td>
                 <td style={tableCellStyle}>
-                  {(lead.email || lead.contactPerson || lead.industry) ? (
-                    <div style={{ fontSize: "12px", color: "#374151", lineHeight: 1.5, wordBreak: "break-word" }}>
+                  {lead.email || lead.contactPerson || lead.industry ? (
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "#374151",
+                        lineHeight: 1.5,
+                        wordBreak: "break-word",
+                      }}
+                    >
                       <div>
-                        <strong>Email:</strong> {lead.email || "–"} {lead.emailNeedsReview ? <span title="Vermutlich aus Zusatzsuche erkannt, bitte prüfen." style={{ color: "#d97706", fontWeight: 700 }}>⚠</span> : null}
+                        <strong>Email:</strong> {lead.email || "-"}{" "}
+                        {lead.emailNeedsReview ? (
+                          <span
+                            title="Vermutlich aus Zusatzsuche erkannt, bitte pruefen."
+                            style={{ color: "#d97706", fontWeight: 700 }}
+                          >
+                            !
+                          </span>
+                        ) : null}
                       </div>
                       {lead.emailOptions?.length ? (
                         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
                           {lead.emailOptions.map((option) => (
-                            <button key={`${lead.id}-${option.value}`} type="button" title={option.needsReview ? "Vermutlich erkannt, bitte prüfen." : option.source} onClick={() => onChooseEmail(lead.id, option.value)} style={badgeStyle(lead.email === option.value, Boolean(option.needsReview))}>{option.value}</button>
+                            <button
+                              key={`${lead.id}-${option.value}`}
+                              type="button"
+                              title={
+                                option.needsReview
+                                  ? "Vermutlich erkannt, bitte pruefen."
+                                  : option.source
+                              }
+                              onClick={() => onChooseEmail(lead.id, option.value)}
+                              style={badgeStyle(lead.email === option.value, Boolean(option.needsReview))}
+                            >
+                              {option.value}
+                            </button>
                           ))}
                         </div>
                       ) : null}
-                      <div style={{ marginTop: "6px" }}><strong>AP:</strong> {lead.contactPerson || "–"}</div>
+                      <div style={{ marginTop: "6px" }}>
+                        <strong>AP:</strong> {lead.contactPerson || "-"}
+                      </div>
                       {lead.contactPersonOptions?.length ? (
                         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
                           {lead.contactPersonOptions.map((option) => (
-                            <button key={`${lead.id}-${option}`} type="button" onClick={() => onChooseContactPerson(lead.id, option)} style={badgeStyle(lead.contactPerson === option)}>{option}</button>
+                            <button
+                              key={`${lead.id}-${option}`}
+                              type="button"
+                              onClick={() => onChooseContactPerson(lead.id, option)}
+                              style={badgeStyle(lead.contactPerson === option)}
+                            >
+                              {option}
+                            </button>
                           ))}
                         </div>
                       ) : null}
-                      <div style={{ marginTop: "6px" }}><strong>Branche:</strong> {lead.industry || "–"}</div>
+                      <div style={{ marginTop: "6px" }}>
+                        <strong>Branche:</strong> {lead.industry || "-"}
+                      </div>
                     </div>
-                  ) : <div style={{ color: "#6b7280", fontSize: "12px" }}>–</div>}
+                  ) : (
+                    <div style={{ color: "#6b7280", fontSize: "12px" }}>-</div>
+                  )}
                 </td>
                 <td style={tableCellStyle}>
                   <div style={{ marginTop: "2px", display: "flex", alignItems: "center", gap: "8px" }}>
                     <div style={{ fontSize: "18px", fontWeight: 700 }}>{stars(lead.qualityStars)}</div>
-                    {lead.alreadyContacted ? <span title={lead.lastContactAt ? `In den letzten 14 Tagen bereits kontaktiert: ${lead.lastContactAt}` : "In den letzten 14 Tagen bereits kontaktiert"} style={{ color: "#dc2626", fontSize: "18px", fontWeight: 700 }}>❗</span> : null}
+                    {lead.alreadyContacted ? (
+                      <span
+                        title={
+                          lead.lastContactAt
+                            ? `In den letzten 14 Tagen bereits kontaktiert: ${lead.lastContactAt}`
+                            : "In den letzten 14 Tagen bereits kontaktiert"
+                        }
+                        style={{ color: "#dc2626", fontSize: "18px", fontWeight: 700 }}
+                      >
+                        !
+                      </span>
+                    ) : null}
                   </div>
-                  {lead.qualitySummary ? <div style={{ marginTop: "6px", fontSize: "12px", color: "#6b7280", lineHeight: 1.4 }}>{lead.qualitySummary}</div> : null}
+                  {lead.qualitySummary ? (
+                    <div
+                      style={{
+                        marginTop: "6px",
+                        fontSize: "12px",
+                        color: "#6b7280",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {lead.qualitySummary}
+                    </div>
+                  ) : null}
                 </td>
                 <td style={tableCellStyle}>
-                  <button type="button" onClick={() => onSendOne(lead.id)} disabled={!lead.selected || !lead.email || lead.sendStatus === "loading"} style={smallButtonStyle(!lead.selected || !lead.email || lead.sendStatus === "loading")}>{lead.sendStatus === "loading" ? "Sendet..." : "Email erstellen und senden"}</button>
-                  <div style={{ marginTop: "10px", fontSize: "12px", fontWeight: 600, color: lead.sendStatus === "sent" ? "#166534" : lead.sendStatus === "error" ? "#b91c1c" : "#6b7280" }}>{lead.sendStatus === "sent" ? "gesendet" : lead.sendStatus === "error" ? "Fehler" : "–"}</div>
+                  <button
+                    type="button"
+                    onClick={() => onSendOne(lead.id)}
+                    disabled={!lead.selected || !lead.email || lead.sendStatus === "loading"}
+                    style={smallButtonStyle(!lead.selected || !lead.email || lead.sendStatus === "loading")}
+                  >
+                    {lead.sendStatus === "loading" ? "Sendet..." : "Email erstellen und senden"}
+                  </button>
+                  <div
+                    style={{
+                      marginTop: "10px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color:
+                        lead.sendStatus === "sent"
+                          ? "#166534"
+                          : lead.sendStatus === "error"
+                          ? "#b91c1c"
+                          : "#6b7280",
+                    }}
+                  >
+                    {lead.sendStatus === "sent"
+                      ? "gesendet"
+                      : lead.sendStatus === "error"
+                      ? "Fehler"
+                      : "-"}
+                  </div>
                 </td>
               </tr>
             ))}

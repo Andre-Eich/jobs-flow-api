@@ -29,16 +29,33 @@ type BulkTextBlock = {
   text: string;
 };
 
+type BulkPackageMailRecord = {
+  id: string;
+  leadId?: string;
+  company: string;
+  recipientEmail: string;
+  phone?: string;
+  subject: string;
+  textBlockTitles: string[];
+  contactPerson?: string;
+  status: "planned" | "sending" | "sent" | "failed";
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt?: string;
+  sentAt?: string;
+};
+
 type BulkPackageRecord = {
   id: string;
   label: string;
   createdAt: string;
   searchLocation: string;
   radiusKm: string;
+  plannedCount: number;
   textBlockTitles: string[];
   shortMode: boolean;
   testMode: boolean;
-  mails: MailRecord[];
+  mails: BulkPackageMailRecord[];
 };
 
 const EMPTY_BULK_LEADS: BulkLead[] = [];
@@ -77,6 +94,13 @@ function isWithinLast14Days(dateString: string) {
   if (Number.isNaN(date)) return false;
   const diff = Date.now() - date;
   return diff <= 14 * 24 * 60 * 60 * 1000;
+}
+
+function packageStatusLabel(status: BulkPackageMailRecord["status"]) {
+  if (status === "sending") return "sendet";
+  if (status === "sent") return "gesendet";
+  if (status === "failed") return "fehlgeschlagen";
+  return "geplant";
 }
 
 function primaryButtonStyle(disabled: boolean): React.CSSProperties {
@@ -175,8 +199,9 @@ const selectStyle: React.CSSProperties = {
 
 export default function BulkMailServicePage() {
   const [isMobile, setIsMobile] = useState(false);
-  const [loadingCrm, setLoadingCrm] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [mailHistory, setMailHistory] = useState<MailRecord[]>([]);
+  const [bulkPackageHistory, setBulkPackageHistory] = useState<BulkPackageRecord[]>([]);
   const [bulkLocation, setBulkLocation] = useState("");
   const [bulkFocus, setBulkFocus] = useState("");
   const [bulkRadius, setBulkRadius] = useState("30");
@@ -189,8 +214,7 @@ export default function BulkMailServicePage() {
   const [activeBulkTextBlockIds, setActiveBulkTextBlockIds] = useState<string[]>([]);
   const [editingBulkTextBlock, setEditingBulkTextBlock] = useState<BulkTextBlock | null>(null);
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
-  const [selectedBulkPackage, setSelectedBulkPackage] = useState<BulkPackageRecord | null>(null);
-  const [currentBatchId, setCurrentBatchId] = useState(() => crypto.randomUUID());
+  const [selectedBulkPackageId, setSelectedBulkPackageId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -236,6 +260,15 @@ export default function BulkMailServicePage() {
   );
 
   const bulkPackages = useMemo(() => {
+    const storedMap = new Map(
+      bulkPackageHistory.map((item) => [
+        item.id,
+        {
+          ...item,
+          label: `Mail-Paket ${formatDate(item.createdAt)}`,
+        },
+      ])
+    );
     const grouped = new Map<string, MailRecord[]>();
 
     for (const mail of mailHistory.filter((item) => item.kind === "bulk")) {
@@ -245,49 +278,84 @@ export default function BulkMailServicePage() {
       grouped.set(key, existing);
     }
 
-    return Array.from(grouped.entries())
-      .map(([key, mails]) => {
-        const sortedMails = [...mails].sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        const firstMail = sortedMails[0];
+    for (const [key, mails] of grouped.entries()) {
+      if (storedMap.has(key)) continue;
 
-        return {
-          id: key,
-          label: `Mail-Paket ${formatDate(firstMail?.createdAt || new Date().toISOString())}`,
-          createdAt: firstMail?.createdAt || new Date().toISOString(),
-          searchLocation: firstMail?.searchLocation || "",
-          radiusKm: firstMail?.radiusKm || "",
-          textBlockTitles: firstMail?.textBlockTitles || [],
-          shortMode: Boolean(firstMail?.shortMode),
-          testMode: Boolean(firstMail?.testMode),
-          mails: sortedMails,
-        };
-      })
-      .sort(
+      const sortedMails = [...mails].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-  }, [mailHistory]);
+      const firstMail = sortedMails[0];
 
-  async function loadCrm() {
+      storedMap.set(key, {
+        id: key,
+        label: `Mail-Paket ${formatDate(firstMail?.createdAt || new Date().toISOString())}`,
+        createdAt: firstMail?.createdAt || new Date().toISOString(),
+        searchLocation: firstMail?.searchLocation || "",
+        radiusKm: firstMail?.radiusKm || "",
+        plannedCount: sortedMails.length,
+        textBlockTitles: firstMail?.textBlockTitles || [],
+        shortMode: Boolean(firstMail?.shortMode),
+        testMode: Boolean(firstMail?.testMode),
+        mails: sortedMails.map((mail) => ({
+          id: mail.id,
+          leadId: "",
+          company: mail.company || "",
+          recipientEmail: mail.recipientEmail,
+          phone: mail.phone || "",
+          subject: mail.subject || "",
+          textBlockTitles: mail.textBlockTitles || [],
+          contactPerson: mail.contactPerson || "",
+          status: "sent",
+          errorMessage: "",
+          createdAt: mail.createdAt,
+          updatedAt: mail.createdAt,
+          sentAt: mail.createdAt,
+        })),
+      });
+    }
+
+    return Array.from(storedMap.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [bulkPackageHistory, mailHistory]);
+
+  const selectedBulkPackage = useMemo(
+    () => bulkPackages.find((item) => item.id === selectedBulkPackageId) || null,
+    [bulkPackages, selectedBulkPackageId]
+  );
+
+  async function loadHistory() {
     try {
-      setLoadingCrm(true);
-      const response = await fetch("/api/crm/emails?mode=all");
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.error || "CRM konnte nicht geladen werden.");
+      setLoadingHistory(true);
+
+      const [emailsResponse, packagesResponse] = await Promise.all([
+        fetch("/api/crm/emails?mode=all"),
+        fetch("/api/crm/bulk-packages"),
+      ]);
+      const emailsData = await emailsResponse.json();
+      const packagesData = await packagesResponse.json();
+
+      if (!emailsResponse.ok) {
+        setError(emailsData.error || "Historie konnte nicht geladen werden.");
         return;
       }
-      setMailHistory(Array.isArray(data.emails) ? data.emails : []);
+
+      if (!packagesResponse.ok) {
+        setError(packagesData.error || "Historie konnte nicht geladen werden.");
+        return;
+      }
+
+      setMailHistory(Array.isArray(emailsData.emails) ? emailsData.emails : []);
+      setBulkPackageHistory(Array.isArray(packagesData.packages) ? packagesData.packages : []);
     } catch {
-      setError("CRM konnte nicht geladen werden.");
+      setError("Historie konnte nicht geladen werden.");
     } finally {
-      setLoadingCrm(false);
+      setLoadingHistory(false);
     }
   }
 
   useEffect(() => {
-    loadCrm();
+    loadHistory();
   }, []);
 
   function openNewBulkTextBlockEditor() {
@@ -369,7 +437,6 @@ export default function BulkMailServicePage() {
         return;
       }
       setBulkLeads(Array.isArray(data.leads) ? data.leads : []);
-      setCurrentBatchId(crypto.randomUUID());
       setSuccessMessage(
         `${Array.isArray(data.leads) ? data.leads.length : count} Unternehmen fuer ${location} geladen.`
       );
@@ -514,6 +581,227 @@ export default function BulkMailServicePage() {
     });
   }
 
+  async function generateBulkEmailForLead(lead: BulkLead) {
+    const response = await fetch("/api/generate-bulk-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        company: lead.company,
+        industry: lead.industry,
+        analysisSummary: lead.analysisSummary,
+        contactPerson: lead.contactPerson,
+        shortMode: bulkShortMode,
+        textBlocks: activeBulkTextBlocks,
+      }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Bulk-Mail konnte nicht generiert werden.");
+    }
+
+    return {
+      subject: String(data.subject || "").trim(),
+      text: String(data.text || "").trim(),
+    };
+  }
+
+  function replaceBulkPackageInState(nextPackage: BulkPackageRecord) {
+    setBulkPackageHistory((prev) => {
+      const existing = prev.find((item) => item.id === nextPackage.id);
+      if (!existing) return [nextPackage, ...prev];
+      return prev.map((item) => (item.id === nextPackage.id ? nextPackage : item));
+    });
+  }
+
+  async function updatePackageMailStatus(
+    packageId: string,
+    mailId: string,
+    status: BulkPackageMailRecord["status"],
+    extras?: { errorMessage?: string; subject?: string }
+  ) {
+    const response = await fetch("/api/crm/bulk-packages", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        packageId,
+        mailId,
+        status,
+        errorMessage: extras?.errorMessage || "",
+        subject: extras?.subject || "",
+      }),
+    });
+    const data = await response.json();
+
+    if (response.ok && data.package) {
+      replaceBulkPackageInState(data.package as BulkPackageRecord);
+    }
+
+    return response.ok;
+  }
+
+  async function handleSendBulkBatch(ids: string[]) {
+    const leadsToSend = ids
+      .map((id) => bulkLeads.find((item) => item.id === id))
+      .filter((lead): lead is BulkLead => Boolean(lead?.email));
+
+    if (leadsToSend.length === 0) {
+      setError("Bitte mindestens einen versandfaehigen Lead auswaehlen.");
+      return;
+    }
+
+    setError("");
+    setSuccessMessage("");
+    leadsToSend.forEach((lead) => updateBulkLead(lead.id, { sendStatus: "loading" }));
+
+    const packageId = crypto.randomUUID();
+    const textBlockTitles = activeBulkTextBlocks.map((block) => block.title);
+    const generatedEntries = await Promise.all(
+      leadsToSend.map(async (lead) => {
+        try {
+          const generated = await generateBulkEmailForLead(lead);
+          return {
+            lead,
+            generated,
+            packageMail: {
+              id: crypto.randomUUID(),
+              leadId: lead.id,
+              company: lead.company,
+              recipientEmail: lead.email,
+              phone: lead.phone || "",
+              subject: generated.subject,
+              textBlockTitles,
+              contactPerson: lead.contactPerson || "",
+              status: "planned" as const,
+              errorMessage: "",
+              createdAt: new Date().toISOString(),
+            },
+          };
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : "Bulk-Mail konnte nicht generiert werden.";
+          updateBulkLead(lead.id, { sendStatus: "error" });
+          return {
+            lead,
+            generated: null,
+            packageMail: {
+              id: crypto.randomUUID(),
+              leadId: lead.id,
+              company: lead.company,
+              recipientEmail: lead.email,
+              phone: lead.phone || "",
+              subject: "",
+              textBlockTitles,
+              contactPerson: lead.contactPerson || "",
+              status: "failed" as const,
+              errorMessage: message,
+              createdAt: new Date().toISOString(),
+            },
+          };
+        }
+      })
+    );
+
+    const createResponse = await fetch("/api/crm/bulk-packages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: packageId,
+        createdAt: new Date().toISOString(),
+        searchLocation: bulkLocation.trim(),
+        radiusKm: bulkRadius,
+        textBlockTitles,
+        shortMode: bulkShortMode,
+        testMode: bulkTestMode,
+        mails: generatedEntries.map((entry) => entry.packageMail),
+      }),
+    });
+    const createData = await createResponse.json();
+
+    if (!createResponse.ok || !createData.package) {
+      leadsToSend.forEach((lead) => updateBulkLead(lead.id, { sendStatus: "error" }));
+      setError(createData.error || "Streumail-Paket konnte nicht vorbereitet werden.");
+      return;
+    }
+
+    replaceBulkPackageInState(createData.package as BulkPackageRecord);
+    setSelectedBulkPackageId(packageId);
+
+    const sendableEntries = generatedEntries.filter(
+      (entry): entry is typeof entry & { generated: { subject: string; text: string } } =>
+        Boolean(entry.generated)
+    );
+    const failedBeforeSend = generatedEntries.length - sendableEntries.length;
+
+    let sentCount = 0;
+
+    for (const entry of sendableEntries) {
+      await updatePackageMailStatus(packageId, entry.packageMail.id, "sending", {
+        subject: entry.generated.subject,
+      });
+
+      try {
+        const sendResponse = await fetch("/api/send-bulk-mail", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: entry.lead.email,
+            subject: entry.generated.subject,
+            text: entry.generated.text,
+            testMode: bulkTestMode,
+            sendCopy: true,
+            company: entry.lead.company,
+            contactPerson: entry.lead.contactPerson,
+            phone: entry.lead.phone || "",
+            website: entry.lead.website || "",
+            city: entry.lead.city || "",
+            industry: entry.lead.industry || "",
+            hookText: textBlockTitles.join(", ") || entry.generated.subject,
+            textBlockTitles,
+            shortMode: bulkShortMode,
+            batchId: packageId,
+            packageMailId: entry.packageMail.id,
+            searchLocation: bulkLocation.trim(),
+            radiusKm: bulkRadius,
+          }),
+        });
+        const sendData = await sendResponse.json();
+
+        if (!sendResponse.ok) {
+          updateBulkLead(entry.lead.id, { sendStatus: "error" });
+          await updatePackageMailStatus(packageId, entry.packageMail.id, "failed", {
+            subject: entry.generated.subject,
+            errorMessage: sendData.error || "Streumail konnte nicht gesendet werden.",
+          });
+          continue;
+        }
+
+        updateBulkLead(entry.lead.id, { sendStatus: "sent" });
+        sentCount += 1;
+      } catch {
+        updateBulkLead(entry.lead.id, { sendStatus: "error" });
+        await updatePackageMailStatus(packageId, entry.packageMail.id, "failed", {
+          subject: entry.generated.subject,
+          errorMessage: "Streumail konnte nicht gesendet werden.",
+        });
+      }
+    }
+
+    await loadHistory();
+
+    if (sentCount > 0) {
+      setSuccessMessage(
+        bulkTestMode
+          ? `${sentCount} Streumails wurden als Test versendet.`
+          : `${sentCount} Streumails wurden versendet.`
+      );
+    }
+
+    if (failedBeforeSend > 0 || sentCount !== leadsToSend.length) {
+      setError("Das Paket wurde vollstaendig vorbereitet, aber einzelne Mails konnten nicht gesendet werden.");
+    }
+  }
+
   async function handleSendBulkLead(id: string) {
     const lead = bulkLeads.find((item) => item.id === id);
     if (!lead || !lead.email) {
@@ -521,70 +809,7 @@ export default function BulkMailServicePage() {
       return;
     }
 
-    updateBulkLead(id, { sendStatus: "loading" });
-
-    try {
-      const generateResponse = await fetch("/api/generate-bulk-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company: lead.company,
-          industry: lead.industry,
-          analysisSummary: lead.analysisSummary,
-          contactPerson: lead.contactPerson,
-          shortMode: bulkShortMode,
-          textBlocks: activeBulkTextBlocks,
-        }),
-      });
-      const generated = await generateResponse.json();
-      if (!generateResponse.ok) {
-        updateBulkLead(id, { sendStatus: "error" });
-        setError(generated.error || "Bulk-Mail konnte nicht generiert werden.");
-        return;
-      }
-
-      const sendResponse = await fetch("/api/send-bulk-mail", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: lead.email,
-          subject: generated.subject,
-          text: generated.text,
-          testMode: bulkTestMode,
-          sendCopy: true,
-          company: lead.company,
-          contactPerson: lead.contactPerson,
-          phone: lead.phone || "",
-          website: lead.website || "",
-          city: lead.city || "",
-          industry: lead.industry || "",
-          hookText:
-            activeBulkTextBlocks.map((block) => block.title).join(", ") || generated.subject,
-          textBlockTitles: activeBulkTextBlocks.map((block) => block.title),
-          shortMode: bulkShortMode,
-          batchId: currentBatchId,
-          searchLocation: bulkLocation.trim(),
-          radiusKm: bulkRadius,
-        }),
-      });
-      const sendData = await sendResponse.json();
-      if (!sendResponse.ok) {
-        updateBulkLead(id, { sendStatus: "error" });
-        setError(sendData.error || "Streumail konnte nicht gesendet werden.");
-        return;
-      }
-
-      updateBulkLead(id, { sendStatus: "sent" });
-      setSuccessMessage(
-        bulkTestMode
-          ? `Streumail-Test fuer "${lead.company}" wurde an den Test-Empfaenger gesendet.`
-          : `Streumail fuer "${lead.company}" wurde gesendet.`
-      );
-      await loadCrm();
-    } catch {
-      updateBulkLead(id, { sendStatus: "error" });
-      setError("Streumail konnte nicht gesendet werden.");
-    }
+    await handleSendBulkBatch([id]);
   }
 
   return (
@@ -660,6 +885,7 @@ export default function BulkMailServicePage() {
                 onCollectOne={handleCollectBulkData}
                 onQualityOne={handleAssessBulkQuality}
                 onSendOne={handleSendBulkLead}
+                onSendBatch={handleSendBulkBatch}
                 onChooseEmail={chooseLeadEmail}
                 onChooseContactPerson={chooseLeadContactPerson}
               />
@@ -669,7 +895,7 @@ export default function BulkMailServicePage() {
 
         <div style={{ width: isMobile ? "100%" : "340px", minWidth: isMobile ? "100%" : "340px", background: "#ffffff", border: "1px solid #d1d5db", borderRadius: "14px", padding: "16px", boxSizing: "border-box", position: isMobile ? "static" : "sticky", top: "20px" }}>
           <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "12px" }}>Historie</div>
-          {loadingCrm ? (
+          {loadingHistory ? (
             <div style={{ fontSize: "13px", color: "#6b7280" }}>Historie wird geladen...</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: isMobile ? "none" : "70vh", overflowY: "auto", paddingRight: "2px" }}>
@@ -677,7 +903,7 @@ export default function BulkMailServicePage() {
                 <div style={{ fontSize: "13px", color: "#6b7280" }}>Noch keine passenden Eintraege vorhanden.</div>
               ) : (
                 bulkPackages.map((item) => (
-                  <button key={item.id} type="button" onClick={() => setSelectedBulkPackage(item)} style={{ textAlign: "left", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "10px", background: "#ffffff", cursor: "pointer" }}>
+                  <button key={item.id} type="button" onClick={() => setSelectedBulkPackageId(item.id)} style={{ textAlign: "left", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "10px", background: "#ffffff", cursor: "pointer" }}>
                     <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px", lineHeight: 1.3 }}>{item.label}</div>
                     <div style={{ fontSize: "12px", color: "#374151", marginBottom: "4px" }}>
                       {item.searchLocation ? `PLZ/Ort ${item.searchLocation}` : "PLZ/Ort -"}
@@ -685,7 +911,7 @@ export default function BulkMailServicePage() {
                     <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "4px" }}>
                       {item.radiusKm ? `Umkreis ${item.radiusKm} km` : "Umkreis -"}
                     </div>
-                    <div style={{ fontSize: "11px", color: "#6b7280" }}>{item.mails.length} E-Mails</div>
+                    <div style={{ fontSize: "11px", color: "#6b7280" }}>{item.plannedCount} E-Mails</div>
                   </button>
                 ))
               )}
@@ -721,20 +947,21 @@ export default function BulkMailServicePage() {
       ) : null}
 
       {selectedBulkPackage ? (
-        <div onClick={() => setSelectedBulkPackage(null)} style={{ position: "fixed", inset: 0, background: "rgba(17, 24, 39, 0.45)", zIndex: 50, padding: "24px", overflowY: "auto" }}>
+        <div onClick={() => setSelectedBulkPackageId(null)} style={{ position: "fixed", inset: 0, background: "rgba(17, 24, 39, 0.45)", zIndex: 50, padding: "24px", overflowY: "auto" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "720px", margin: "40px auto", background: "#ffffff", borderRadius: "14px", padding: "20px", boxSizing: "border-box" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", marginBottom: "16px" }}>
               <div>
                 <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "4px" }}>{selectedBulkPackage.label}</div>
-                <div style={{ color: "#374151", fontSize: "14px" }}>{selectedBulkPackage.mails.length} Firmen im Paket</div>
+                <div style={{ color: "#374151", fontSize: "14px" }}>{selectedBulkPackage.plannedCount} Firmen im Paket</div>
               </div>
-              <button type="button" onClick={() => setSelectedBulkPackage(null)} style={{ border: "1px solid #cbd5e1", background: "#ffffff", borderRadius: "8px", padding: "6px 10px", cursor: "pointer" }}>Schliessen</button>
+              <button type="button" onClick={() => setSelectedBulkPackageId(null)} style={{ border: "1px solid #cbd5e1", background: "#ffffff", borderRadius: "8px", padding: "6px 10px", cursor: "pointer" }}>Schliessen</button>
             </div>
 
             <div style={{ display: "grid", gap: "10px", marginBottom: "16px", fontSize: "14px" }}>
               <DetailRow label="PLZ / Ort" value={selectedBulkPackage.searchLocation || "-"} />
               <DetailRow label="Umkreis" value={selectedBulkPackage.radiusKm ? `${selectedBulkPackage.radiusKm} km` : "-"} />
               <DetailRow label="Versandzeit" value={formatDate(selectedBulkPackage.createdAt)} />
+              <DetailRow label="Geplant" value={`${selectedBulkPackage.plannedCount} E-Mails`} />
               <DetailRow label="Bausteine" value={selectedBulkPackage.textBlockTitles.length > 0 ? selectedBulkPackage.textBlockTitles.join(", ") : "-"} />
               <DetailRow label="Kurzmodus" value={selectedBulkPackage.shortMode ? "Ja" : "Nein"} />
               <DetailRow label="Testmodus" value={selectedBulkPackage.testMode ? "Ja" : "Nein"} />
@@ -751,6 +978,7 @@ export default function BulkMailServicePage() {
                       <th style={tableHeadStyle}>Telefon</th>
                       <th style={tableHeadStyle}>Bausteine</th>
                       <th style={tableHeadStyle}>Betreff</th>
+                      <th style={tableHeadStyle}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -761,6 +989,14 @@ export default function BulkMailServicePage() {
                         <td style={tableCellStyle}>{mail.phone || "-"}</td>
                         <td style={tableCellStyle}>{mail.textBlockTitles?.join(", ") || "-"}</td>
                         <td style={tableCellStyle}>{mail.subject || "-"}</td>
+                        <td style={tableCellStyle}>
+                          <div>{packageStatusLabel(mail.status)}</div>
+                          {mail.errorMessage ? (
+                            <div style={{ marginTop: "4px", fontSize: "12px", color: "#b91c1c" }}>
+                              {mail.errorMessage}
+                            </div>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -27,6 +27,10 @@ function textToHtml(text: string) {
   return escapeHtml(text).replace(/\n/g, "<br/>");
 }
 
+function buildAssetUrl(req: Request, assetPath: string) {
+  return new URL(assetPath, req.url).toString();
+}
+
 function getEmailId(result: unknown) {
   if (!result || typeof result !== "object") return "";
   const topLevelId = "id" in result && typeof result.id === "string" ? result.id : "";
@@ -72,7 +76,7 @@ function buildReminderText(args: {
       ? "Wenn das fuer Sie interessant ist, sende ich Ihnen gern kurz weitere Infos."
       : "Wenn das fuer Sie interessant ist, melde ich mich gern mit einem kurzen Vorschlag.";
 
-  return [greeting, "", mainBody, ...(blocks.length ? ["", ...blocks] : []), "", cta, "", "Mit freundlichen Gruessen"].join("\n");
+  return [greeting, "", mainBody, ...(blocks.length ? ["", ...blocks] : []), "", cta, "", "Mit freundlichen Grüßen"].join("\n");
 }
 
 export async function POST(req: Request) {
@@ -114,6 +118,8 @@ export async function POST(req: Request) {
       shortMode: Boolean(shortMode),
       textBlocks: Array.isArray(textBlocks) ? textBlocks : [],
     });
+    const portraitImageUrl = buildAssetUrl(req, "/andre-eichstaedt.png");
+    const footerLogosUrl = buildAssetUrl(req, "/footer-logos.png");
     const textBlockTitles = Array.isArray(textBlocks)
       ? textBlocks.map((block: TextBlock) => safeString(block?.title)).filter(Boolean)
       : [];
@@ -147,6 +153,9 @@ export async function POST(req: Request) {
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
         <div style="margin-bottom: 24px;">${textToHtml(reminderText)}</div>
+        <div style="margin: 20px 0 18px;">
+          <img src="${portraitImageUrl}" alt="Andre Eichstaedt" style="display:block; max-width: 220px; width: 100%; height: auto; border: 0;" />
+        </div>
         <div style="margin-top: 18px; font-weight: 700;">Andre Eichstaedt</div>
         <div>Anzeigenberater</div>
         <div>Jobs in Berlin-Brandenburg</div>
@@ -155,6 +164,9 @@ export async function POST(req: Request) {
         <div style="margin-top: 12px;">Leipziger Str. 56</div>
         <div>15236 Frankfurt (Oder)</div>
         <div><a href="https://www.jobs-in-berlin-brandenburg.de" target="_blank" style="color:#111111; text-decoration:none;">www.jobs-in-berlin-brandenburg.de</a></div>
+        <div style="margin: 18px 0 0;">
+          <img src="${footerLogosUrl}" alt="Jobs in Berlin-Brandenburg Logos" style="display:block; max-width: 320px; width: 100%; height: auto; border: 0;" />
+        </div>
         ${buildCrmMetaHtmlComment(crmMeta)}
       </div>
     `;

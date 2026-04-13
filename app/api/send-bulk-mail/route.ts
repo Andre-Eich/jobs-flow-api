@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
 import { upsertLeadMail } from "@/lib/leadStore";
+import { updateBulkPackageMailStatus } from "@/lib/bulkPackageStore";
 
 function escapeHtml(value: string) {
   return value
@@ -65,6 +66,9 @@ function getEmailId(result: unknown) {
 }
 
 export async function POST(req: Request) {
+  let packageId = "";
+  let packageMailId = "";
+
   try {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
@@ -88,9 +92,12 @@ export async function POST(req: Request) {
       textBlockTitles = [],
       shortMode = false,
       batchId = crypto.randomUUID(),
+      packageMailId: rawPackageMailId = "",
       searchLocation = "",
       radiusKm = "",
     } = await req.json();
+    packageId = String(batchId || "").trim();
+    packageMailId = String(rawPackageMailId || "").trim();
 
     const testRecipient = String(process.env.TEST_RECIPIENT_EMAIL || "").trim();
     const isTestMode = Boolean(testMode);
@@ -228,9 +235,29 @@ export async function POST(req: Request) {
       },
     });
 
+    if (packageId && packageMailId) {
+      updateBulkPackageMailStatus({
+        packageId,
+        mailId: packageMailId,
+        status: "sent",
+        subject: String(subject || "").trim(),
+      });
+    }
+
     return NextResponse.json({ success: true, data: result, actualRecipient, emailId, testMode: isTestMode, batchId });
   } catch (error: unknown) {
     console.error("SEND BULK MAIL V3 ERROR:", error);
+
+    if (packageId && packageMailId) {
+      updateBulkPackageMailStatus({
+        packageId,
+        mailId: packageMailId,
+        status: "failed",
+        errorMessage:
+          error instanceof Error ? error.message : "Bulk-Mail konnte nicht gesendet werden.",
+      });
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Bulk-Mail konnte nicht gesendet werden." },
       { status: 500 }
