@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { syncLeadsFromTextControlling } from "@/lib/leadStore";
 
 type GeocodeResult = {
   lat: number;
@@ -79,6 +80,15 @@ function normalizeWebsite(url: string) {
   }
 }
 
+function normalizeCompany(company: string) {
+  return company
+    .toLowerCase()
+    .replace(/\b(gmbh|mbh|ag|ug|kg|e\.v\.|ev|stadt|gemeinde)\b/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeRadiusMeters(radiusKm: string) {
   const parsed = Number(radiusKm);
   if (!Number.isFinite(parsed) || parsed <= 0) return 30000;
@@ -124,6 +134,35 @@ function placeLooksUseful(place: GooglePlaceCandidate) {
   }
 
   return !BLOCKED_HOST_SNIPPETS.some((blocked) => loweredAddress.includes(blocked));
+}
+
+function buildCandidateKey(candidate: { website?: string; name?: string; vicinity?: string }) {
+  const websiteKey = normalizeWebsite(safeString(candidate.website)).toLowerCase();
+  if (websiteKey) return websiteKey;
+  return `${normalizeCompany(safeString(candidate.name))}|${safeString(candidate.vicinity).toLowerCase()}`;
+}
+
+function buildCrmLeadKeys() {
+  const keys = new Set<string>();
+
+  for (const lead of syncLeadsFromTextControlling()) {
+    const companyKey = normalizeCompany(lead.company);
+    if (companyKey) {
+      keys.add(companyKey);
+    }
+
+    const websiteKey = normalizeWebsite(safeString(lead.website)).toLowerCase();
+    if (websiteKey) {
+      keys.add(websiteKey);
+    }
+
+    const companyCityKey = `${normalizeCompany(lead.company)}|${safeString(lead.city).toLowerCase()}`;
+    if (companyCityKey !== "|") {
+      keys.add(companyCityKey);
+    }
+  }
+
+  return keys;
 }
 
 async function geocodeLocation(location: string, apiKey: string) {
@@ -237,12 +276,17 @@ async function runPlacesTextSearch(args: {
 
 export async function POST(req: Request) {
   try {
-    const { location, focus = "", count = 20, radius = "30" } = await req.json();
+    const { location, focus = "", count = 20, radius = "30", onlyNewContacts = false, excludeKeys = [] } =
+      await req.json();
 
     const safeLocation = safeString(location);
     const safeFocus = safeString(focus);
     const safeCount = Math.max(1, Math.min(30, Number(count) || 20));
     const safeRadius = safeString(radius) || "30";
+    const safeOnlyNewContacts = Boolean(onlyNewContacts);
+    const excludedKeys = new Set(
+      Array.isArray(excludeKeys) ? excludeKeys.map((item) => safeString(item).toLowerCase()).filter(Boolean) : []
+    );
     const radiusMeters = normalizeRadiusMeters(safeRadius);
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
@@ -257,6 +301,7 @@ export async function POST(req: Request) {
     const geocode = await geocodeLocation(safeLocation, apiKey);
     const textQueries = shuffleInPlace(buildTextQueries(safeLocation, safeFocus));
     const textCandidates: GooglePlaceCandidate[] = [];
+    const crmLeadKeys = safeOnlyNewContacts ? buildCrmLeadKeys() : new Set<string>();
 
     for (const query of textQueries) {
       const results = await runPlacesTextSearch({
@@ -267,7 +312,7 @@ export async function POST(req: Request) {
         apiKey,
       });
       textCandidates.push(...results);
-      if (textCandidates.length >= safeCount * 3) {
+      if (textCandidates.length >= safeCount * 8) {
         break;
       }
       await sleep(80);
@@ -280,13 +325,25 @@ export async function POST(req: Request) {
             if (!candidate.placeId || !candidate.name || !placeLooksUseful(candidate)) {
               return false;
             }
-            return !candidate.website || urlLooksUseful(candidate.website);
+            if (candidate.website && !urlLooksUseful(candidate.website)) {
+              return false;
+            }
+
+            const candidateKey = buildCandidateKey(candidate);
+            if (excludedKeys.has(candidateKey)) {
+              return false;
+            }
+
+            if (
+              safeOnlyNewContacts &&
+              (crmLeadKeys.has(candidateKey) || crmLeadKeys.has(normalizeCompany(candidate.name)))
+            ) {
+              return false;
+            }
+
+            return true;
           })
-          .map((candidate) => {
-            const websiteKey = candidate.website?.toLowerCase();
-            const fallbackKey = `${candidate.name.toLowerCase()}|${candidate.vicinity.toLowerCase()}`;
-            return [websiteKey || fallbackKey, candidate] as const;
-          })
+          .map((candidate) => [buildCandidateKey(candidate), candidate] as const)
       ).values()
     );
 
@@ -311,6 +368,7 @@ export async function POST(req: Request) {
           location: safeLocation,
           radiusKm: safeRadius,
           geocodedAddress: geocode.formattedAddress,
+          onlyNewContacts: safeOnlyNewContacts,
         },
         message: "Keine passenden Unternehmen im gewaehlten Gebiet gefunden.",
       });
@@ -319,6 +377,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       leads: prioritized.map((candidate) => ({
         id: crypto.randomUUID(),
+        searchKey: buildCandidateKey(candidate),
         selected: true,
         company: candidate.name,
         city: safeLocation,
@@ -350,6 +409,7 @@ export async function POST(req: Request) {
         location: safeLocation,
         radiusKm: safeRadius,
         geocodedAddress: geocode.formattedAddress,
+        onlyNewContacts: safeOnlyNewContacts,
       },
     });
   } catch (error: unknown) {

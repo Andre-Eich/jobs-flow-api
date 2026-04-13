@@ -8,6 +8,7 @@ export type BulkLeadEmailOption = {
 
 export type BulkLead = {
   id: string;
+  searchKey?: string;
   selected: boolean;
   company: string;
   city: string;

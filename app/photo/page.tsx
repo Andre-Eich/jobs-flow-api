@@ -74,6 +74,34 @@ function normalizeCompany(company: string) {
     .trim();
 }
 
+function buildBulkSearchContextKey(args: {
+  location: string;
+  focus: string;
+  radius: string;
+  count: string;
+  onlyNewContacts: boolean;
+}) {
+  return JSON.stringify({
+    location: args.location.trim().toLowerCase(),
+    focus: args.focus.trim().toLowerCase(),
+    radius: args.radius.trim(),
+    count: args.count.trim(),
+    onlyNewContacts: args.onlyNewContacts,
+  });
+}
+
+function getBulkLeadSearchKey(lead: Pick<BulkLead, "searchKey" | "website" | "company" | "city">) {
+  if (lead.searchKey?.trim()) {
+    return lead.searchKey.trim().toLowerCase();
+  }
+
+  if (lead.website?.trim()) {
+    return lead.website.trim().toLowerCase();
+  }
+
+  return `${normalizeCompany(lead.company)}|${lead.city.trim().toLowerCase()}`;
+}
+
 function formatDate(dateString: string) {
   try {
     return new Date(dateString).toLocaleString("de-DE", {
@@ -206,7 +234,9 @@ export default function BulkMailServicePage() {
   const [bulkFocus, setBulkFocus] = useState("");
   const [bulkRadius, setBulkRadius] = useState("30");
   const [bulkCount, setBulkCount] = useState("20");
+  const [bulkOnlyNewContacts, setBulkOnlyNewContacts] = useState(false);
   const [bulkLeads, setBulkLeads] = useState<BulkLead[]>(EMPTY_BULK_LEADS);
+  const [shownLeadKeysBySearch, setShownLeadKeysBySearch] = useState<Record<string, string[]>>({});
   const [findingBulkLeads, setFindingBulkLeads] = useState(false);
   const [bulkTestMode, setBulkTestMode] = useState(true);
   const [bulkShortMode, setBulkShortMode] = useState(false);
@@ -324,6 +354,20 @@ export default function BulkMailServicePage() {
     [bulkPackages, selectedBulkPackageId]
   );
 
+  const currentBulkSearchKey = useMemo(
+    () =>
+      buildBulkSearchContextKey({
+        location: bulkLocation,
+        focus: bulkFocus,
+        radius: bulkRadius,
+        count: bulkCount,
+        onlyNewContacts: bulkOnlyNewContacts,
+      }),
+    [bulkLocation, bulkFocus, bulkRadius, bulkCount, bulkOnlyNewContacts]
+  );
+
+  const canLoadNextBulkLeads = (shownLeadKeysBySearch[currentBulkSearchKey] || []).length > 0;
+
   async function loadHistory() {
     try {
       setLoadingHistory(true);
@@ -408,7 +452,7 @@ export default function BulkMailServicePage() {
     );
   }
 
-  async function handleFindBulkLeads() {
+  async function handleFindBulkLeads(mode: "fresh" | "next" = "fresh") {
     setError("");
     setSuccessMessage("");
     const location = bulkLocation.trim();
@@ -421,6 +465,8 @@ export default function BulkMailServicePage() {
 
     try {
       setFindingBulkLeads(true);
+      const excludeKeys =
+        mode === "next" ? shownLeadKeysBySearch[currentBulkSearchKey] || [] : [];
       const response = await fetch("/api/bulk-find-leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -429,6 +475,8 @@ export default function BulkMailServicePage() {
           focus: bulkFocus.trim(),
           count,
           radius: bulkRadius,
+          onlyNewContacts: bulkOnlyNewContacts,
+          excludeKeys,
         }),
       });
       const data = await response.json();
@@ -436,15 +484,40 @@ export default function BulkMailServicePage() {
         setError(data.error || "Die Firmenliste konnte nicht geladen werden.");
         return;
       }
-      setBulkLeads(Array.isArray(data.leads) ? data.leads : []);
+      const nextLeads: BulkLead[] = Array.isArray(data.leads) ? data.leads : [];
+      setBulkLeads(nextLeads);
+      setShownLeadKeysBySearch((prev) => {
+        const nextKeys = nextLeads.map((lead) => getBulkLeadSearchKey(lead)).filter(Boolean);
+        const existingKeys = mode === "next" ? prev[currentBulkSearchKey] || [] : [];
+        return {
+          ...prev,
+          [currentBulkSearchKey]: Array.from(new Set(mode === "next" ? [...existingKeys, ...nextKeys] : nextKeys)),
+        };
+      });
+
+      if (nextLeads.length === 0) {
+        setSuccessMessage(
+          mode === "next"
+            ? "Keine weiteren Treffer fuer diese Suche gefunden."
+            : "Keine passenden Unternehmen fuer diese Suche gefunden."
+        );
+        return;
+      }
+
       setSuccessMessage(
-        `${Array.isArray(data.leads) ? data.leads.length : count} Unternehmen fuer ${location} geladen.`
+        mode === "next"
+          ? `${nextLeads.length} weitere Unternehmen fuer ${location} geladen.`
+          : `${nextLeads.length} Unternehmen fuer ${location} geladen.`
       );
     } catch {
       setError("Die Firmenliste konnte nicht geladen werden.");
     } finally {
       setFindingBulkLeads(false);
     }
+  }
+
+  function handleFindNextBulkLeads() {
+    void handleFindBulkLeads("next");
   }
 
   function updateBulkLead(id: string, patch: Partial<BulkLead>) {
@@ -836,7 +909,7 @@ export default function BulkMailServicePage() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px, 1.1fr) minmax(180px, 1fr) 140px 140px auto", gap: "12px", alignItems: "end", marginBottom: "18px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(180px, 1.1fr) minmax(180px, 1fr) 140px 140px minmax(220px, auto)", gap: "12px", alignItems: "end", marginBottom: "18px" }}>
               <Field label="PLZ oder Ort" value={bulkLocation} onChange={setBulkLocation} placeholder="z. B. Potsdam oder 14467" />
               <Field label="Besonderheiten / Fokus" value={bulkFocus} onChange={setBulkFocus} placeholder="z. B. Arzt, Pflege, Handwerk, kleinere Unternehmen" />
               <div>
@@ -855,9 +928,19 @@ export default function BulkMailServicePage() {
                   <option value="30">30</option>
                 </select>
               </div>
-              <button type="button" onClick={handleFindBulkLeads} disabled={findingBulkLeads} style={primaryButtonStyle(findingBulkLeads)}>
-                {findingBulkLeads ? "Wird gesucht..." : "Liste finden"}
-              </button>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: isMobile ? "stretch" : "flex-start" }}>
+                <button type="button" onClick={() => void handleFindBulkLeads("fresh")} disabled={findingBulkLeads} style={primaryButtonStyle(findingBulkLeads)}>
+                  {findingBulkLeads ? "Wird gesucht..." : "Liste finden"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFindNextBulkLeads}
+                  disabled={findingBulkLeads || !canLoadNextBulkLeads}
+                  style={smallButtonStyle(findingBulkLeads || !canLoadNextBulkLeads)}
+                >
+                  Naechste Treffer
+                </button>
+              </div>
             </div>
 
             <div style={{ display: "flex", gap: "18px", flexWrap: "wrap", alignItems: "center", marginBottom: "18px" }}>
@@ -868,6 +951,15 @@ export default function BulkMailServicePage() {
               <label style={{ fontSize: "14px", cursor: "pointer" }}>
                 <input type="checkbox" checked={bulkShortMode} onChange={(e) => setBulkShortMode(e.target.checked)} style={{ marginRight: "6px" }} />
                 Kurze Mail
+              </label>
+              <label style={{ fontSize: "14px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={bulkOnlyNewContacts}
+                  onChange={(e) => setBulkOnlyNewContacts(e.target.checked)}
+                  style={{ marginRight: "6px" }}
+                />
+                Nur neue Kontakte
               </label>
               <div style={{ fontSize: "13px", color: "#6b7280" }}>
                 {bulkTestMode ? "Bulk-Versand geht nur an TEST_RECIPIENT_EMAIL." : "Produktivversand an gelistete Empfaenger aktiv."}
