@@ -6,19 +6,34 @@ type GeocodeResult = {
   formattedAddress: string;
 };
 
+type GooglePlace = {
+  id?: string;
+  displayName?: {
+    text?: string;
+  };
+  formattedAddress?: string;
+  websiteUri?: string;
+  googleMapsUri?: string;
+  businessStatus?: string;
+  types?: string[];
+};
+
+type PlacesTextSearchResponse = {
+  places?: GooglePlace[];
+  error?: {
+    message?: string;
+    status?: string;
+  };
+};
+
 type GooglePlaceCandidate = {
   placeId: string;
   name: string;
   vicinity: string;
+  website: string;
+  googleMapsUri: string;
   businessStatus: string;
   types: string[];
-};
-
-type GooglePlaceDetail = {
-  placeId: string;
-  name: string;
-  website: string;
-  formattedAddress: string;
 };
 
 const BLOCKED_HOST_SNIPPETS = [
@@ -44,6 +59,7 @@ const FOCUS_QUERY_VARIANTS = [
   "{focus} {location}",
   "{focus} unternehmen {location}",
   "{focus} arbeitgeber {location}",
+  "{focus} firma {location}",
 ];
 
 const GENERIC_QUERY_VARIANTS = [
@@ -51,6 +67,7 @@ const GENERIC_QUERY_VARIANTS = [
   "arbeitgeber in {location}",
   "firmen in {location}",
   "betriebe in {location}",
+  "unternehmen {location}",
 ];
 
 function normalizeWebsite(url: string) {
@@ -117,7 +134,7 @@ async function geocodeLocation(location: string, apiKey: string) {
     region: "de",
   })}`;
 
-  const response = await fetch(url);
+  const response = await fetch(url, { cache: "no-store" });
   const data = await response.json();
 
   if (!response.ok) {
@@ -149,71 +166,6 @@ async function geocodeLocation(location: string, apiKey: string) {
   } satisfies GeocodeResult;
 }
 
-async function runPlacesSearch(
-  mode: "nearby" | "text",
-  params: Record<string, string>,
-  apiKey: string
-) {
-  const endpoint =
-    mode === "nearby"
-      ? "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-      : "https://maps.googleapis.com/maps/api/place/textsearch/json";
-
-  const url = `${endpoint}?${new URLSearchParams({ ...params, key: apiKey, language: "de" })}`;
-  const response = await fetch(url);
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data?.error_message || "Places-Fehler.");
-  }
-
-  if (!["OK", "ZERO_RESULTS"].includes(data?.status)) {
-    throw new Error(data?.error_message || `Places-Fehler (${data?.status || "unknown"}).`);
-  }
-
-  const results = Array.isArray(data?.results) ? data.results : [];
-
-  return results.map((item: Record<string, unknown>) => ({
-    placeId: safeString(item.place_id),
-    name: safeString(item.name),
-    vicinity: safeString(item.vicinity) || safeString(item.formatted_address),
-    businessStatus: safeString(item.business_status),
-    types: Array.isArray(item.types)
-      ? item.types.map((value) => safeString(value)).filter(Boolean)
-      : [],
-  })) satisfies GooglePlaceCandidate[];
-}
-
-async function loadPlaceDetail(placeId: string, apiKey: string) {
-  const url = `https://maps.googleapis.com/maps/api/place/details/json?${new URLSearchParams({
-    place_id: placeId,
-    fields: "place_id,name,website,formatted_address",
-    key: apiKey,
-    language: "de",
-  })}`;
-
-  const response = await fetch(url);
-  const data = await response.json();
-
-  if (!response.ok) {
-    return null;
-  }
-
-  if (data?.status !== "OK") {
-    return null;
-  }
-
-  const result = data?.result;
-  if (!result) return null;
-
-  return {
-    placeId: safeString(result.place_id) || placeId,
-    name: safeString(result.name),
-    website: normalizeWebsite(safeString(result.website)),
-    formattedAddress: safeString(result.formatted_address),
-  } satisfies GooglePlaceDetail;
-}
-
 function buildTextQueries(location: string, focus: string) {
   const templates = focus.trim() ? FOCUS_QUERY_VARIANTS : GENERIC_QUERY_VARIANTS;
   const effectiveFocus = focus.trim();
@@ -224,6 +176,63 @@ function buildTextQueries(location: string, focus: string) {
       .replaceAll("{focus}", effectiveFocus)
       .trim()
   );
+}
+
+async function runPlacesTextSearch(args: {
+  query: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  apiKey: string;
+}) {
+  const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": args.apiKey,
+      "X-Goog-FieldMask":
+        "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.googleMapsUri,places.businessStatus,places.types",
+    },
+    body: JSON.stringify({
+      textQuery: args.query,
+      pageSize: 20,
+      languageCode: "de",
+      regionCode: "DE",
+      locationBias: {
+        circle: {
+          center: {
+            latitude: args.latitude,
+            longitude: args.longitude,
+          },
+          radius: args.radiusMeters,
+        },
+      },
+    }),
+  });
+
+  const data = (await response.json()) as PlacesTextSearchResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message ||
+        `Places API (New) Fehler${data?.error?.status ? ` (${data.error.status})` : ""}.`
+    );
+  }
+
+  const places = Array.isArray(data?.places) ? data.places : [];
+
+  return places.map((place) => ({
+    placeId: safeString(place.id),
+    name: safeString(place.displayName?.text),
+    vicinity: safeString(place.formattedAddress),
+    website: normalizeWebsite(safeString(place.websiteUri)),
+    googleMapsUri: safeString(place.googleMapsUri),
+    businessStatus: safeString(place.businessStatus),
+    types: Array.isArray(place.types)
+      ? place.types.map((item) => safeString(item)).filter(Boolean)
+      : [],
+  })) satisfies GooglePlaceCandidate[];
 }
 
 export async function POST(req: Request) {
@@ -246,58 +255,35 @@ export async function POST(req: Request) {
     }
 
     const geocode = await geocodeLocation(safeLocation, apiKey);
-    const locationParam = `${geocode.lat},${geocode.lng}`;
+    const textQueries = shuffleInPlace(buildTextQueries(safeLocation, safeFocus));
+    const textCandidates: GooglePlaceCandidate[] = [];
 
-    const nearbyCandidates = await runPlacesSearch(
-      "nearby",
-      {
-        location: locationParam,
-        radius: String(radiusMeters),
-        keyword: safeFocus || "unternehmen",
-      },
-      apiKey
-    );
-
-    const textQueries = buildTextQueries(safeLocation, safeFocus);
-    const textCandidates = [];
     for (const query of textQueries) {
-      const results = await runPlacesSearch("text", { query }, apiKey);
+      const results = await runPlacesTextSearch({
+        query,
+        latitude: geocode.lat,
+        longitude: geocode.lng,
+        radiusMeters,
+        apiKey,
+      });
       textCandidates.push(...results);
       if (textCandidates.length >= safeCount * 3) {
         break;
       }
-      await sleep(60);
-    }
-
-    const candidateMap = new Map<string, GooglePlaceCandidate>();
-    for (const candidate of shuffleInPlace([...nearbyCandidates, ...textCandidates])) {
-      if (!candidate.placeId || !candidate.name || !placeLooksUseful(candidate)) continue;
-      if (!candidateMap.has(candidate.placeId)) {
-        candidateMap.set(candidate.placeId, candidate);
-      }
-    }
-
-    const shortlisted = Array.from(candidateMap.values()).slice(0, Math.max(safeCount * 4, 24));
-    const detailedCandidates: Array<GooglePlaceCandidate & { detail?: GooglePlaceDetail | null }> = [];
-
-    for (const candidate of shortlisted) {
-      const detail = await loadPlaceDetail(candidate.placeId, apiKey);
-      detailedCandidates.push({ ...candidate, detail });
-      if (detailedCandidates.length >= safeCount * 3 && detailedCandidates.filter((item) => item.detail?.website).length >= safeCount) {
-        break;
-      }
-      await sleep(40);
+      await sleep(80);
     }
 
     const deduped = Array.from(
       new Map(
-        detailedCandidates
+        shuffleInPlace(textCandidates)
           .filter((candidate) => {
-            const website = candidate.detail?.website || "";
-            return !website || urlLooksUseful(website);
+            if (!candidate.placeId || !candidate.name || !placeLooksUseful(candidate)) {
+              return false;
+            }
+            return !candidate.website || urlLooksUseful(candidate.website);
           })
           .map((candidate) => {
-            const websiteKey = candidate.detail?.website?.toLowerCase();
+            const websiteKey = candidate.website?.toLowerCase();
             const fallbackKey = `${candidate.name.toLowerCase()}|${candidate.vicinity.toLowerCase()}`;
             return [websiteKey || fallbackKey, candidate] as const;
           })
@@ -306,8 +292,8 @@ export async function POST(req: Request) {
 
     const prioritized = deduped
       .sort((a, b) => {
-        const aHasWebsite = Number(Boolean(a.detail?.website));
-        const bHasWebsite = Number(Boolean(b.detail?.website));
+        const aHasWebsite = Number(Boolean(a.website));
+        const bHasWebsite = Number(Boolean(b.website));
         return (
           bHasWebsite - aHasWebsite ||
           a.name.localeCompare(b.name, "de", { sensitivity: "base" })
@@ -315,13 +301,28 @@ export async function POST(req: Request) {
       })
       .slice(0, safeCount);
 
+    if (prioritized.length === 0) {
+      return NextResponse.json({
+        leads: [],
+        requestedCount: safeCount,
+        foundCount: 0,
+        complete: false,
+        searchMeta: {
+          location: safeLocation,
+          radiusKm: safeRadius,
+          geocodedAddress: geocode.formattedAddress,
+        },
+        message: "Keine passenden Unternehmen im gewaehlten Gebiet gefunden.",
+      });
+    }
+
     return NextResponse.json({
       leads: prioritized.map((candidate) => ({
         id: crypto.randomUUID(),
         selected: true,
-        company: candidate.detail?.name || candidate.name,
+        company: candidate.name,
         city: safeLocation,
-        website: candidate.detail?.website || "",
+        website: candidate.website || "",
         analysisStatus: "idle",
         analysisStars: 0,
         analysisSummary: "",
@@ -352,7 +353,7 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: unknown) {
-    console.error("BULK FIND LEADS GOOGLE ERROR:", error);
+    console.error("BULK FIND LEADS GOOGLE NEW ERROR:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unternehmenssuche fehlgeschlagen." },
       { status: 500 }
