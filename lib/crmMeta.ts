@@ -3,9 +3,12 @@ export type CrmMeta = {
   jobTitle?: string;
   company?: string;
   contactPerson?: string;
+  phone?: string;
   followUp?: boolean;
   originalEmailId?: string;
   batchId?: string;
+  searchLocation?: string;
+  radiusKm?: string;
   textBlockTitles?: string[];
   shortMode?: boolean;
   testMode?: boolean;
@@ -30,9 +33,12 @@ export function normalizeCrmMeta(meta: CrmMeta): CrmMeta {
     jobTitle: safeString(meta.jobTitle),
     company: safeString(meta.company),
     contactPerson: safeString(meta.contactPerson),
+    phone: safeString(meta.phone),
     followUp: Boolean(meta.followUp),
     originalEmailId: safeString(meta.originalEmailId),
     batchId: safeString(meta.batchId),
+    searchLocation: safeString(meta.searchLocation),
+    radiusKm: safeString(meta.radiusKm),
     textBlockTitles: Array.isArray(meta.textBlockTitles)
       ? meta.textBlockTitles.map((item) => safeString(item)).filter(Boolean)
       : [],
@@ -78,7 +84,10 @@ export function extractCrmMeta(text: string): CrmMeta {
         kind: "bulk",
         company: parsed?.company,
         contactPerson: parsed?.contactPerson,
+        phone: parsed?.phone,
         batchId: parsed?.batchId,
+        searchLocation: parsed?.searchLocation,
+        radiusKm: parsed?.radiusKm,
         textBlockTitles: parsed?.textBlockTitles,
         shortMode: parsed?.shortMode,
         testMode: parsed?.testMode,
@@ -96,7 +105,10 @@ export function extractCrmMeta(text: string): CrmMeta {
         kind: "bulk",
         company: parsed?.company,
         contactPerson: parsed?.contactPerson,
+        phone: parsed?.phone,
         batchId: parsed?.batchId,
+        searchLocation: parsed?.searchLocation,
+        radiusKm: parsed?.radiusKm,
         textBlockTitles: parsed?.textBlockTitles,
         shortMode: parsed?.shortMode,
         testMode: parsed?.testMode,

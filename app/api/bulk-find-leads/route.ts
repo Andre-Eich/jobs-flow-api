@@ -1,199 +1,327 @@
-import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
-type BraveWebResult = {
-  title?: string;
-  url?: string;
-  description?: string;
+type GeocodeResult = {
+  lat: number;
+  lng: number;
+  formattedAddress: string;
 };
+
+type GooglePlaceCandidate = {
+  placeId: string;
+  name: string;
+  vicinity: string;
+  businessStatus: string;
+  types: string[];
+};
+
+type GooglePlaceDetail = {
+  placeId: string;
+  name: string;
+  website: string;
+  formattedAddress: string;
+};
+
+const BLOCKED_HOST_SNIPPETS = [
+  "stepstone",
+  "indeed",
+  "linkedin",
+  "facebook",
+  "instagram",
+  "xing",
+  "kununu",
+  "meinestadt",
+  "stellenanzeigen",
+  "jobrapido",
+  "glassdoor",
+  "gelbeseiten",
+  "dasoertliche",
+  "yelp",
+  "wikipedia",
+];
+
+const FOCUS_QUERY_VARIANTS = [
+  "{focus} in {location}",
+  "{focus} {location}",
+  "{focus} unternehmen {location}",
+  "{focus} arbeitgeber {location}",
+];
+
+const GENERIC_QUERY_VARIANTS = [
+  "unternehmen in {location}",
+  "arbeitgeber in {location}",
+  "firmen in {location}",
+  "betriebe in {location}",
+];
 
 function normalizeWebsite(url: string) {
   try {
     const parsed = new URL(url);
     return `${parsed.protocol}//${parsed.host}`;
   } catch {
-    return url;
+    return url.trim();
   }
 }
 
-function hostLooksUseful(url: string) {
-  const lowered = url.toLowerCase();
-  return ![
-    "stepstone",
-    "indeed",
-    "linkedin",
-    "facebook",
-    "instagram",
-    "xing",
-    "kununu",
-    "meinestadt",
-    "stellenanzeigen",
-    "jobrapido",
-    "glassdoor",
-  ].some((blocked) => lowered.includes(blocked));
+function normalizeRadiusMeters(radiusKm: string) {
+  const parsed = Number(radiusKm);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 30000;
+  return Math.max(1000, Math.min(50000, Math.round(parsed * 1000)));
 }
 
-function buildQueries(location: string, focus: string, desiredCount: number) {
-  const base = [
-    `${location} unternehmen jobs karriere`,
-    `${location} arbeitgeber stellenangebote`,
-    `${location} firma karriere jobs`,
-    `${location} stellenausschreibungen arbeitgeber`,
-    `${location} beruf jobs unternehmen`,
-    `${location} jobs karriere impressum firma`,
-  ];
+function safeString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
 
-  if (!focus.trim()) return base;
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  return [
-    `${location} ${focus} jobs karriere`,
-    `${location} ${focus} arbeitgeber stellenangebote`,
-    `${location} ${focus} firma karriere`,
-    ...base,
-  ].slice(0, desiredCount >= 20 ? 6 : 4);
+function shuffleInPlace<T>(items: T[]) {
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const randomBytes = crypto.getRandomValues(new Uint32Array(1));
+    const nextIndex = randomBytes[0] % (index + 1);
+    [items[index], items[nextIndex]] = [items[nextIndex], items[index]];
+  }
+  return items;
+}
+
+function urlLooksUseful(url: string) {
+  const lowered = url.toLowerCase();
+  return !BLOCKED_HOST_SNIPPETS.some((blocked) => lowered.includes(blocked));
+}
+
+function placeLooksUseful(place: GooglePlaceCandidate) {
+  const loweredName = place.name.toLowerCase();
+  const loweredAddress = place.vicinity.toLowerCase();
+
+  if (BLOCKED_HOST_SNIPPETS.some((blocked) => loweredName.includes(blocked))) {
+    return false;
+  }
+
+  if (
+    place.types.some((type) =>
+      ["travel_agency", "lodging", "tourist_attraction", "school", "university"].includes(type)
+    )
+  ) {
+    return false;
+  }
+
+  return !BLOCKED_HOST_SNIPPETS.some((blocked) => loweredAddress.includes(blocked));
+}
+
+async function geocodeLocation(location: string, apiKey: string) {
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?${new URLSearchParams({
+    address: location,
+    key: apiKey,
+    language: "de",
+    region: "de",
+  })}`;
+
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data?.error_message || "Geocoding-Fehler.");
+  }
+
+  if (data?.status !== "OK") {
+    if (data?.status === "ZERO_RESULTS") {
+      throw new Error("Fuer den Ort oder die PLZ wurden keine Koordinaten gefunden.");
+    }
+    throw new Error(data?.error_message || `Geocoding fehlgeschlagen (${data?.status || "unknown"}).`);
+  }
+
+  const firstResult = Array.isArray(data?.results) ? data.results[0] : null;
+  const locationResult = firstResult?.geometry?.location;
+
+  if (
+    !locationResult ||
+    typeof locationResult.lat !== "number" ||
+    typeof locationResult.lng !== "number"
+  ) {
+    throw new Error("Leere Geocoding-Antwort.");
+  }
+
+  return {
+    lat: locationResult.lat,
+    lng: locationResult.lng,
+    formattedAddress: safeString(firstResult?.formatted_address),
+  } satisfies GeocodeResult;
+}
+
+async function runPlacesSearch(
+  mode: "nearby" | "text",
+  params: Record<string, string>,
+  apiKey: string
+) {
+  const endpoint =
+    mode === "nearby"
+      ? "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+      : "https://maps.googleapis.com/maps/api/place/textsearch/json";
+
+  const url = `${endpoint}?${new URLSearchParams({ ...params, key: apiKey, language: "de" })}`;
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data?.error_message || "Places-Fehler.");
+  }
+
+  if (!["OK", "ZERO_RESULTS"].includes(data?.status)) {
+    throw new Error(data?.error_message || `Places-Fehler (${data?.status || "unknown"}).`);
+  }
+
+  const results = Array.isArray(data?.results) ? data.results : [];
+
+  return results.map((item: Record<string, unknown>) => ({
+    placeId: safeString(item.place_id),
+    name: safeString(item.name),
+    vicinity: safeString(item.vicinity) || safeString(item.formatted_address),
+    businessStatus: safeString(item.business_status),
+    types: Array.isArray(item.types)
+      ? item.types.map((value) => safeString(value)).filter(Boolean)
+      : [],
+  })) satisfies GooglePlaceCandidate[];
+}
+
+async function loadPlaceDetail(placeId: string, apiKey: string) {
+  const url = `https://maps.googleapis.com/maps/api/place/details/json?${new URLSearchParams({
+    place_id: placeId,
+    fields: "place_id,name,website,formatted_address",
+    key: apiKey,
+    language: "de",
+  })}`;
+
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (!response.ok) {
+    return null;
+  }
+
+  if (data?.status !== "OK") {
+    return null;
+  }
+
+  const result = data?.result;
+  if (!result) return null;
+
+  return {
+    placeId: safeString(result.place_id) || placeId,
+    name: safeString(result.name),
+    website: normalizeWebsite(safeString(result.website)),
+    formattedAddress: safeString(result.formatted_address),
+  } satisfies GooglePlaceDetail;
+}
+
+function buildTextQueries(location: string, focus: string) {
+  const templates = focus.trim() ? FOCUS_QUERY_VARIANTS : GENERIC_QUERY_VARIANTS;
+  const effectiveFocus = focus.trim();
+
+  return templates.map((template) =>
+    template
+      .replaceAll("{location}", location)
+      .replaceAll("{focus}", effectiveFocus)
+      .trim()
+  );
 }
 
 export async function POST(req: Request) {
   try {
     const { location, focus = "", count = 20, radius = "30" } = await req.json();
 
-    const safeLocation = String(location || "").trim();
-    const safeFocus = String(focus || "").trim();
+    const safeLocation = safeString(location);
+    const safeFocus = safeString(focus);
     const safeCount = Math.max(1, Math.min(30, Number(count) || 20));
-    const safeRadius = String(radius || "30").trim();
+    const safeRadius = safeString(radius) || "30";
+    const radiusMeters = normalizeRadiusMeters(safeRadius);
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
     if (!safeLocation) {
       return NextResponse.json({ error: "Bitte Ort oder PLZ angeben." }, { status: 400 });
     }
 
-    const braveKey = process.env.BRAVE_SEARCH_API_KEY;
-    const openaiKey = process.env.OPENAI_API_KEY;
-
-    if (!braveKey) {
-      return NextResponse.json({ error: "BRAVE_SEARCH_API_KEY fehlt." }, { status: 500 });
+    if (!apiKey) {
+      return NextResponse.json({ error: "GOOGLE_MAPS_API_KEY fehlt." }, { status: 500 });
     }
 
-    if (!openaiKey) {
-      return NextResponse.json({ error: "OPENAI_API_KEY fehlt." }, { status: 500 });
-    }
+    const geocode = await geocodeLocation(safeLocation, apiKey);
+    const locationParam = `${geocode.lat},${geocode.lng}`;
 
-    const queries = buildQueries(safeLocation, safeFocus, safeCount);
-    const resultMap = new Map<string, BraveWebResult>();
-
-    for (const query of queries) {
-      const url = `https://api.search.brave.com/res/v1/web/search?${new URLSearchParams({
-        q: query,
-        count: safeCount >= 20 ? "20" : "15",
-        country: "de",
-        search_lang: "de",
-      })}`;
-
-      const response = await fetch(url, {
-        headers: {
-          Accept: "application/json",
-          "Accept-Encoding": "gzip",
-          "X-Subscription-Token": braveKey,
-        },
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        return NextResponse.json({ error: data?.error?.message || "Brave Search Fehler" }, { status: 500 });
-      }
-
-      const results = Array.isArray(data?.web?.results) ? data.web.results : [];
-      for (const item of results) {
-        const candidate: BraveWebResult = {
-          title: typeof item?.title === "string" ? item.title : "",
-          url: typeof item?.url === "string" ? item.url : "",
-          description: typeof item?.description === "string" ? item.description : "",
-        };
-        if (!candidate.url || !hostLooksUseful(candidate.url)) continue;
-        const normalized = normalizeWebsite(candidate.url);
-        if (!resultMap.has(normalized)) {
-          resultMap.set(normalized, { ...candidate, url: normalized });
-        }
-      }
-
-      if (resultMap.size >= safeCount * 3) break;
-    }
-
-    const searchResults = Array.from(resultMap.values()).slice(0, Math.max(safeCount * 3, 18));
-
-    const client = new OpenAI({ apiKey: openaiKey });
-    const ai = await client.responses.create({
-      model: "gpt-5",
-      input: [
-        {
-          role: "system",
-          content:
-            "Du extrahierst aus Suchergebnissen echte potenzielle Arbeitgeber mit eigener Website. Keine Jobbörsen, keine Verzeichnisse, keine Social-Media-Seiten. Gib möglichst genau die gewünschte Anzahl zurück. Antworte nur als JSON.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            location: safeLocation,
-            focus: safeFocus,
-            radiusKm: safeRadius,
-            desiredCount: safeCount,
-            results: searchResults,
-            outputFormat: {
-              leads: [{ company: "", city: safeLocation, website: "" }],
-            },
-          }),
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "bulk_leads_v2",
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              leads: {
-                type: "array",
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    company: { type: "string" },
-                    city: { type: "string" },
-                    website: { type: "string" },
-                  },
-                  required: ["company", "city", "website"],
-                },
-              },
-            },
-            required: ["leads"],
-          },
-        },
+    const nearbyCandidates = await runPlacesSearch(
+      "nearby",
+      {
+        location: locationParam,
+        radius: String(radiusMeters),
+        keyword: safeFocus || "unternehmen",
       },
-    });
+      apiKey
+    );
 
-    const parsed = JSON.parse(ai.output_text || "{}");
-    const leads = Array.isArray(parsed?.leads) ? parsed.leads : [];
+    const textQueries = buildTextQueries(safeLocation, safeFocus);
+    const textCandidates = [];
+    for (const query of textQueries) {
+      const results = await runPlacesSearch("text", { query }, apiKey);
+      textCandidates.push(...results);
+      if (textCandidates.length >= safeCount * 3) {
+        break;
+      }
+      await sleep(60);
+    }
 
-    const finalLeads = Array.from(
+    const candidateMap = new Map<string, GooglePlaceCandidate>();
+    for (const candidate of shuffleInPlace([...nearbyCandidates, ...textCandidates])) {
+      if (!candidate.placeId || !candidate.name || !placeLooksUseful(candidate)) continue;
+      if (!candidateMap.has(candidate.placeId)) {
+        candidateMap.set(candidate.placeId, candidate);
+      }
+    }
+
+    const shortlisted = Array.from(candidateMap.values()).slice(0, Math.max(safeCount * 4, 24));
+    const detailedCandidates: Array<GooglePlaceCandidate & { detail?: GooglePlaceDetail | null }> = [];
+
+    for (const candidate of shortlisted) {
+      const detail = await loadPlaceDetail(candidate.placeId, apiKey);
+      detailedCandidates.push({ ...candidate, detail });
+      if (detailedCandidates.length >= safeCount * 3 && detailedCandidates.filter((item) => item.detail?.website).length >= safeCount) {
+        break;
+      }
+      await sleep(40);
+    }
+
+    const deduped = Array.from(
       new Map(
-        leads
-          .map((lead: any) => ({
-            company: String(lead.company || "").trim(),
-            city: String(lead.city || safeLocation).trim() || safeLocation,
-            website: normalizeWebsite(String(lead.website || "").trim()),
-          }))
-          .filter((lead: any) => lead.company && lead.website)
-          .map((lead: any) => [lead.website.toLowerCase(), lead])
+        detailedCandidates
+          .filter((candidate) => {
+            const website = candidate.detail?.website || "";
+            return !website || urlLooksUseful(website);
+          })
+          .map((candidate) => {
+            const websiteKey = candidate.detail?.website?.toLowerCase();
+            const fallbackKey = `${candidate.name.toLowerCase()}|${candidate.vicinity.toLowerCase()}`;
+            return [websiteKey || fallbackKey, candidate] as const;
+          })
       ).values()
-    ).slice(0, safeCount);
+    );
+
+    const prioritized = deduped
+      .sort((a, b) => {
+        const aHasWebsite = Number(Boolean(a.detail?.website));
+        const bHasWebsite = Number(Boolean(b.detail?.website));
+        return (
+          bHasWebsite - aHasWebsite ||
+          a.name.localeCompare(b.name, "de", { sensitivity: "base" })
+        );
+      })
+      .slice(0, safeCount);
 
     return NextResponse.json({
-      leads: finalLeads.map((lead: any) => ({
+      leads: prioritized.map((candidate) => ({
         id: crypto.randomUUID(),
         selected: true,
-        company: lead.company,
-        city: lead.city,
-        website: lead.website,
+        company: candidate.detail?.name || candidate.name,
+        city: safeLocation,
+        website: candidate.detail?.website || "",
         analysisStatus: "idle",
         analysisStars: 0,
         analysisSummary: "",
@@ -205,6 +333,7 @@ export async function POST(req: Request) {
         emailNeedsReview: false,
         contactPerson: "",
         contactPersonOptions: [],
+        phone: "",
         industry: "",
         qualityStatus: "idle",
         qualityStars: 0,
@@ -214,11 +343,19 @@ export async function POST(req: Request) {
         sendStatus: "idle",
       })),
       requestedCount: safeCount,
-      foundCount: finalLeads.length,
-      complete: finalLeads.length >= safeCount,
+      foundCount: prioritized.length,
+      complete: prioritized.length >= safeCount,
+      searchMeta: {
+        location: safeLocation,
+        radiusKm: safeRadius,
+        geocodedAddress: geocode.formattedAddress,
+      },
     });
-  } catch (error: any) {
-    console.error("BULK FIND LEADS V2 ERROR:", error);
-    return NextResponse.json({ error: error?.message || "Unternehmenssuche fehlgeschlagen." }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("BULK FIND LEADS GOOGLE ERROR:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unternehmenssuche fehlgeschlagen." },
+      { status: 500 }
+    );
   }
 }

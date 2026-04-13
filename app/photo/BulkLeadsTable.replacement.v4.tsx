@@ -23,6 +23,7 @@ export type BulkLead = {
   emailNeedsReview?: boolean;
   contactPerson: string;
   contactPersonOptions?: string[];
+  phone?: string;
   industry: string;
   qualityStatus: "idle" | "loading" | "done" | "error";
   qualityStars: 0 | 1 | 2 | 3;

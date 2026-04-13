@@ -7,7 +7,33 @@ type ContactOption = {
   needsReview?: boolean;
 };
 
+type ContactExtractionResult = {
+  bestContactPerson: string;
+  contactPersonOptions: string[];
+  industry: string;
+  phone: string;
+};
+
 const HARD_TIMEOUT_MS = 30000;
+const HIGH_PRIORITY_EMAIL_PREFIXES = [
+  "personal",
+  "bewerbung",
+  "jobs",
+  "karriere",
+  "recruiting",
+  "hr",
+  "talent",
+  "career",
+  "stellen",
+];
+const LOW_PRIORITY_EMAIL_PREFIXES = [
+  "info",
+  "kontakt",
+  "office",
+  "service",
+  "post",
+  "mail",
+];
 
 function stripHtml(html: string) {
   return html
@@ -54,32 +80,61 @@ function dedupeStrings(values: string[]) {
   }).slice(0, 3);
 }
 
+function findPhones(rawText: string) {
+  const matches = rawText.match(/(?:\+49|0)[0-9\/()\-\s]{6,}/g) || [];
+  return dedupeStrings(
+    matches
+      .map((item) => item.replace(/\s+/g, " ").trim())
+      .filter((item) => item.length >= 7)
+  );
+}
+
 function findEmails(rawText: string) {
   const text = normalizeObfuscatedEmails(rawText);
   const matches = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
   return dedupeStrings(matches.map((item) => item.trim())).slice(0, 5);
 }
 
+function getEmailPriority(email: string) {
+  const localPart = email.split("@")[0]?.toLowerCase().trim() || "";
+
+  if (HIGH_PRIORITY_EMAIL_PREFIXES.some((prefix) => localPart.startsWith(prefix))) {
+    return 0;
+  }
+
+  if (LOW_PRIORITY_EMAIL_PREFIXES.some((prefix) => localPart.startsWith(prefix))) {
+    return 2;
+  }
+
+  return 1;
+}
+
+function prioritizeEmailOptions(values: ContactOption[]) {
+  return dedupeOptions(values)
+    .sort((a, b) => {
+      const priority = getEmailPriority(a.value) - getEmailPriority(b.value);
+      if (priority !== 0) return priority;
+      const aReview = Number(Boolean(a.needsReview));
+      const bReview = Number(Boolean(b.needsReview));
+      return aReview - bReview || a.value.localeCompare(b.value, "de", { sensitivity: "base" });
+    })
+    .slice(0, 3);
+}
+
 async function searchFallbackEmails(company: string) {
-  const braveKey = process.env.BRAVE_SEARCH_API_KEY;
-  if (!braveKey || !company) return [] as string[];
+  if (!company) return [] as string[];
 
   const queries = [`"${company}" email`, `"${company}" kontakt email`];
   const snippets: string[] = [];
 
   for (const query of queries) {
-    const url = `https://api.search.brave.com/res/v1/web/search?${new URLSearchParams({ q: query, count: "5", country: "de", search_lang: "de" })}`;
+    const url = `https://duckduckgo.com/html/?${new URLSearchParams({ q: query, kl: "de-de" })}`;
     const response = await fetch(url, {
-      headers: { Accept: "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": braveKey },
+      headers: { "User-Agent": "Mozilla/5.0" },
     });
     if (!response.ok) continue;
-    const data = await response.json();
-    const results = Array.isArray(data?.web?.results) ? data.web.results : [];
-    for (const item of results) {
-      const title = typeof item?.title === "string" ? item.title : "";
-      const description = typeof item?.description === "string" ? item.description : "";
-      snippets.push(`${title} ${description}`);
-    }
+    const html = await response.text();
+    snippets.push(stripHtml(html));
   }
 
   return findEmails(snippets.join(" ")).slice(0, 2);
@@ -141,12 +196,14 @@ export async function POST(req: Request) {
       fallbackUsed = fallbackEmails.length > 0;
     }
 
-    const mergedEmailOptions = dedupeOptions(emailOptions);
+    const mergedEmailOptions = prioritizeEmailOptions(emailOptions);
     const bestEmail = mergedEmailOptions[0]?.value || "";
+    const discoveredPhones = dedupeStrings(pages.flatMap((page) => findPhones(page.text)));
 
     let bestContactPerson = "";
     let contactPersonOptions: string[] = [];
     let industry = "";
+    let phone = discoveredPhones[0] || "";
 
     if (Date.now() - startedAt < 26000 && pages.length > 0) {
       const client = new OpenAI({ apiKey: openaiKey });
@@ -155,7 +212,7 @@ export async function POST(req: Request) {
         input: [
           {
             role: "system",
-            content: "Extrahiere aus Unternehmenswebsites brauchbare Vertriebs-Kontaktdaten. Sei pragmatisch und schnell. Gib maximal 3 E-Mail-Optionen und maximal 3 Ansprechpartner zurück. Antworte nur als JSON.",
+            content: "Extrahiere aus Unternehmenswebsites brauchbare Vertriebs-Kontaktdaten. Bevorzuge fuer E-Mail-Adressen klar Recruiting-, HR-, Karriere- oder Bewerbungsadressen vor allgemeinen Sammeladressen. Sei pragmatisch und schnell. Gib maximal 3 Ansprechpartner zurueck. Antworte nur als JSON.",
           },
           {
             role: "user",
@@ -183,14 +240,15 @@ export async function POST(req: Request) {
                 bestContactPerson: { type: "string" },
                 contactPersonOptions: { type: "array", items: { type: "string" } },
                 industry: { type: "string" },
+                phone: { type: "string" },
               },
-              required: ["bestContactPerson", "contactPersonOptions", "industry"],
+              required: ["bestContactPerson", "contactPersonOptions", "industry", "phone"],
             },
           },
         },
       });
 
-      const parsed = JSON.parse(ai.output_text || "{}");
+      const parsed = JSON.parse(ai.output_text || "{}") as Partial<ContactExtractionResult>;
       bestContactPerson = String(parsed?.bestContactPerson || "").trim();
       contactPersonOptions = dedupeStrings(
         Array.isArray(parsed?.contactPersonOptions)
@@ -199,6 +257,7 @@ export async function POST(req: Request) {
       );
       if (!bestContactPerson) bestContactPerson = contactPersonOptions[0] || "";
       industry = String(parsed?.industry || "").trim();
+      phone = String(parsed?.phone || "").trim() || phone;
     }
 
     return NextResponse.json({
@@ -208,13 +267,20 @@ export async function POST(req: Request) {
       emailNeedsReview: mergedEmailOptions.find((item) => item.value === bestEmail)?.needsReview || false,
       contactPerson: bestContactPerson,
       contactPersonOptions,
+      phone,
       industry,
       fallbackUsed,
       elapsedMs: Date.now() - startedAt,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("BULK CONTACT V3 ERROR:", error);
-    return NextResponse.json({ error: error?.name === "AbortError" ? "Kontaktdatensuche wegen Timeout abgebrochen." : error?.message || "Kontaktdatensuche fehlgeschlagen." }, { status: 500 });
+    const message =
+      error instanceof Error
+        ? error.name === "AbortError"
+          ? "Kontaktdatensuche wegen Timeout abgebrochen."
+          : error.message || "Kontaktdatensuche fehlgeschlagen."
+        : "Kontaktdatensuche fehlgeschlagen.";
+    return NextResponse.json({ error: message }, { status: 500 });
   } finally {
     clearTimeout(timeout);
   }

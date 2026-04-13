@@ -11,10 +11,13 @@ type MailRecord = {
   subject: string;
   company?: string;
   contactPerson: string;
+  phone?: string;
   recipientEmail: string;
   createdAt: string;
   kind?: "single" | "bulk";
   batchId?: string;
+  searchLocation?: string;
+  radiusKm?: string;
   textBlockTitles?: string[];
   shortMode?: boolean;
   testMode?: boolean;
@@ -30,6 +33,8 @@ type BulkPackageRecord = {
   id: string;
   label: string;
   createdAt: string;
+  searchLocation: string;
+  radiusKm: string;
   textBlockTitles: string[];
   shortMode: boolean;
   testMode: boolean;
@@ -185,6 +190,7 @@ export default function BulkMailServicePage() {
   const [editingBulkTextBlock, setEditingBulkTextBlock] = useState<BulkTextBlock | null>(null);
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
   const [selectedBulkPackage, setSelectedBulkPackage] = useState<BulkPackageRecord | null>(null);
+  const [currentBatchId, setCurrentBatchId] = useState(() => crypto.randomUUID());
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -240,7 +246,7 @@ export default function BulkMailServicePage() {
     }
 
     return Array.from(grouped.entries())
-      .map(([key, mails], index) => {
+      .map(([key, mails]) => {
         const sortedMails = [...mails].sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
@@ -248,8 +254,10 @@ export default function BulkMailServicePage() {
 
         return {
           id: key,
-          label: `Streumail ${index + 1}`,
+          label: `Mail-Paket ${formatDate(firstMail?.createdAt || new Date().toISOString())}`,
           createdAt: firstMail?.createdAt || new Date().toISOString(),
+          searchLocation: firstMail?.searchLocation || "",
+          radiusKm: firstMail?.radiusKm || "",
           textBlockTitles: firstMail?.textBlockTitles || [],
           shortMode: Boolean(firstMail?.shortMode),
           testMode: Boolean(firstMail?.testMode),
@@ -361,6 +369,7 @@ export default function BulkMailServicePage() {
         return;
       }
       setBulkLeads(Array.isArray(data.leads) ? data.leads : []);
+      setCurrentBatchId(crypto.randomUUID());
       setSuccessMessage(
         `${Array.isArray(data.leads) ? data.leads.length : count} Unternehmen fuer ${location} geladen.`
       );
@@ -451,6 +460,7 @@ export default function BulkMailServicePage() {
         contactPersonOptions: Array.isArray(data.contactPersonOptions)
           ? data.contactPersonOptions
           : [],
+        phone: String(data.phone || "").trim(),
         industry: String(data.industry || "").trim(),
       });
     } catch {
@@ -543,10 +553,14 @@ export default function BulkMailServicePage() {
           sendCopy: true,
           company: lead.company,
           contactPerson: lead.contactPerson,
+          phone: lead.phone || "",
           hookText:
             activeBulkTextBlocks.map((block) => block.title).join(", ") || generated.subject,
           textBlockTitles: activeBulkTextBlocks.map((block) => block.title),
           shortMode: bulkShortMode,
+          batchId: currentBatchId,
+          searchLocation: bulkLocation.trim(),
+          radiusKm: bulkRadius,
         }),
       });
       const sendData = await sendResponse.json();
@@ -661,10 +675,13 @@ export default function BulkMailServicePage() {
                 bulkPackages.map((item) => (
                   <button key={item.id} type="button" onClick={() => setSelectedBulkPackage(item)} style={{ textAlign: "left", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "10px", background: "#ffffff", cursor: "pointer" }}>
                     <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px", lineHeight: 1.3 }}>{item.label}</div>
-                    <div style={{ fontSize: "12px", color: "#374151", marginBottom: "4px" }}>{formatDate(item.createdAt)}</div>
-                    <div style={{ fontSize: "11px", color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.textBlockTitles[0] || item.mails[0]?.subject || "Baustein"}
+                    <div style={{ fontSize: "12px", color: "#374151", marginBottom: "4px" }}>
+                      {item.searchLocation ? `PLZ/Ort ${item.searchLocation}` : "PLZ/Ort -"}
                     </div>
+                    <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "4px" }}>
+                      {item.radiusKm ? `Umkreis ${item.radiusKm} km` : "Umkreis -"}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#6b7280" }}>{item.mails.length} E-Mails</div>
                   </button>
                 ))
               )}
@@ -711,6 +728,8 @@ export default function BulkMailServicePage() {
             </div>
 
             <div style={{ display: "grid", gap: "10px", marginBottom: "16px", fontSize: "14px" }}>
+              <DetailRow label="PLZ / Ort" value={selectedBulkPackage.searchLocation || "-"} />
+              <DetailRow label="Umkreis" value={selectedBulkPackage.radiusKm ? `${selectedBulkPackage.radiusKm} km` : "-"} />
               <DetailRow label="Versandzeit" value={formatDate(selectedBulkPackage.createdAt)} />
               <DetailRow label="Bausteine" value={selectedBulkPackage.textBlockTitles.length > 0 ? selectedBulkPackage.textBlockTitles.join(", ") : "-"} />
               <DetailRow label="Kurzmodus" value={selectedBulkPackage.shortMode ? "Ja" : "Nein"} />
@@ -725,6 +744,8 @@ export default function BulkMailServicePage() {
                     <tr style={{ background: "#f9fafb", textAlign: "left" }}>
                       <th style={tableHeadStyle}>Firma</th>
                       <th style={tableHeadStyle}>Empfaenger</th>
+                      <th style={tableHeadStyle}>Telefon</th>
+                      <th style={tableHeadStyle}>Bausteine</th>
                       <th style={tableHeadStyle}>Betreff</th>
                     </tr>
                   </thead>
@@ -733,6 +754,8 @@ export default function BulkMailServicePage() {
                       <tr key={mail.id}>
                         <td style={tableCellStyle}>{mail.company || "-"}</td>
                         <td style={tableCellStyle}>{mail.recipientEmail || "-"}</td>
+                        <td style={tableCellStyle}>{mail.phone || "-"}</td>
+                        <td style={tableCellStyle}>{mail.textBlockTitles?.join(", ") || "-"}</td>
                         <td style={tableCellStyle}>{mail.subject || "-"}</td>
                       </tr>
                     ))}

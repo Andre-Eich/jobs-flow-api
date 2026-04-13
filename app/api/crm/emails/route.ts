@@ -135,7 +135,11 @@ export async function GET(req: Request) {
           safeString(meta.originalEmailId) || safeString(entry?.originalEmailId);
         const effectiveKind =
           meta.kind === "bulk" || entry?.kind === "bulk" ? "bulk" : "single";
+        const effectivePhone = safeString(meta.phone) || safeString(entry?.phone);
         const effectiveBatchId = safeString(meta.batchId) || safeString(entry?.batchId);
+        const effectiveSearchLocation =
+          safeString(meta.searchLocation) || safeString(entry?.searchLocation);
+        const effectiveRadiusKm = safeString(meta.radiusKm) || safeString(entry?.radiusKm);
         const effectiveTextBlockTitles = Array.isArray(meta.textBlockTitles) && meta.textBlockTitles.length > 0
           ? meta.textBlockTitles
           : Array.isArray(entry?.textBlockTitles)
@@ -163,7 +167,10 @@ export async function GET(req: Request) {
           followUp: effectiveFollowUp,
           originalEmailId: effectiveOriginalEmailId,
           kind: effectiveKind,
+          phone: effectivePhone,
           batchId: effectiveBatchId,
+          searchLocation: effectiveSearchLocation,
+          radiusKm: effectiveRadiusKm,
           textBlockTitles: effectiveTextBlockTitles,
           shortMode: effectiveShortMode,
           testMode: effectiveTestMode,

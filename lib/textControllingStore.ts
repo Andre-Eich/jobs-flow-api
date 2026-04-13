@@ -10,6 +10,7 @@ export type TextControllingEntry = {
   jobTitle: string;
   company: string;
   contactPerson?: string;
+  phone?: string;
   recipientEmail: string;
   subject: string;
   hookBaseId: string;
@@ -20,6 +21,8 @@ export type TextControllingEntry = {
   originalEmailId?: string;
   batchId?: string;
   kind?: "single" | "bulk";
+  searchLocation?: string;
+  radiusKm?: string;
   textBlockTitles?: string[];
   shortMode?: boolean;
   testMode?: boolean;
