@@ -5,6 +5,7 @@ import BulkMailPage from "./photo/page";
 import ColdMailPage from "./photo/page.replacement";
 import CrmPage from "./crm/page";
 import PromptsTextPage from "./prompts-text/page";
+import SocialPostsPage from "./social-posts/page";
 
 const DEFAULT_SERVICE_TASK = `Erstelle einen natürlichen deutschen Text mit genau {count} Wörtern.
 
@@ -23,7 +24,8 @@ type ToolKey =
   | "photo-mail"
   | "bulk-mail"
   | "crm"
-  | "prompts-text";
+  | "prompts-text"
+  | "social-posts";
 
 export default function Home() {
   const [activeTool, setActiveTool] = useState<ToolKey>("service-text");
@@ -102,6 +104,12 @@ export default function Home() {
             active={activeTool === "prompts-text"}
             onClick={() => handleSelectTool("prompts-text")}
             label="Prompts & Texte"
+          />
+
+          <SidebarButton
+            active={activeTool === "social-posts"}
+            onClick={() => handleSelectTool("social-posts")}
+            label="Social Posts"
           />
         </aside>
       )}
@@ -190,6 +198,12 @@ export default function Home() {
                   onClick={() => handleSelectTool("prompts-text")}
                   label="Prompts & Texte"
                 />
+
+                <SidebarButton
+                  active={activeTool === "social-posts"}
+                  onClick={() => handleSelectTool("social-posts")}
+                  label="Social Posts"
+                />
               </div>
             )}
           </>
@@ -203,6 +217,7 @@ export default function Home() {
         {activeTool === "bulk-mail" && <BulkMailPage />}
         {activeTool === "crm" && <CrmPage />}
         {activeTool === "prompts-text" && <PromptsTextPage />}
+        {activeTool === "social-posts" && <SocialPostsPage />}
       </main>
     </div>
   );
