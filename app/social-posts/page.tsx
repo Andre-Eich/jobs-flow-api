@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type SocialPostTab = "content" | "template";
 type SocialPostFormatId = "format-a";
@@ -48,6 +48,17 @@ type ExtractedSocialPostData = {
   teaserImageUrl: string;
   link: string;
   shortText: string;
+};
+
+type DragState = {
+  type: "move" | "resize";
+  key: SocialPostElementKey;
+  startMouseX: number;
+  startMouseY: number;
+  startX: number;
+  startY: number;
+  startWidth: number;
+  startHeight: number;
 };
 
 const ELEMENT_LABELS: Array<{ key: SocialPostElementKey; label: string; kind: "text" | "image" }> = [
@@ -129,6 +140,7 @@ function buildImageSource(key: SocialPostElementKey, data: ExtractedSocialPostDa
   return "";
 }
 
+// Statische Vorschau – verwendet im Content-Tab (nicht interaktiv)
 function SocialPostPreview({
   template,
   data,
@@ -244,6 +256,243 @@ function SocialPostPreview({
             }}
           >
             {text}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Interaktiver Canvas – verwendet im Template-Tab
+function SocialPostTemplateCanvas({
+  template,
+  data,
+  activeElement,
+  onSelectElement,
+  onUpdateElement,
+}: {
+  template: SocialPostTemplate;
+  data: ExtractedSocialPostData;
+  activeElement: SocialPostElementKey;
+  onSelectElement: (key: SocialPostElementKey) => void;
+  onUpdateElement: (key: SocialPostElementKey, patch: Partial<SocialPostElementConfig>) => void;
+}) {
+  const scale = 420 / template.width;
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  function handleElementMouseDown(
+    event: React.MouseEvent,
+    key: SocialPostElementKey,
+    type: "move" | "resize"
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectElement(key);
+    const config = template.elements[key];
+    setDrag({
+      type,
+      key,
+      startMouseX: event.clientX,
+      startMouseY: event.clientY,
+      startX: config.x,
+      startY: config.y,
+      startWidth: config.width,
+      startHeight: config.height,
+    });
+  }
+
+  function handleMouseMove(event: React.MouseEvent) {
+    if (!drag) return;
+    const dx = (event.clientX - drag.startMouseX) / scale;
+    const dy = (event.clientY - drag.startMouseY) / scale;
+
+    if (drag.type === "move") {
+      onUpdateElement(drag.key, {
+        x: Math.round(drag.startX + dx),
+        y: Math.round(drag.startY + dy),
+      });
+    } else {
+      onUpdateElement(drag.key, {
+        width: Math.max(40, Math.round(drag.startWidth + dx)),
+        height: Math.max(20, Math.round(drag.startHeight + dy)),
+      });
+    }
+  }
+
+  function handleMouseUp() {
+    setDrag(null);
+  }
+
+  const canvasWidth = template.width * scale;
+  const canvasHeight = template.height * scale;
+
+  return (
+    <div
+      ref={canvasRef}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      style={{
+        width: canvasWidth,
+        height: canvasHeight,
+        position: "relative",
+        borderRadius: "18px",
+        overflow: "hidden",
+        background: template.backgroundImage
+          ? `center / cover no-repeat url(${template.backgroundImage})`
+          : "linear-gradient(160deg, #0f172a, #334155)",
+        boxShadow: "0 12px 30px rgba(15, 23, 42, 0.18)",
+        userSelect: "none",
+        cursor: drag?.type === "move" ? "grabbing" : "default",
+        flexShrink: 0,
+      }}
+    >
+      {!template.backgroundImage ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(145deg, rgba(15, 23, 42, 0.28), rgba(37, 99, 235, 0.16))",
+          }}
+        />
+      ) : null}
+
+      {ELEMENT_LABELS.map((element) => {
+        const config = template.elements[element.key];
+        if (!config.visible) return null;
+
+        const isActive = activeElement === element.key;
+        const left = config.x * scale;
+        const top = config.y * scale;
+        const width = config.width * scale;
+        const height = config.height * scale;
+
+        const text = element.kind === "text" ? buildElementText(element.key, data) : "";
+        const imgSrc = element.kind === "image" ? buildImageSource(element.key, data) : "";
+
+        return (
+          <div
+            key={element.key}
+            onMouseDown={(e) => handleElementMouseDown(e, element.key, "move")}
+            style={{
+              position: "absolute",
+              left,
+              top,
+              width,
+              height,
+              cursor: drag && drag.key === element.key && drag.type === "move" ? "grabbing" : "grab",
+              outline: isActive
+                ? "2px solid #3b82f6"
+                : "1px solid rgba(255,255,255,0.10)",
+              outlineOffset: isActive ? "1px" : "0px",
+              borderRadius: element.kind === "image" ? "14px" : "4px",
+              overflow: "hidden",
+              boxSizing: "border-box",
+              ...(element.kind === "image"
+                ? {
+                    background: "rgba(255,255,255,0.12)",
+                    backdropFilter: "blur(4px)",
+                  }
+                : {}),
+            }}
+          >
+            {element.kind === "image" ? (
+              imgSrc ? (
+                <Image
+                  src={imgSrc}
+                  alt={element.label}
+                  fill
+                  unoptimized
+                  style={{ objectFit: config.objectFit, pointerEvents: "none" }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#ffffff",
+                    fontSize: Math.max(10, 12 * scale),
+                    textAlign: "center",
+                    padding: "6px",
+                    boxSizing: "border-box",
+                    pointerEvents: "none",
+                    opacity: 0.7,
+                  }}
+                >
+                  {element.label}
+                </div>
+              )
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  color: config.color,
+                  fontSize: config.fontSize * scale,
+                  textAlign: config.textAlign,
+                  lineHeight: 1.15,
+                  fontWeight: element.key === "jobTitle" ? 700 : 500,
+                  whiteSpace: "pre-wrap",
+                  overflow: "hidden",
+                  textShadow: "0 2px 10px rgba(15, 23, 42, 0.45)",
+                  pointerEvents: "none",
+                  padding: "2px",
+                  boxSizing: "border-box",
+                }}
+              >
+                {text}
+              </div>
+            )}
+
+            {/* Resize-Handle unten rechts */}
+            {isActive && (
+              <div
+                onMouseDown={(e) => handleElementMouseDown(e, element.key, "resize")}
+                title="Größe ändern"
+                style={{
+                  position: "absolute",
+                  bottom: 0,
+                  right: 0,
+                  width: 14,
+                  height: 14,
+                  background: "#3b82f6",
+                  borderRadius: "4px 0 4px 0",
+                  cursor: "nwse-resize",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                  <path d="M7 1L1 7M7 4L4 7" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </div>
+            )}
+
+            {/* Label beim aktiven Element */}
+            {isActive && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: -20,
+                  left: 0,
+                  background: "#3b82f6",
+                  color: "#fff",
+                  fontSize: 10,
+                  padding: "1px 5px",
+                  borderRadius: "4px 4px 0 0",
+                  whiteSpace: "nowrap",
+                  pointerEvents: "none",
+                }}
+              >
+                {ELEMENT_LABELS.find((el) => el.key === element.key)?.label}
+              </div>
+            )}
           </div>
         );
       })}
@@ -418,9 +667,11 @@ export default function SocialPostsPage() {
       {successMessage ? <div style={{ color: "#166534", fontWeight: 600 }}>{successMessage}</div> : null}
 
       {activeTab === "template" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) 1fr", gap: "18px" }}>
-          <div style={panelStyle()}>
-            <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Template bearbeiten</div>
+        <div style={{ display: "flex", gap: "18px", alignItems: "flex-start", flexWrap: "wrap" }}>
+          {/* Linkes Panel: Einstellungen */}
+          <div style={{ ...panelStyle(), width: 300, flexShrink: 0 }}>
+            <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "16px" }}>Einstellungen</div>
+
             <div style={{ marginBottom: "14px" }}>
               <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>Format</label>
               <select
@@ -433,22 +684,31 @@ export default function SocialPostsPage() {
             </div>
 
             <div style={{ marginBottom: "14px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>Template-Bild hochladen</label>
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>Hintergrundbild hochladen</label>
               <input type="file" accept="image/*" onChange={handleBackgroundUpload} />
               <div style={{ marginTop: "8px", fontSize: "12px", color: "#6b7280" }}>
-                Das Hintergrundbild wird zusammen mit den Positionen dauerhaft gespeichert.
+                Wird zusammen mit den Positionen gespeichert.
               </div>
             </div>
 
             <div style={{ marginBottom: "14px" }}>
-              <div style={{ fontWeight: 600, marginBottom: "8px" }}>Element waehlen</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ fontWeight: 600, marginBottom: "8px" }}>Element anklicken oder hier wählen</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                 {ELEMENT_LABELS.map((element) => (
                   <button
                     key={element.key}
                     type="button"
                     onClick={() => setActiveElement(element.key)}
-                    style={tabButtonStyle(activeElement === element.key)}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: "999px",
+                      border: `1px solid ${activeElement === element.key ? "#3b82f6" : "#cbd5e1"}`,
+                      background: activeElement === element.key ? "#eff6ff" : "#ffffff",
+                      color: activeElement === element.key ? "#1d4ed8" : "#111827",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      fontWeight: activeElement === element.key ? 700 : 400,
+                    }}
                   >
                     {element.label}
                   </button>
@@ -457,83 +717,83 @@ export default function SocialPostsPage() {
             </div>
 
             {activeElementConfig ? (
-              <div style={{ display: "grid", gap: "10px" }}>
-                <label style={{ fontSize: "14px" }}>
+              <div style={{ display: "grid", gap: "12px", borderTop: "1px solid #e5e7eb", paddingTop: "14px" }}>
+                <div style={{ fontWeight: 600, fontSize: "14px", color: "#374151" }}>
+                  {ELEMENT_LABELS.find((el) => el.key === activeElement)?.label}
+                </div>
+
+                <label style={{ fontSize: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
                   <input
                     type="checkbox"
                     checked={activeElementConfig.visible}
                     onChange={(event) => updateElementConfig(activeElement, { visible: event.target.checked })}
-                    style={{ marginRight: "6px" }}
                   />
                   Sichtbar
                 </label>
-                <NumberInput
-                  label="Position X"
-                  value={activeElementConfig.x}
-                  onChange={(value) => updateElementConfig(activeElement, { x: value })}
-                />
-                <NumberInput
-                  label="Position Y"
-                  value={activeElementConfig.y}
-                  onChange={(value) => updateElementConfig(activeElement, { y: value })}
-                />
-                <NumberInput
-                  label="Breite"
-                  value={activeElementConfig.width}
-                  onChange={(value) => updateElementConfig(activeElement, { width: value })}
-                />
-                <NumberInput
-                  label="Hoehe"
-                  value={activeElementConfig.height}
-                  onChange={(value) => updateElementConfig(activeElement, { height: value })}
-                />
-                <NumberInput
-                  label="Schriftgroesse"
-                  value={activeElementConfig.fontSize}
-                  onChange={(value) => updateElementConfig(activeElement, { fontSize: value })}
-                />
-                <div>
-                  <label style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Farbe</label>
-                  <input
-                    type="color"
-                    value={activeElementConfig.color}
-                    onChange={(event) => updateElementConfig(activeElement, { color: event.target.value })}
-                    style={{ width: "100%", height: "42px", border: "1px solid #cbd5e1", borderRadius: "8px" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Ausrichtung</label>
-                  <select
-                    value={activeElementConfig.textAlign}
-                    onChange={(event) =>
-                      updateElementConfig(activeElement, {
-                        textAlign:
-                          event.target.value === "center" || event.target.value === "right"
-                            ? event.target.value
-                            : "left",
-                      })
-                    }
-                    style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff" }}
-                  >
-                    <option value="left">links</option>
-                    <option value="center">zentriert</option>
-                    <option value="right">rechts</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>Bildmodus</label>
-                  <select
-                    value={activeElementConfig.objectFit}
-                    onChange={(event) =>
-                      updateElementConfig(activeElement, {
-                        objectFit: event.target.value === "contain" ? "contain" : "cover",
-                      })
-                    }
-                    style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff" }}
-                  >
-                    <option value="cover">cover</option>
-                    <option value="contain">contain</option>
-                  </select>
+
+                {/* Nur Styling-Optionen — keine Koordinaten-Inputs */}
+                {ELEMENT_LABELS.find((el) => el.key === activeElement)?.kind === "text" ? (
+                  <>
+                    <div>
+                      <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Schriftgröße</label>
+                      <input
+                        type="number"
+                        value={activeElementConfig.fontSize}
+                        onChange={(event) => updateElementConfig(activeElement, { fontSize: Number(event.target.value) })}
+                        style={{ width: "100%", padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: "8px", boxSizing: "border-box" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Farbe</label>
+                      <input
+                        type="color"
+                        value={activeElementConfig.color}
+                        onChange={(event) => updateElementConfig(activeElement, { color: event.target.value })}
+                        style={{ width: "100%", height: "42px", border: "1px solid #cbd5e1", borderRadius: "8px" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Ausrichtung</label>
+                      <select
+                        value={activeElementConfig.textAlign}
+                        onChange={(event) =>
+                          updateElementConfig(activeElement, {
+                            textAlign:
+                              event.target.value === "center" || event.target.value === "right"
+                                ? event.target.value
+                                : "left",
+                          })
+                        }
+                        style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff" }}
+                      >
+                        <option value="left">Links</option>
+                        <option value="center">Zentriert</option>
+                        <option value="right">Rechts</option>
+                      </select>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>Bildmodus</label>
+                    <select
+                      value={activeElementConfig.objectFit}
+                      onChange={(event) =>
+                        updateElementConfig(activeElement, {
+                          objectFit: event.target.value === "contain" ? "contain" : "cover",
+                        })
+                      }
+                      style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff" }}
+                    >
+                      <option value="cover">Cover (füllt Bereich)</option>
+                      <option value="contain">Contain (zeigt Ganzes)</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Position + Größe als Readonly-Info */}
+                <div style={{ fontSize: "12px", color: "#9ca3af", lineHeight: 1.6 }}>
+                  x: {activeElementConfig.x} · y: {activeElementConfig.y}
+                  {" "}· {activeElementConfig.width} × {activeElementConfig.height} px
                 </div>
               </div>
             ) : null}
@@ -543,7 +803,15 @@ export default function SocialPostsPage() {
                 type="button"
                 onClick={saveTemplate}
                 disabled={savingTemplate || !templateDraft}
-                style={{ padding: "10px 14px", border: "none", borderRadius: "8px", background: "#111827", color: "#ffffff", cursor: savingTemplate ? "not-allowed" : "pointer", opacity: savingTemplate ? 0.7 : 1 }}
+                style={{
+                  padding: "10px 14px",
+                  border: "none",
+                  borderRadius: "8px",
+                  background: "#111827",
+                  color: "#ffffff",
+                  cursor: savingTemplate ? "not-allowed" : "pointer",
+                  opacity: savingTemplate ? 0.7 : 1,
+                }}
               >
                 {savingTemplate ? "Speichert..." : "Template speichern"}
               </button>
@@ -559,12 +827,13 @@ export default function SocialPostsPage() {
             </div>
           </div>
 
-          <div style={panelStyle()}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", marginBottom: "16px", flexWrap: "wrap" }}>
+          {/* Rechtes Panel: Interaktiver Canvas */}
+          <div style={{ ...panelStyle(), flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", marginBottom: "12px", flexWrap: "wrap", alignItems: "flex-end" }}>
               <div>
-                <div style={{ fontSize: "18px", fontWeight: 700 }}>Template-Vorschau</div>
-                <div style={{ marginTop: "6px", color: "#6b7280", fontSize: "13px" }}>
-                  Format A nutzt aktuell 1200 x 1200 und kann spaeter um weitere Formate erweitert werden.
+                <div style={{ fontSize: "18px", fontWeight: 700 }}>Canvas</div>
+                <div style={{ marginTop: "4px", color: "#6b7280", fontSize: "13px" }}>
+                  Elemente verschieben per Drag · Größe ändern am blauen Handle rechts unten
                 </div>
               </div>
               <div style={{ fontSize: "12px", color: "#6b7280" }}>
@@ -575,7 +844,13 @@ export default function SocialPostsPage() {
             {loadingTemplate || !templateDraft ? (
               <div style={{ color: "#6b7280" }}>Template wird geladen...</div>
             ) : (
-              <SocialPostPreview template={templateDraft} data={SAMPLE_DATA} />
+              <SocialPostTemplateCanvas
+                template={templateDraft}
+                data={SAMPLE_DATA}
+                activeElement={activeElement}
+                onSelectElement={setActiveElement}
+                onUpdateElement={updateElementConfig}
+              />
             )}
           </div>
         </div>
@@ -603,7 +878,7 @@ export default function SocialPostsPage() {
             </div>
 
             <div style={{ marginBottom: "14px" }}>
-              <div style={{ fontWeight: 600, marginBottom: "8px" }}>Elemente uebernehmen</div>
+              <div style={{ fontWeight: 600, marginBottom: "8px" }}>Elemente übernehmen</div>
               <div style={{ display: "grid", gap: "8px" }}>
                 {ELEMENT_LABELS.map((element) => (
                   <label key={element.key} style={{ fontSize: "14px" }}>
@@ -628,7 +903,15 @@ export default function SocialPostsPage() {
               type="button"
               onClick={analyzeUrl}
               disabled={loadingContent}
-              style={{ padding: "10px 14px", border: "none", borderRadius: "8px", background: "#111827", color: "#ffffff", cursor: loadingContent ? "not-allowed" : "pointer", opacity: loadingContent ? 0.7 : 1 }}
+              style={{
+                padding: "10px 14px",
+                border: "none",
+                borderRadius: "8px",
+                background: "#111827",
+                color: "#ffffff",
+                cursor: loadingContent ? "not-allowed" : "pointer",
+                opacity: loadingContent ? 0.7 : 1,
+              }}
             >
               {loadingContent ? "Analysiert..." : "URL laden und Content vorbereiten"}
             </button>
@@ -653,7 +936,7 @@ export default function SocialPostsPage() {
                 <div>
                   <div style={{ fontSize: "18px", fontWeight: 700 }}>Bild-Vorschau</div>
                   <div style={{ marginTop: "6px", color: "#6b7280", fontSize: "13px" }}>
-                    Das zuletzt gespeicherte Template des gewaehlten Formats wird automatisch verwendet.
+                    Das zuletzt gespeicherte Template des gewählten Formats wird automatisch verwendet.
                   </div>
                 </div>
                 <div style={{ fontSize: "12px", color: "#6b7280" }}>
@@ -679,28 +962,6 @@ export default function SocialPostsPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function NumberInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div>
-      <label style={{ display: "block", marginBottom: "6px", fontWeight: 600 }}>{label}</label>
-      <input
-        type="number"
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-        style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: "8px", boxSizing: "border-box" }}
-      />
     </div>
   );
 }
