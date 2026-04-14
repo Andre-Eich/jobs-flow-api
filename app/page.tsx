@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import BulkMailPage from "./photo/page";
+import ColdMailPage from "./photo/page.replacement";
 import CrmPage from "./crm/page";
 import PromptsTextPage from "./prompts-text/page";
 import SocialPostsPage from "./social-posts/page";
@@ -20,6 +21,7 @@ Vorgaben:
 type ToolKey =
   | "service-text"
   | "text-generator"
+  | "photo-mail"
   | "bulk-mail"
   | "crm"
   | "prompts-text"
@@ -78,6 +80,12 @@ export default function Home() {
             active={activeTool === "text-generator"}
             onClick={() => handleSelectTool("text-generator")}
             label="Text Generator"
+          />
+
+          <SidebarButton
+            active={activeTool === "photo-mail"}
+            onClick={() => handleSelectTool("photo-mail")}
+            label="Kaltakquise-Mails"
           />
 
           <SidebarButton
@@ -168,6 +176,12 @@ export default function Home() {
                 />
 
                 <SidebarButton
+                  active={activeTool === "photo-mail"}
+                  onClick={() => handleSelectTool("photo-mail")}
+                  label="Kaltakquise-Mails"
+                />
+
+                <SidebarButton
                   active={activeTool === "bulk-mail"}
                   onClick={() => handleSelectTool("bulk-mail")}
                   label="Streumails"
@@ -199,6 +213,7 @@ export default function Home() {
         {activeTool === "text-generator" && (
           <TextGeneratorPlaceholder isMobile={isMobile} />
         )}
+        {activeTool === "photo-mail" && <ColdMailPage serviceMode="cold" />}
         {activeTool === "bulk-mail" && <BulkMailPage />}
         {activeTool === "crm" && <CrmPage />}
         {activeTool === "prompts-text" && <PromptsTextPage />}
