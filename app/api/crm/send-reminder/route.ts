@@ -59,8 +59,21 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
-function textToHtml(text: string) {
-  return escapeHtml(text).replace(/\n/g, "<br/>");
+function textWithLinksToHtml(text: string) {
+  return escapeHtml(text)
+    .replace(
+      /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      (_match, label: string, url: string) =>
+        `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:#0f172a; text-decoration:underline;">${label}</a>`
+    )
+    .replace(/\n/g, "<br/>");
+}
+
+function markdownLinksToPlainText(text: string) {
+  return String(text || "").replace(
+    /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_match, label: string, url: string) => `${label}: ${url}`
+  );
 }
 
 function buildAssetUrl(req: Request, assetPath: string) {
@@ -74,16 +87,12 @@ function getEmailId(result: unknown) {
   return data && "id" in data && typeof data.id === "string" ? data.id : topLevelId;
 }
 
-function buildReminderSubject(channel: "kaltakquise" | "streumail", company: string) {
+function buildReminderSubject(channel: "kaltakquise" | "streumail") {
   if (channel === "streumail") {
-    return company
-      ? `Kurzes Follow-up zu regionaler Sichtbarkeit fuer ${company}`
-      : "Kurzes Follow-up zu regionaler Sichtbarkeit";
+    return "Kurzes Follow-up zu regionaler Sichtbarkeit";
   }
 
-  return company
-    ? `Kurzes Follow-up zu ${company}`
-    : "Kurzes Follow-up zu meiner letzten Nachricht";
+  return "Kurzes Follow-up zu meiner letzten Nachricht";
 }
 
 function buildReminderText(args: {
@@ -102,16 +111,16 @@ function buildReminderText(args: {
   const mainBody =
     args.channel === "streumail"
       ? args.shortMode
-        ? "ich wollte mich noch einmal kurz melden, falls zusaetzliche regionale Sichtbarkeit fuer offene Positionen aktuell interessant sein sollte."
-        : "ich wollte mich noch einmal kurz melden, falls zusaetzliche regionale Sichtbarkeit fuer offene Positionen fuer Sie aktuell interessant sein sollte. Gerade in Berlin und Brandenburg laesst sich damit die bestehende Reichweite oft sinnvoll ergaenzen."
+        ? "ich wollte mich noch einmal kurz melden, falls zusätzliche regionale Sichtbarkeit für offene Positionen aktuell interessant sein sollte."
+        : "ich wollte mich noch einmal kurz melden, falls zusätzliche regionale Sichtbarkeit für offene Positionen für Sie aktuell interessant sein sollte. Gerade in Berlin und Brandenburg lässt sich damit die bestehende Reichweite oft sinnvoll ergänzen."
       : args.shortMode
-      ? "ich wollte mich noch einmal kurz melden, falls das Thema zusaetzliche Reichweite fuer Ihre Anzeige aktuell noch offen ist."
-      : "ich wollte mich noch einmal kurz nachfassen, falls das Thema zusaetzliche Reichweite fuer Ihre Stellenanzeige aktuell noch offen ist. Unser regionales Umfeld kann dabei oft eine sinnvolle Ergaenzung zu bestehenden Kanaelen sein.";
+      ? "ich wollte mich noch einmal kurz melden, falls das Thema zusätzliche Reichweite für Ihre Anzeige aktuell noch offen ist."
+      : "ich wollte mich noch einmal kurz nachfassen, falls das Thema zusätzliche Reichweite für Ihre Stellenanzeige aktuell noch offen ist. Unser regionales Umfeld kann dabei oft eine sinnvolle Ergänzung zu bestehenden Kanälen sein.";
 
   const cta =
     args.channel === "streumail"
-      ? "Wenn das fuer Sie interessant ist, sende ich Ihnen gern kurz weitere Infos."
-      : "Wenn das fuer Sie interessant ist, melde ich mich gern mit einem kurzen Vorschlag.";
+      ? "Wenn das für Sie interessant ist, sende ich Ihnen gern kurz weitere Infos."
+      : "Wenn das für Sie interessant ist, melde ich mich gern mit einem kurzen Vorschlag.";
 
   return [greeting, "", mainBody, ...(blocks.length ? ["", ...blocks] : []), "", cta, "", "Mit freundlichen Grüßen"].join("\n");
 }
@@ -156,7 +165,7 @@ export async function POST(req: Request) {
       lead.channel === "streumail" || lead.channel === "mixed" ? "streumail" : "kaltakquise";
     const latestMail = lead.mails[0];
     const safeContactPerson = sanitizeContactPerson(lead.contactPerson);
-    const subject = buildReminderSubject(baseChannel, lead.company);
+    const subject = buildReminderSubject(baseChannel);
     const reminderText = buildReminderText({
       company: lead.company,
       contactPerson: safeContactPerson,
@@ -164,6 +173,7 @@ export async function POST(req: Request) {
       shortMode: Boolean(shortMode),
       textBlocks: Array.isArray(textBlocks) ? textBlocks : [],
     });
+    const reminderTextPlain = markdownLinksToPlainText(reminderText);
     const { portrait, footer } = await loadJobsInlineMailAssets();
     const portraitImageUrl = portrait ? `cid:${portrait.contentId}` : buildAssetUrl(req, "/andre-eichstaedt.png");
     const footerLogosUrl = footer ? `cid:${footer.contentId}` : buildAssetUrl(req, "/footer-logos.png");
@@ -199,7 +209,7 @@ export async function POST(req: Request) {
 
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
-        <div style="margin-bottom: 24px;">${textToHtml(reminderText)}</div>
+        <div style="margin-bottom: 24px;">${textWithLinksToHtml(reminderText)}</div>
         <div style="margin: 20px 0 18px;">
           <img src="${portraitImageUrl}" alt="Andre Eichstaedt" style="display:block; max-width: 220px; width: 100%; height: auto; border: 0;" />
         </div>
@@ -224,7 +234,7 @@ export async function POST(req: Request) {
       to: recipientEmail,
       subject,
       html,
-      text: `${reminderText}\n\n${buildCrmMetaText(crmMeta)}`,
+      text: `${reminderTextPlain}\n\n${buildCrmMetaText(crmMeta)}`,
       attachments: compactInlineMailAttachments([portrait, footer]),
       bcc: Boolean(testMode) ? recipientEmail || undefined : "a.eichstaedt@jobs-in-berlin-brandenburg.de",
     });
@@ -247,7 +257,7 @@ export async function POST(req: Request) {
       industry: lead.industry,
       recipientEmail,
       subject,
-      bodyText: reminderText,
+      bodyText: reminderTextPlain,
       hookBaseId: "crm_reminder",
       hookBaseLabel: "CRM Erinnerung",
       hookVariantId: Boolean(shortMode) ? "crm_reminder_short" : "crm_reminder_default",
@@ -280,7 +290,7 @@ export async function POST(req: Request) {
         emailId,
         createdAt,
         subject,
-        bodyText: reminderText,
+        bodyText: reminderTextPlain,
         textBlockTitles,
         shortMode: Boolean(shortMode),
         testMode: Boolean(testMode),

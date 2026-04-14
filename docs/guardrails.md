@@ -24,6 +24,7 @@ Diese Datei ist die kurze, leicht pflegbare Schutzliste fuer stabile Bereiche im
 - `app/crm/page.tsx`
 - `app/api/crm/leads/route.ts`
 - `app/api/crm/emails/route.ts`
+- `app/api/crm/send-reminder/route.ts`
 - `app/api/send-mail/route.ts`
 - `app/api/send-bulk-mail/route.ts`
 - `lib/leadStore.ts`
@@ -40,6 +41,7 @@ Bei einer geplanten Aenderung in diesen Bereichen erst mit roter Warnung Rueckfr
 ### `gelb`
 Bei einer geplanten Aenderung in diesen Bereichen mit gelber Warnung Rueckfrage halten:
 - `app/api/crm/emails/route.ts`
+- `app/api/crm/send-reminder/route.ts`
 - `app/crm/page.tsx`
 
 ### `nur additiv`
