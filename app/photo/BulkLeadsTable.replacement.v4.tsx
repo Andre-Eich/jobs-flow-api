@@ -126,6 +126,10 @@ function sendRank(lead: BulkLead) {
   return 0;
 }
 
+function canSendLead(lead: BulkLead) {
+  return Boolean(lead.selected && lead.email && lead.sendStatus !== "loading" && lead.sendStatus !== "sent");
+}
+
 function sortLeads(leads: BulkLead[], key: BulkSortKey, direction: BulkSortDirection) {
   const sorted = [...leads].sort((a, b) => {
     let result = 0;
@@ -238,9 +242,7 @@ export default function BulkLeadsTableReplacementV4({
 
   const selectedLeads = useMemo(() => leads.filter((lead) => lead.selected), [leads]);
   const allSelected = leads.length > 0 && selectedLeads.length === leads.length;
-  const sendableSelected = selectedLeads.filter(
-    (lead) => lead.email && lead.qualityStatus === "done" && lead.sendStatus !== "sent"
-  );
+  const sendableSelected = selectedLeads.filter(canSendLead);
   const sortedLeads = useMemo(
     () => sortLeads(leads, sortKey, sortDirection),
     [leads, sortKey, sortDirection]
@@ -594,8 +596,8 @@ export default function BulkLeadsTableReplacementV4({
                   <button
                     type="button"
                     onClick={() => onSendOne(lead.id)}
-                    disabled={!lead.selected || !lead.email || lead.sendStatus === "loading"}
-                    style={smallButtonStyle(!lead.selected || !lead.email || lead.sendStatus === "loading")}
+                    disabled={!canSendLead(lead)}
+                    style={smallButtonStyle(!canSendLead(lead))}
                   >
                     {lead.sendStatus === "loading" ? "Sendet..." : "Email erstellen und senden"}
                   </button>

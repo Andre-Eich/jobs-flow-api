@@ -4,6 +4,8 @@ import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
 import { upsertLeadMail } from "@/lib/leadStore";
 import { updateBulkPackageMailStatus } from "@/lib/bulkPackageStore";
+import { sanitizeContactPerson } from "@/lib/contactPerson";
+import { compactInlineMailAttachments, loadJobsInlineMailAssets } from "@/lib/mailInlineAssets";
 
 function escapeHtml(value: string) {
   return value
@@ -32,7 +34,7 @@ function stripTrailingClosing(text: string) {
 }
 
 function buildGreeting(contactPerson: string) {
-  const safeContactPerson = String(contactPerson || "").trim();
+  const safeContactPerson = sanitizeContactPerson(contactPerson);
   return safeContactPerson ? `Guten Tag ${safeContactPerson},` : "Guten Tag,";
 }
 
@@ -114,10 +116,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Fehlende Daten." }, { status: 400 });
     }
 
-    const preparedText = ensureGreetingAndClosing(String(text || ""), String(contactPerson || ""));
+    const safeContactPerson = sanitizeContactPerson(String(contactPerson || ""));
+    const preparedText = ensureGreetingAndClosing(String(text || ""), safeContactPerson);
     const normalizedTextBlockTitles = Array.isArray(textBlockTitles) ? textBlockTitles : [];
-    const portraitImageUrl = buildAssetUrl(req, "/andre-eichstaedt.png");
-    const footerLogosUrl = buildAssetUrl(req, "/footer-logos.png");
+    const { portrait, footer } = await loadJobsInlineMailAssets();
+    const portraitImageUrl = portrait ? `cid:${portrait.contentId}` : buildAssetUrl(req, "/andre-eichstaedt.png");
+    const footerLogosUrl = footer ? `cid:${footer.contentId}` : buildAssetUrl(req, "/footer-logos.png");
 
     const bulkMeta = {
       type: "bulk_package",
@@ -129,13 +133,13 @@ export async function POST(req: Request) {
       textBlockTitles: normalizedTextBlockTitles,
       shortMode: Boolean(shortMode),
       testMode: Boolean(testMode),
-      contactPerson: String(contactPerson || "").trim(),
+      contactPerson: safeContactPerson,
     };
 
     const crmMeta = {
       kind: "bulk" as const,
       company: String(company || "").trim(),
-      contactPerson: String(contactPerson || "").trim(),
+      contactPerson: safeContactPerson,
       phone: String(phone || "").trim(),
       batchId: String(batchId || "").trim(),
       searchLocation: String(searchLocation || "").trim(),
@@ -174,6 +178,7 @@ export async function POST(req: Request) {
       subject,
       html,
       text: `${preparedText}\nAndre Eichstaedt\n\n${buildCrmMetaText(crmMeta)}\n[BULK_META:${JSON.stringify(bulkMeta)}]`,
+      attachments: compactInlineMailAttachments([portrait, footer]),
       bcc: isTestMode ? testRecipient || undefined : sendCopy ? "a.eichstaedt@jobs-in-berlin-brandenburg.de" : undefined,
     });
 
@@ -186,7 +191,7 @@ export async function POST(req: Request) {
       jobTitle: "",
       company: String(company || "").trim(),
       city: String(city || "").trim(),
-      contactPerson: String(contactPerson || "").trim(),
+      contactPerson: safeContactPerson,
       phone: String(phone || "").trim(),
       website: String(website || "").trim(),
       industry: String(industry || "").trim(),
@@ -217,7 +222,7 @@ export async function POST(req: Request) {
       recipientEmail: String(to || "").trim() || actualRecipient,
       phone: String(phone || "").trim(),
       website: String(website || "").trim(),
-      contactPerson: String(contactPerson || "").trim(),
+      contactPerson: safeContactPerson,
       industry: String(industry || "").trim(),
       channel: "streumail",
       mail: {

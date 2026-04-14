@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { sanitizeContactPerson } from "@/lib/contactPerson";
 
 type TextBlock = {
   id?: string;
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
     const industry = String(body.industry || "").trim();
     const analysisSummary = String(body.analysisSummary || "").trim();
     const shortMode = Boolean(body.shortMode);
-    const contactPerson = String(body.contactPerson || "").trim();
+    const contactPerson = sanitizeContactPerson(String(body.contactPerson || ""));
     const textBlocks: TextBlock[] = Array.isArray(body.textBlocks) ? body.textBlocks : [];
 
     const openaiKey = process.env.OPENAI_API_KEY;
@@ -65,6 +66,8 @@ WICHTIG:
 - Keine Anrede am Anfang
 - Keine Grußformel am Ende, die kommt später separat
 - Kein "Guten Tag", kein "Hallo", keine direkte Begruessung
+- Falls ein Ansprechpartner im Kontext vorhanden ist, ist das immer genau ein Vorname und ein Nachname
+- Niemals Rollenwoerter oder Funktionsbezeichnungen verwenden, z. B. "Inhaber", "Geschaeftsfuehrer", "Kontaktperson"
 - Formuliere weich und unaufdringlich
 - Vermeide harte Formulierungen wie "wir platzieren" oder "wir erhöhen"
 - Besser: "kann helfen", "lässt sich ergänzen", "zusätzliche Sichtbarkeit", "regional sichtbar machen"

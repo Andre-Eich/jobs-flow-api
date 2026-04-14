@@ -217,6 +217,32 @@ function buildTextQueries(location: string, focus: string) {
   );
 }
 
+function selectMixedCandidates(candidates: GooglePlaceCandidate[], count: number) {
+  const withWebsite = shuffleInPlace(candidates.filter((candidate) => Boolean(candidate.website)));
+  const withoutWebsite = shuffleInPlace(candidates.filter((candidate) => !candidate.website));
+  const mixed: GooglePlaceCandidate[] = [];
+
+  while (mixed.length < count && (withWebsite.length > 0 || withoutWebsite.length > 0)) {
+    if (withWebsite.length > 0) {
+      mixed.push(withWebsite.pop() as GooglePlaceCandidate);
+    }
+
+    if (mixed.length >= count) break;
+
+    if (withoutWebsite.length > 0) {
+      mixed.push(withoutWebsite.pop() as GooglePlaceCandidate);
+    }
+
+    if (mixed.length >= count) break;
+
+    if (withWebsite.length > 0) {
+      mixed.push(withWebsite.pop() as GooglePlaceCandidate);
+    }
+  }
+
+  return mixed.slice(0, count);
+}
+
 async function runPlacesTextSearch(args: {
   query: string;
   latitude: number;
@@ -347,16 +373,7 @@ export async function POST(req: Request) {
       ).values()
     );
 
-    const prioritized = deduped
-      .sort((a, b) => {
-        const aHasWebsite = Number(Boolean(a.website));
-        const bHasWebsite = Number(Boolean(b.website));
-        return (
-          bHasWebsite - aHasWebsite ||
-          a.name.localeCompare(b.name, "de", { sensitivity: "base" })
-        );
-      })
-      .slice(0, safeCount);
+    const prioritized = selectMixedCandidates(deduped, safeCount);
 
     if (prioritized.length === 0) {
       return NextResponse.json({
@@ -414,8 +431,14 @@ export async function POST(req: Request) {
     });
   } catch (error: unknown) {
     console.error("BULK FIND LEADS GOOGLE NEW ERROR:", error);
+    const message =
+      error instanceof Error
+        ? error.message === "fetch failed"
+          ? "Google-Suche konnte nicht erreicht werden. Bitte Next.js einmal neu starten und dann den Google-Maps-Key sowie die Freischaltung fuer Geocoding API und Places API (New) pruefen."
+          : error.message
+        : "Unternehmenssuche fehlgeschlagen.";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unternehmenssuche fehlgeschlagen." },
+      { error: message },
       { status: 500 }
     );
   }

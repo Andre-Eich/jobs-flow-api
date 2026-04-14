@@ -236,7 +236,8 @@ export default function BulkMailServicePage() {
   const [bulkCount, setBulkCount] = useState("20");
   const [bulkOnlyNewContacts, setBulkOnlyNewContacts] = useState(false);
   const [bulkLeads, setBulkLeads] = useState<BulkLead[]>(EMPTY_BULK_LEADS);
-  const [shownLeadKeysBySearch, setShownLeadKeysBySearch] = useState<Record<string, string[]>>({});
+  const [ignoredLeadKeysBySearch, setIgnoredLeadKeysBySearch] = useState<Record<string, string[]>>({});
+  const [exhaustedBulkSearches, setExhaustedBulkSearches] = useState<Record<string, boolean>>({});
   const [findingBulkLeads, setFindingBulkLeads] = useState(false);
   const [bulkTestMode, setBulkTestMode] = useState(true);
   const [bulkShortMode, setBulkShortMode] = useState(false);
@@ -366,7 +367,9 @@ export default function BulkMailServicePage() {
     [bulkLocation, bulkFocus, bulkRadius, bulkCount, bulkOnlyNewContacts]
   );
 
-  const canLoadNextBulkLeads = (shownLeadKeysBySearch[currentBulkSearchKey] || []).length > 0;
+  const canLoadNextBulkLeads =
+    (ignoredLeadKeysBySearch[currentBulkSearchKey] || []).length > 0 &&
+    !exhaustedBulkSearches[currentBulkSearchKey];
 
   async function loadHistory() {
     try {
@@ -465,8 +468,8 @@ export default function BulkMailServicePage() {
 
     try {
       setFindingBulkLeads(true);
-      const excludeKeys =
-        mode === "next" ? shownLeadKeysBySearch[currentBulkSearchKey] || [] : [];
+      const excludeKeys = ignoredLeadKeysBySearch[currentBulkSearchKey] || [];
+      setExhaustedBulkSearches((prev) => ({ ...prev, [currentBulkSearchKey]: false }));
       const response = await fetch("/api/bulk-find-leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -485,17 +488,12 @@ export default function BulkMailServicePage() {
         return;
       }
       const nextLeads: BulkLead[] = Array.isArray(data.leads) ? data.leads : [];
-      setBulkLeads(nextLeads);
-      setShownLeadKeysBySearch((prev) => {
-        const nextKeys = nextLeads.map((lead) => getBulkLeadSearchKey(lead)).filter(Boolean);
-        const existingKeys = mode === "next" ? prev[currentBulkSearchKey] || [] : [];
-        return {
-          ...prev,
-          [currentBulkSearchKey]: Array.from(new Set(mode === "next" ? [...existingKeys, ...nextKeys] : nextKeys)),
-        };
-      });
 
       if (nextLeads.length === 0) {
+        setExhaustedBulkSearches((prev) => ({ ...prev, [currentBulkSearchKey]: true }));
+        if (mode === "fresh") {
+          setBulkLeads([]);
+        }
         setSuccessMessage(
           mode === "next"
             ? "Keine weiteren Treffer fuer diese Suche gefunden."
@@ -503,6 +501,17 @@ export default function BulkMailServicePage() {
         );
         return;
       }
+
+      setBulkLeads(nextLeads);
+      setIgnoredLeadKeysBySearch((prev) => {
+        const nextKeys = nextLeads.map((lead) => getBulkLeadSearchKey(lead)).filter(Boolean);
+        const existingKeys = prev[currentBulkSearchKey] || [];
+        return {
+          ...prev,
+          [currentBulkSearchKey]: Array.from(new Set([...existingKeys, ...nextKeys])),
+        };
+      });
+      setExhaustedBulkSearches((prev) => ({ ...prev, [currentBulkSearchKey]: false }));
 
       setSuccessMessage(
         mode === "next"

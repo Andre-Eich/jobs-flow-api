@@ -3,6 +3,8 @@ import { Resend } from "resend";
 import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { getLeadById, upsertLeadMail } from "@/lib/leadStore";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
+import { sanitizeContactPerson } from "@/lib/contactPerson";
+import { compactInlineMailAttachments, loadJobsInlineMailAssets } from "@/lib/mailInlineAssets";
 
 type TextBlock = {
   id?: string;
@@ -57,7 +59,8 @@ function buildReminderText(args: {
   shortMode: boolean;
   textBlocks: TextBlock[];
 }) {
-  const greeting = args.contactPerson ? `Guten Tag ${args.contactPerson},` : "Guten Tag,";
+  const safeContactPerson = sanitizeContactPerson(args.contactPerson);
+  const greeting = safeContactPerson ? `Guten Tag ${safeContactPerson},` : "Guten Tag,";
   const blocks = args.textBlocks
     .map((block) => safeString(block?.text))
     .filter(Boolean);
@@ -110,16 +113,18 @@ export async function POST(req: Request) {
     const baseChannel =
       lead.channel === "streumail" || lead.channel === "mixed" ? "streumail" : "kaltakquise";
     const latestMail = lead.mails[0];
+    const safeContactPerson = sanitizeContactPerson(lead.contactPerson);
     const subject = buildReminderSubject(baseChannel, lead.company);
     const reminderText = buildReminderText({
       company: lead.company,
-      contactPerson: lead.contactPerson,
+      contactPerson: safeContactPerson,
       channel: baseChannel,
       shortMode: Boolean(shortMode),
       textBlocks: Array.isArray(textBlocks) ? textBlocks : [],
     });
-    const portraitImageUrl = buildAssetUrl(req, "/andre-eichstaedt.png");
-    const footerLogosUrl = buildAssetUrl(req, "/footer-logos.png");
+    const { portrait, footer } = await loadJobsInlineMailAssets();
+    const portraitImageUrl = portrait ? `cid:${portrait.contentId}` : buildAssetUrl(req, "/andre-eichstaedt.png");
+    const footerLogosUrl = footer ? `cid:${footer.contentId}` : buildAssetUrl(req, "/footer-logos.png");
     const textBlockTitles = Array.isArray(textBlocks)
       ? textBlocks.map((block: TextBlock) => safeString(block?.title)).filter(Boolean)
       : [];
@@ -129,7 +134,7 @@ export async function POST(req: Request) {
         ? {
             kind: "bulk" as const,
             company: lead.company,
-            contactPerson: lead.contactPerson,
+            contactPerson: safeContactPerson,
             phone: lead.phone,
             batchId: `crm-reminder-${lead.id}`,
             searchLocation: lead.city,
@@ -141,7 +146,7 @@ export async function POST(req: Request) {
             kind: "single" as const,
             jobTitle: "",
             company: lead.company,
-            contactPerson: lead.contactPerson,
+            contactPerson: safeContactPerson,
             phone: lead.phone,
             followUp: true,
             originalEmailId: safeString(latestMail?.id || latestMail?.emailId),
@@ -178,6 +183,7 @@ export async function POST(req: Request) {
       subject,
       html,
       text: `${reminderText}\n\n${buildCrmMetaText(crmMeta)}`,
+      attachments: compactInlineMailAttachments([portrait, footer]),
       bcc: Boolean(testMode) ? recipientEmail || undefined : "a.eichstaedt@jobs-in-berlin-brandenburg.de",
     });
 
@@ -193,7 +199,7 @@ export async function POST(req: Request) {
       company: lead.company,
       postalCode: lead.postalCode,
       city: lead.city,
-      contactPerson: lead.contactPerson,
+      contactPerson: safeContactPerson,
       phone: lead.phone,
       website: lead.website,
       industry: lead.industry,
@@ -224,7 +230,7 @@ export async function POST(req: Request) {
       recipientEmail: lead.recipientEmail,
       phone: lead.phone,
       website: lead.website,
-      contactPerson: lead.contactPerson,
+      contactPerson: safeContactPerson,
       industry: lead.industry,
       channel,
       mail: {

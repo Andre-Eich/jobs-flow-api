@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { sanitizeContactPerson, sanitizeContactPersonOptions } from "@/lib/contactPerson";
 
 type ContactOption = {
   value: string;
@@ -12,6 +13,36 @@ type ContactExtractionResult = {
   contactPersonOptions: string[];
   industry: string;
   phone: string;
+};
+
+type GooglePlace = {
+  id?: string;
+  displayName?: {
+    text?: string;
+  };
+  formattedAddress?: string;
+  websiteUri?: string;
+  nationalPhoneNumber?: string;
+  internationalPhoneNumber?: string;
+  businessStatus?: string;
+  types?: string[];
+};
+
+type PlacesTextSearchResponse = {
+  places?: GooglePlace[];
+  error?: {
+    message?: string;
+    status?: string;
+  };
+};
+
+type GoogleBusinessContext = {
+  name: string;
+  address: string;
+  website: string;
+  phone: string;
+  businessStatus: string;
+  types: string[];
 };
 
 const HARD_TIMEOUT_MS = 30000;
@@ -80,6 +111,36 @@ function dedupeStrings(values: string[]) {
   }).slice(0, 3);
 }
 
+function normalizeWebsite(url: string) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return String(url || "").trim();
+  }
+}
+
+function getHostVariants(url: string) {
+  try {
+    const host = new URL(url).host.toLowerCase().trim();
+    return dedupeStrings([
+      host,
+      host.replace(/^www\./, ""),
+      `www.${host.replace(/^www\./, "")}`,
+    ]);
+  } catch {
+    return [] as string[];
+  }
+}
+
+function getHost(url: string) {
+  try {
+    return new URL(url).host.toLowerCase().trim();
+  } catch {
+    return "";
+  }
+}
+
 function findPhones(rawText: string) {
   const matches = rawText.match(/(?:\+49|0)[0-9\/()\-\s]{6,}/g) || [];
   return dedupeStrings(
@@ -140,6 +201,66 @@ async function searchFallbackEmails(company: string) {
   return findEmails(snippets.join(" ")).slice(0, 2);
 }
 
+async function searchGoogleBusinessContext(args: {
+  company: string;
+  website: string;
+  signal?: AbortSignal;
+}) {
+  const apiKey = String(process.env.GOOGLE_MAPS_API_KEY || "").trim();
+  if (!apiKey || !args.company.trim()) return null;
+
+  const hostVariants = getHostVariants(args.website);
+  const queries = dedupeStrings([
+    `${args.company} ${hostVariants[0] || ""}`.trim(),
+    args.company,
+  ]);
+
+  for (const query of queries) {
+    const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      signal: args.signal,
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask":
+          "places.displayName,places.formattedAddress,places.websiteUri,places.nationalPhoneNumber,places.internationalPhoneNumber,places.businessStatus,places.types",
+      },
+      body: JSON.stringify({
+        textQuery: query,
+        pageSize: 5,
+        languageCode: "de",
+        regionCode: "DE",
+      }),
+    });
+
+    const data = (await response.json()) as PlacesTextSearchResponse;
+    if (!response.ok) continue;
+
+    const places = Array.isArray(data.places) ? data.places : [];
+    const match = places
+      .map((place) => ({
+        name: String(place.displayName?.text || "").trim(),
+        address: String(place.formattedAddress || "").trim(),
+        website: normalizeWebsite(String(place.websiteUri || "").trim()),
+        phone: String(place.nationalPhoneNumber || place.internationalPhoneNumber || "").trim(),
+        businessStatus: String(place.businessStatus || "").trim(),
+        types: Array.isArray(place.types) ? place.types.map((item) => String(item || "").trim()).filter(Boolean) : [],
+      }))
+      .find((place) => {
+        if (!place.name) return false;
+        if (!place.website) return place.name.toLowerCase().includes(args.company.trim().toLowerCase());
+        return hostVariants.includes(getHost(place.website));
+      });
+
+    if (match) {
+      return match satisfies GoogleBusinessContext;
+    }
+  }
+
+  return null;
+}
+
 export async function POST(req: Request) {
   const startedAt = Date.now();
   const controller = new AbortController();
@@ -168,6 +289,15 @@ export async function POST(req: Request) {
       `${safeWebsite.replace(/\/$/, "")}/jobs`,
       `${safeWebsite.replace(/\/$/, "")}/stellenausschreibungen`,
     ];
+
+    const googleContext =
+      Date.now() - startedAt < 8000
+        ? await searchGoogleBusinessContext({
+            company: safeCompany,
+            website: safeWebsite,
+            signal: controller.signal,
+          }).catch(() => null)
+        : null;
 
     const pages: { url: string; text: string }[] = [];
     const emailOptions: ContactOption[] = [];
@@ -198,7 +328,10 @@ export async function POST(req: Request) {
 
     const mergedEmailOptions = prioritizeEmailOptions(emailOptions);
     const bestEmail = mergedEmailOptions[0]?.value || "";
-    const discoveredPhones = dedupeStrings(pages.flatMap((page) => findPhones(page.text)));
+    const discoveredPhones = dedupeStrings([
+      ...pages.flatMap((page) => findPhones(page.text)),
+      String(googleContext?.phone || "").trim(),
+    ]);
 
     let bestContactPerson = "";
     let contactPersonOptions: string[] = [];
@@ -212,7 +345,7 @@ export async function POST(req: Request) {
         input: [
           {
             role: "system",
-            content: "Extrahiere aus Unternehmenswebsites brauchbare Vertriebs-Kontaktdaten. Bevorzuge fuer E-Mail-Adressen klar Recruiting-, HR-, Karriere- oder Bewerbungsadressen vor allgemeinen Sammeladressen. Sei pragmatisch und schnell. Gib maximal 3 Ansprechpartner zurueck. Antworte nur als JSON.",
+            content: "Extrahiere aus Unternehmenswebsites brauchbare Vertriebs-Kontaktdaten. Bevorzuge fuer E-Mail-Adressen klar Recruiting-, HR-, Karriere- oder Bewerbungsadressen vor allgemeinen Sammeladressen. Sei pragmatisch und schnell. Gib maximal 3 Ansprechpartner zurueck. Ansprechpartner duerfen nur echte Personennamen sein: genau ein Vorname und ein Nachname, keine Rollenwoerter wie Inhaber, Geschaeftsfuehrer, Kontaktperson, Team oder HR. Antworte nur als JSON.",
           },
           {
             role: "user",
@@ -220,6 +353,7 @@ export async function POST(req: Request) {
               company: safeCompany,
               website: safeWebsite,
               pages: pages.slice(0, 4),
+              googleBusinessContext: googleContext,
               emailCandidates: mergedEmailOptions,
               outputFormat: {
                 bestContactPerson: "",
@@ -249,8 +383,8 @@ export async function POST(req: Request) {
       });
 
       const parsed = JSON.parse(ai.output_text || "{}") as Partial<ContactExtractionResult>;
-      bestContactPerson = String(parsed?.bestContactPerson || "").trim();
-      contactPersonOptions = dedupeStrings(
+      bestContactPerson = sanitizeContactPerson(String(parsed?.bestContactPerson || "").trim());
+      contactPersonOptions = sanitizeContactPersonOptions(
         Array.isArray(parsed?.contactPersonOptions)
           ? parsed.contactPersonOptions.map((item: unknown) => String(item || "").trim())
           : []
@@ -270,6 +404,7 @@ export async function POST(req: Request) {
       phone,
       industry,
       fallbackUsed,
+      googleContextUsed: Boolean(googleContext),
       elapsedMs: Date.now() - startedAt,
     });
   } catch (error: unknown) {
