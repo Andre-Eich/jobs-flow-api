@@ -71,6 +71,7 @@ const HOOK_STYLE_OPTIONS = [
 
 const BULK_TEXT_BLOCKS_KEY = "bulkTextBlocksV1";
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const NEW_LEAD_ID = "__new_lead__";
 
 type CrmSortKey =
   | "company"
@@ -210,6 +211,10 @@ export default function CrmPage() {
   const [dashboardEditEmail, setDashboardEditEmail] = useState("");
   const [dashboardEditContactPerson, setDashboardEditContactPerson] = useState("");
   const [dashboardEditPhone, setDashboardEditPhone] = useState("");
+  const [dashboardEditPostalCode, setDashboardEditPostalCode] = useState("");
+  const [dashboardEditCity, setDashboardEditCity] = useState("");
+  const [dashboardEditWebsite, setDashboardEditWebsite] = useState("");
+  const [dashboardEditIndustry, setDashboardEditIndustry] = useState("");
   const [dashboardAnalysisStars, setDashboardAnalysisStars] = useState<0 | 1 | 2 | 3>(0);
   const [dashboardAnalysisSummary, setDashboardAnalysisSummary] = useState("");
   const [dashboardFoundJobTitles, setDashboardFoundJobTitles] = useState("");
@@ -391,6 +396,10 @@ export default function CrmPage() {
     setDashboardEditEmail(lead.recipientEmail);
     setDashboardEditContactPerson(lead.contactPerson);
     setDashboardEditPhone(lead.phone);
+    setDashboardEditPostalCode(lead.postalCode || "");
+    setDashboardEditCity(lead.city || "");
+    setDashboardEditWebsite(lead.website || "");
+    setDashboardEditIndustry(lead.industry || "");
     setDashboardAnalysisStars(lead.analysisStars || 0);
     setDashboardAnalysisSummary(lead.analysisSummary || "");
     setDashboardFoundJobTitles((lead.foundJobTitles || []).join("\n"));
@@ -408,12 +417,124 @@ export default function CrmPage() {
     setDashboardSuccess("");
   }
 
+  function openNewLeadDashboard() {
+    const now = new Date().toISOString();
+    setDashboardLead({
+      id: NEW_LEAD_ID,
+      company: "",
+      postalCode: "",
+      city: "",
+      recipientEmail: "",
+      phone: "",
+      website: "",
+      contactPerson: "",
+      industry: "",
+      analysisStars: 0,
+      analysisSummary: "",
+      foundJobTitles: [],
+      foundCareerUrls: [],
+      qualityStars: 0,
+      qualitySummary: "",
+      optOut: false,
+      optOutAt: "",
+      archived: false,
+      archivedAt: "",
+      channel: "kaltakquise",
+      createdAt: now,
+      updatedAt: now,
+      mails: [],
+    });
+    setDashboardEditCompany("");
+    setDashboardEditEmail("");
+    setDashboardEditContactPerson("");
+    setDashboardEditPhone("");
+    setDashboardEditPostalCode("");
+    setDashboardEditCity("");
+    setDashboardEditWebsite("");
+    setDashboardEditIndustry("");
+    setDashboardAnalysisStars(0);
+    setDashboardAnalysisSummary("");
+    setDashboardFoundJobTitles("");
+    setDashboardFoundCareerUrls("");
+    setDashboardQualityStars(0);
+    setDashboardQualitySummary("");
+    setDashboardOptOut(false);
+    setDashboardHookBaseId("auto");
+    setDashboardActiveBlockIds([]);
+    setDashboardShortMode(false);
+    setDashboardTestMode(true);
+    setDashboardPreviewText("");
+    setDashboardHookMeta(null);
+    setDashboardError("");
+    setDashboardSuccess("");
+  }
+
   async function saveDashboardLead() {
     if (!dashboardLead) return;
     setDashboardSaving(true);
     setDashboardError("");
     setDashboardSuccess("");
     try {
+      if (dashboardLead.id === NEW_LEAD_ID) {
+        if (!dashboardEditCompany.trim() && !dashboardEditEmail.trim()) {
+          setDashboardError("Bitte mindestens Unternehmen oder E-Mail angeben.");
+          return;
+        }
+
+        const response = await fetch("/api/crm/leads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            leads: [
+              {
+                company: dashboardEditCompany,
+                postalCode: dashboardEditPostalCode,
+                city: dashboardEditCity,
+                recipientEmail: dashboardEditEmail,
+                phone: dashboardEditPhone,
+                website: dashboardEditWebsite,
+                contactPerson: dashboardEditContactPerson,
+                industry: dashboardEditIndustry,
+                analysisStars: dashboardAnalysisStars,
+                analysisSummary: dashboardAnalysisSummary,
+                foundJobTitles: linesToItems(dashboardFoundJobTitles),
+                foundCareerUrls: linesToItems(dashboardFoundCareerUrls),
+                qualityStars: dashboardQualityStars,
+                qualitySummary: dashboardQualitySummary,
+              },
+            ],
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setDashboardError(data.error || "Lead konnte nicht angelegt werden.");
+          return;
+        }
+
+        const createdLead = Array.isArray(data.leads)
+          ? (data.leads as LeadRecord[]).find((lead) => {
+              const sameEmail =
+                dashboardEditEmail.trim() &&
+                lead.recipientEmail.trim().toLowerCase() === dashboardEditEmail.trim().toLowerCase();
+              const sameCompany =
+                dashboardEditCompany.trim() &&
+                lead.company.trim().toLowerCase() === dashboardEditCompany.trim().toLowerCase();
+              const sameCity =
+                !dashboardEditCity.trim() ||
+                lead.city.trim().toLowerCase() === dashboardEditCity.trim().toLowerCase();
+              return (sameEmail || sameCompany) && sameCity;
+            })
+          : null;
+
+        await loadLeads();
+        if (createdLead) {
+          openDashboard(createdLead);
+        }
+        setDashboardSuccess("Lead angelegt.");
+        setTimeout(() => setDashboardSuccess(""), 2000);
+        return;
+      }
+
       const response = await fetch(`/api/crm/leads/${dashboardLead.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -627,6 +748,7 @@ export default function CrmPage() {
 
   const isBusy =
     dashboardSaving || dashboardGenerating || dashboardSending || dashboardSendingReminder;
+  const dashboardIsNew = dashboardLead?.id === NEW_LEAD_ID;
 
   async function archiveLead(id: string) {
     try {
@@ -722,7 +844,12 @@ export default function CrmPage() {
         {loading ? (
           <div style={{ fontSize: "14px", color: "#6b7280" }}>CRM wird geladen...</div>
         ) : leads.length === 0 ? (
-          <div style={{ fontSize: "14px", color: "#6b7280" }}>Noch keine Leads vorhanden.</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "flex-start" }}>
+            <div style={{ fontSize: "14px", color: "#6b7280" }}>Noch keine Leads vorhanden.</div>
+            <button type="button" onClick={openNewLeadDashboard} style={buttonStyle(false)}>
+              Neuen Lead anlegen
+            </button>
+          </div>
         ) : (
           <>
             <div
@@ -768,6 +895,13 @@ export default function CrmPage() {
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={openNewLeadDashboard}
+                  style={buttonStyle(false)}
+                >
+                  Neuen Lead anlegen
+                </button>
                 <button
                   type="button"
                   onClick={allCurrentPageSelected ? clearAllCurrentPage : selectAllCurrentPage}
@@ -1066,7 +1200,7 @@ export default function CrmPage() {
                   Lead-Dashboard
                 </div>
                 <div style={{ fontSize: "14px", color: "#6b7280" }}>
-                  {dashboardLead.company || dashboardLead.recipientEmail}
+                  {dashboardIsNew ? "Neuer manueller Lead" : dashboardLead.company || dashboardLead.recipientEmail}
                 </div>
               </div>
               <button
@@ -1114,7 +1248,7 @@ export default function CrmPage() {
                   }}
                 >
                   <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "12px" }}>
-                    Lead bearbeiten
+                    {dashboardIsNew ? "Lead anlegen" : "Lead bearbeiten"}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                     <div>
@@ -1189,6 +1323,82 @@ export default function CrmPage() {
                         style={inputStyle}
                       />
                     </div>
+                    {dashboardIsNew ? (
+                      <>
+                        <div>
+                          <label
+                            style={{
+                              display: "block",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              color: "#6b7280",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            PLZ
+                          </label>
+                          <input
+                            value={dashboardEditPostalCode}
+                            onChange={(e) => setDashboardEditPostalCode(e.target.value)}
+                            style={inputStyle}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            style={{
+                              display: "block",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              color: "#6b7280",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Ort
+                          </label>
+                          <input
+                            value={dashboardEditCity}
+                            onChange={(e) => setDashboardEditCity(e.target.value)}
+                            style={inputStyle}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            style={{
+                              display: "block",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              color: "#6b7280",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Website
+                          </label>
+                          <input
+                            value={dashboardEditWebsite}
+                            onChange={(e) => setDashboardEditWebsite(e.target.value)}
+                            style={inputStyle}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            style={{
+                              display: "block",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              color: "#6b7280",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Branche
+                          </label>
+                          <input
+                            value={dashboardEditIndustry}
+                            onChange={(e) => setDashboardEditIndustry(e.target.value)}
+                            style={inputStyle}
+                          />
+                        </div>
+                      </>
+                    ) : null}
                     <div
                       style={{
                         borderTop: "1px solid #e5e7eb",
@@ -1303,7 +1513,7 @@ export default function CrmPage() {
                       disabled={dashboardSaving}
                       style={buttonStyle(false, dashboardSaving)}
                     >
-                      {dashboardSaving ? "Wird gespeichert..." : "Speichern"}
+                      {dashboardSaving ? "Wird gespeichert..." : dashboardIsNew ? "Lead anlegen" : "Speichern"}
                     </button>
                   </div>
                 </div>
@@ -1417,31 +1627,32 @@ export default function CrmPage() {
                   <button
                     type="button"
                     onClick={generateDashboardPreview}
-                    disabled={dashboardGenerating}
-                    style={buttonStyle(false, dashboardGenerating)}
+                    disabled={dashboardGenerating || dashboardIsNew}
+                    style={buttonStyle(false, dashboardGenerating || dashboardIsNew)}
                   >
                     {dashboardGenerating ? "Wird generiert..." : "Vorschau generieren"}
                   </button>
                   <button
                     type="button"
                     onClick={sendDashboardMail}
-                    disabled={dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut}
-                    style={buttonStyle(true, dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut)}
+                    disabled={dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut || dashboardIsNew}
+                    style={buttonStyle(true, dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut || dashboardIsNew)}
                   >
                     {dashboardSending ? "Wird gesendet..." : "Kalt-Mail senden"}
                   </button>
                   <button
                     type="button"
                     onClick={sendDashboardReminder}
-                    disabled={dashboardSendingReminder || dashboardOptOut}
-                    style={buttonStyle(false, dashboardSendingReminder || dashboardOptOut)}
+                    disabled={dashboardSendingReminder || dashboardOptOut || dashboardIsNew}
+                    style={buttonStyle(false, dashboardSendingReminder || dashboardOptOut || dashboardIsNew)}
                   >
                     {dashboardSendingReminder ? "Wird gesendet..." : "Erinnerung senden"}
                   </button>
                   <button
                     type="button"
                     onClick={() => dashboardLead && archiveLead(dashboardLead.id)}
-                    style={buttonStyle(false)}
+                    disabled={dashboardIsNew}
+                    style={buttonStyle(false, dashboardIsNew)}
                   >
                     Ins Archiv verschieben
                   </button>
