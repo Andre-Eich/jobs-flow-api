@@ -43,7 +43,12 @@ async function backfillRecentLeadsFromResend() {
   if (!apiKey) return;
 
   const resend = new Resend(apiKey);
-  const result = await resend.emails.list({ limit: 100 });
+  let result;
+  try {
+    result = await resend.emails.list({ limit: 100 });
+  } catch {
+    return;
+  }
   if (result.error) return;
 
   const rawEmails: RawEmailListItem[] = Array.isArray(result.data?.data)
@@ -117,7 +122,12 @@ async function backfillRecentLeadsFromResend() {
 
 export async function GET() {
   try {
-    await backfillRecentLeadsFromResend();
+    try {
+      await backfillRecentLeadsFromResend();
+    } catch (backfillError) {
+      console.error("CRM LEADS BACKFILL ERROR:", backfillError);
+    }
+
     const apiKey = process.env.RESEND_CRM_API_KEY || process.env.RESEND_API_KEY;
     const leads = syncLeadsFromTextControlling().sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -135,7 +145,12 @@ export async function GET() {
     }
 
     const resend = new Resend(apiKey);
-    const result = await resend.emails.list({ limit: 100 });
+    let result;
+    try {
+      result = await resend.emails.list({ limit: 100 });
+    } catch {
+      result = { data: null, error: null };
+    }
     const rawEmails: RawEmailListItem[] = Array.isArray(result.data?.data)
       ? (result.data.data as RawEmailListItem[])
       : [];
