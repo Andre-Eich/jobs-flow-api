@@ -71,6 +71,20 @@ type BulkTextBlock = {
   text: string;
 };
 
+type BulkPackageMailRecord = {
+  id: string;
+  leadId?: string;
+  company: string;
+  recipientEmail: string;
+  phone?: string;
+  subject: string;
+  textBlockTitles: string[];
+  contactPerson?: string;
+  status: "planned" | "sending" | "sent" | "failed";
+  errorMessage?: string;
+  createdAt: string;
+};
+
 const EMPTY_BULK_LEADS: BulkLead[] = [];
 const BULK_TEXT_BLOCKS_KEY = "bulkTextBlocksV1";
 
@@ -316,6 +330,7 @@ export default function PhotoToMailPageReplacementV4() {
   }
 
   useEffect(() => { loadCrm(); }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (mainView === "analytics") loadTextStats(); }, [mainView]);
 
   function openNewBulkTextBlockEditor() {
@@ -475,54 +490,197 @@ export default function PhotoToMailPageReplacementV4() {
     updateBulkLead(id, { qualityStatus: "done", qualityStars, qualitySummary, alreadyContacted: Boolean(existing), lastContactAt: existing?.createdAt || "" });
   }
 
-  async function handleSendBulkLead(id: string) {
-    const lead = bulkLeads.find((item) => item.id === id);
-    if (!lead || !lead.email) {
-      setError("Für dieses Unternehmen wurde noch keine E-Mail-Adresse gefunden.");
+  async function generateBulkEmailForLead(lead: BulkLead) {
+    const response = await fetch("/api/generate-bulk-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        company: lead.company,
+        industry: lead.industry,
+        analysisSummary: lead.analysisSummary,
+        contactPerson: lead.contactPerson,
+        shortMode: bulkShortMode,
+        textBlocks: activeBulkTextBlocks,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Bulk-Mail konnte nicht generiert werden.");
+    }
+    return {
+      subject: String(data.subject || "").trim(),
+      text: String(data.text || "").trim(),
+    };
+  }
+
+  async function handleSendBulkBatch(ids: string[]) {
+    const leadsToSend = ids
+      .map((id) => bulkLeads.find((item) => item.id === id))
+      .filter((lead): lead is BulkLead => Boolean(lead?.email));
+
+    if (leadsToSend.length === 0) {
+      setError("Bitte mindestens einen versandfaehigen Lead auswaehlen.");
       return;
     }
-    updateBulkLead(id, { sendStatus: "loading" });
-    try {
-      const generateResponse = await fetch("/api/generate-bulk-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company: lead.company, industry: lead.industry, analysisSummary: lead.analysisSummary, shortMode: bulkShortMode, textBlocks: activeBulkTextBlocks }),
-      });
-      const generated = await generateResponse.json();
-      if (!generateResponse.ok) {
-        updateBulkLead(id, { sendStatus: "error" });
-        setError(generated.error || "Bulk-Mail konnte nicht generiert werden.");
-        return;
-      }
-      const sendResponse = await fetch("/api/send-bulk-mail", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: lead.email,
-          subject: generated.subject,
-          text: generated.text,
-          testMode: bulkTestMode,
-          sendCopy: true,
+
+    setError("");
+    setSuccessMessage("");
+    leadsToSend.forEach((lead) => updateBulkLead(lead.id, { sendStatus: "loading" }));
+
+    const packageId = crypto.randomUUID();
+    const textBlockTitles = activeBulkTextBlocks.map((block) => block.title);
+
+    const crmCreateResponse = await fetch("/api/crm/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        leads: leadsToSend.map((lead) => ({
           company: lead.company,
-          contactPerson: lead.contactPerson,
-          hookText: activeBulkTextBlocks.map((block) => block.title).join(", ") || generated.subject,
-          textBlockTitles: activeBulkTextBlocks.map((block) => block.title),
-          shortMode: bulkShortMode,
-        }),
-      });
-      const sendData = await sendResponse.json();
-      if (!sendResponse.ok) {
-        updateBulkLead(id, { sendStatus: "error" });
-        setError(sendData.error || "Streumail konnte nicht gesendet werden.");
-        return;
-      }
-      updateBulkLead(id, { sendStatus: "sent" });
-      setSuccessMessage(bulkTestMode ? `Streumail-Test für "${lead.company}" wurde an den Test-Empfänger gesendet.` : `Streumail für "${lead.company}" wurde gesendet.`);
-      await loadCrm();
-    } catch {
-      updateBulkLead(id, { sendStatus: "error" });
-      setError("Streumail konnte nicht gesendet werden.");
+          postalCode: "",
+          city: lead.city || bulkLocation.trim(),
+          recipientEmail: lead.email,
+          phone: lead.phone || "",
+          website: lead.website || "",
+          contactPerson: lead.contactPerson || "",
+          industry: lead.industry || "",
+        })),
+      }),
+    });
+    const crmCreateData = await crmCreateResponse.json();
+
+    if (!crmCreateResponse.ok) {
+      leadsToSend.forEach((lead) => updateBulkLead(lead.id, { sendStatus: "error" }));
+      setError(crmCreateData.error || "Ausgewaehlte Kontakte konnten nicht ins CRM uebernommen werden.");
+      return;
     }
+
+    const generatedEntries = await Promise.all(
+      leadsToSend.map(async (lead) => {
+        try {
+          const generated = await generateBulkEmailForLead(lead);
+          return {
+            lead,
+            generated,
+            packageMail: {
+              id: crypto.randomUUID(),
+              leadId: lead.id,
+              company: lead.company,
+              recipientEmail: lead.email,
+              phone: lead.phone || "",
+              subject: generated.subject,
+              textBlockTitles,
+              contactPerson: lead.contactPerson || "",
+              status: "planned" as const,
+              errorMessage: "",
+              createdAt: new Date().toISOString(),
+            } satisfies BulkPackageMailRecord,
+          };
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : "Bulk-Mail konnte nicht generiert werden.";
+          updateBulkLead(lead.id, { sendStatus: "error" });
+          return {
+            lead,
+            generated: null,
+            packageMail: {
+              id: crypto.randomUUID(),
+              leadId: lead.id,
+              company: lead.company,
+              recipientEmail: lead.email,
+              phone: lead.phone || "",
+              subject: "",
+              textBlockTitles,
+              contactPerson: lead.contactPerson || "",
+              status: "failed" as const,
+              errorMessage: message,
+              createdAt: new Date().toISOString(),
+            } satisfies BulkPackageMailRecord,
+          };
+        }
+      })
+    );
+
+    const createResponse = await fetch("/api/crm/bulk-packages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: packageId,
+        createdAt: new Date().toISOString(),
+        searchLocation: bulkLocation.trim(),
+        radiusKm: bulkRadius,
+        textBlockTitles,
+        shortMode: bulkShortMode,
+        testMode: bulkTestMode,
+        mails: generatedEntries.map((entry) => entry.packageMail),
+      }),
+    });
+    const createData = await createResponse.json();
+
+    if (!createResponse.ok || !createData.package) {
+      leadsToSend.forEach((lead) => updateBulkLead(lead.id, { sendStatus: "error" }));
+      setError(createData.error || "Streumail-Paket konnte nicht vorbereitet werden.");
+      return;
+    }
+
+    const sendableEntries = generatedEntries.filter(
+      (entry): entry is typeof entry & { generated: { subject: string; text: string } } =>
+        Boolean(entry.generated)
+    );
+
+    let sentCount = 0;
+
+    for (const entry of sendableEntries) {
+      try {
+        const sendResponse = await fetch("/api/send-bulk-mail", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: entry.lead.email,
+            subject: entry.generated.subject,
+            text: entry.generated.text,
+            testMode: bulkTestMode,
+            sendCopy: true,
+            company: entry.lead.company,
+            contactPerson: entry.lead.contactPerson,
+            phone: entry.lead.phone || "",
+            website: entry.lead.website || "",
+            city: entry.lead.city || "",
+            industry: entry.lead.industry || "",
+            hookText: textBlockTitles.join(", ") || entry.generated.subject,
+            textBlockTitles,
+            shortMode: bulkShortMode,
+            batchId: packageId,
+            packageMailId: entry.packageMail.id,
+            searchLocation: bulkLocation.trim(),
+            radiusKm: bulkRadius,
+          }),
+        });
+        const sendData = await sendResponse.json();
+        if (!sendResponse.ok) {
+          updateBulkLead(entry.lead.id, { sendStatus: "error" });
+          setError(sendData.error || "Mindestens eine Streumail konnte nicht gesendet werden.");
+          continue;
+        }
+        updateBulkLead(entry.lead.id, { sendStatus: "sent" });
+        sentCount += 1;
+      } catch {
+        updateBulkLead(entry.lead.id, { sendStatus: "error" });
+        setError("Mindestens eine Streumail konnte nicht gesendet werden.");
+      }
+    }
+
+    if (sentCount > 0) {
+      setSuccessMessage(
+        bulkTestMode
+          ? `${sentCount} Streumail${sentCount === 1 ? "" : "s"} wurde${sentCount === 1 ? "" : "n"} an den Test-Empfaenger gesendet.`
+          : `${sentCount} Streumail${sentCount === 1 ? "" : "s"} wurde${sentCount === 1 ? "" : "n"} gesendet.`
+      );
+    }
+
+    await loadCrm();
+  }
+
+  async function handleSendBulkLead(id: string) {
+    await handleSendBulkBatch([id]);
   }
 
   async function handleOpenMailDetail(mail: MailRecord) {
@@ -594,7 +752,7 @@ export default function PhotoToMailPageReplacementV4() {
                 <div style={{ fontSize: "13px", color: "#6b7280" }}>{bulkTestMode ? "Bulk-Versand geht nur an TEST_RECIPIENT_EMAIL." : "Produktivversand an gelistete Empfänger aktiv."}</div>
               </div>
 
-              {bulkLeads.length === 0 ? <div style={{ fontSize: "14px", color: "#6b7280" }}>Noch keine Firmenliste geladen.</div> : <BulkLeadsTableReplacementV4 leads={bulkLeads} onToggleSelected={(id, selected) => updateBulkLead(id, { selected })} onSetAllSelected={setAllBulkLeadsSelected} onAnalyzeOne={handleAnalyzeBulkLead} onCollectOne={handleCollectBulkData} onQualityOne={handleAssessBulkQuality} onSendOne={handleSendBulkLead} onChooseEmail={chooseLeadEmail} onChooseContactPerson={chooseLeadContactPerson} />}
+              {bulkLeads.length === 0 ? <div style={{ fontSize: "14px", color: "#6b7280" }}>Noch keine Firmenliste geladen.</div> : <BulkLeadsTableReplacementV4 leads={bulkLeads} onToggleSelected={(id, selected) => updateBulkLead(id, { selected })} onSetAllSelected={setAllBulkLeadsSelected} onAnalyzeOne={handleAnalyzeBulkLead} onCollectOne={handleCollectBulkData} onQualityOne={handleAssessBulkQuality} onSendOne={handleSendBulkLead} onSendBatch={handleSendBulkBatch} onChooseEmail={chooseLeadEmail} onChooseContactPerson={chooseLeadContactPerson} />}
             </div>
           )}
 
