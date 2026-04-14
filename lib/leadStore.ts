@@ -30,6 +30,12 @@ export type LeadRecord = {
   website: string;
   contactPerson: string;
   industry: string;
+  analysisStars: 0 | 1 | 2 | 3;
+  analysisSummary: string;
+  foundJobTitles: string[];
+  foundCareerUrls: string[];
+  qualityStars: 0 | 1 | 2 | 3;
+  qualitySummary: string;
   channel: LeadChannel;
   createdAt: string;
   updatedAt: string;
@@ -58,6 +64,12 @@ export type UpsertLeadInput = {
   website?: string;
   contactPerson?: string;
   industry?: string;
+  analysisStars?: 0 | 1 | 2 | 3;
+  analysisSummary?: string;
+  foundJobTitles?: string[];
+  foundCareerUrls?: string[];
+  qualityStars?: 0 | 1 | 2 | 3;
+  qualitySummary?: string;
   channel: "kaltakquise" | "streumail";
 };
 
@@ -121,6 +133,19 @@ function deriveLocationParts(args: {
   };
 }
 
+function normalizeStars(value: unknown): 0 | 1 | 2 | 3 {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  const rounded = Math.max(0, Math.min(3, Math.round(numeric)));
+  return rounded as 0 | 1 | 2 | 3;
+}
+
+function normalizeStringArray(value: unknown, maxItems: number) {
+  return Array.isArray(value)
+    ? value.map((item) => safeString(item)).filter(Boolean).slice(0, maxItems)
+    : [];
+}
+
 function normalizeLeadMail(mail: LeadMailRecord): LeadMailRecord {
   return {
     id: safeString(mail.id) || crypto.randomUUID(),
@@ -152,6 +177,12 @@ function normalizeLeadRecord(lead: LeadRecord): LeadRecord {
     website: normalizeWebsite(safeString(lead.website)),
     contactPerson: safeString(lead.contactPerson),
     industry: safeString(lead.industry),
+    analysisStars: normalizeStars(lead.analysisStars),
+    analysisSummary: safeString(lead.analysisSummary),
+    foundJobTitles: normalizeStringArray(lead.foundJobTitles, 8),
+    foundCareerUrls: normalizeStringArray(lead.foundCareerUrls, 6),
+    qualityStars: normalizeStars(lead.qualityStars),
+    qualitySummary: safeString(lead.qualitySummary),
     channel:
       lead.channel === "kaltakquise" || lead.channel === "streumail" || lead.channel === "mixed"
         ? lead.channel
@@ -252,6 +283,12 @@ export function upsertLead(input: UpsertLeadInput) {
       website: normalizeWebsite(safeString(input.website)),
       contactPerson: safeString(input.contactPerson),
       industry: safeString(input.industry),
+      analysisStars: normalizeStars(input.analysisStars),
+      analysisSummary: safeString(input.analysisSummary),
+      foundJobTitles: normalizeStringArray(input.foundJobTitles, 8),
+      foundCareerUrls: normalizeStringArray(input.foundCareerUrls, 6),
+      qualityStars: normalizeStars(input.qualityStars),
+      qualitySummary: safeString(input.qualitySummary),
       channel: input.channel,
       createdAt: now,
       updatedAt: now,
@@ -275,6 +312,26 @@ export function upsertLead(input: UpsertLeadInput) {
     website: normalizeWebsite(safeString(input.website)) || existing.website,
     contactPerson: safeString(input.contactPerson) || existing.contactPerson,
     industry: safeString(input.industry) || existing.industry,
+    analysisStars:
+      input.analysisStars !== undefined ? normalizeStars(input.analysisStars) : existing.analysisStars,
+    analysisSummary:
+      input.analysisSummary !== undefined
+        ? safeString(input.analysisSummary)
+        : existing.analysisSummary,
+    foundJobTitles:
+      input.foundJobTitles !== undefined
+        ? normalizeStringArray(input.foundJobTitles, 8)
+        : existing.foundJobTitles,
+    foundCareerUrls:
+      input.foundCareerUrls !== undefined
+        ? normalizeStringArray(input.foundCareerUrls, 6)
+        : existing.foundCareerUrls,
+    qualityStars:
+      input.qualityStars !== undefined ? normalizeStars(input.qualityStars) : existing.qualityStars,
+    qualitySummary:
+      input.qualitySummary !== undefined
+        ? safeString(input.qualitySummary)
+        : existing.qualitySummary,
     channel: deriveChannel(existing.channel, input.channel),
     updatedAt: now,
     mails: existing.mails,
@@ -312,6 +369,12 @@ export function upsertLeadMail(input: UpsertLeadMailInput) {
       website: normalizeWebsite(safeString(input.website)),
       contactPerson: safeString(input.contactPerson),
       industry: safeString(input.industry),
+      analysisStars: 0,
+      analysisSummary: "",
+      foundJobTitles: [],
+      foundCareerUrls: [],
+      qualityStars: 0,
+      qualitySummary: "",
       channel: input.channel,
       createdAt: now,
       updatedAt: now,
@@ -345,6 +408,12 @@ export function upsertLeadMail(input: UpsertLeadMailInput) {
     website: normalizeWebsite(safeString(input.website)) || existing.website,
     contactPerson: safeString(input.contactPerson) || existing.contactPerson,
     industry: safeString(input.industry) || existing.industry,
+    analysisStars: existing.analysisStars,
+    analysisSummary: existing.analysisSummary,
+    foundJobTitles: existing.foundJobTitles,
+    foundCareerUrls: existing.foundCareerUrls,
+    qualityStars: existing.qualityStars,
+    qualitySummary: existing.qualitySummary,
     channel: deriveChannel(existing.channel, input.channel),
     updatedAt: now,
     mails: nextMails,
@@ -412,6 +481,12 @@ export function updateLeadById(
     recipientEmail?: string;
     contactPerson?: string;
     phone?: string;
+    analysisStars?: 0 | 1 | 2 | 3;
+    analysisSummary?: string;
+    foundJobTitles?: string[];
+    foundCareerUrls?: string[];
+    qualityStars?: 0 | 1 | 2 | 3;
+    qualitySummary?: string;
   }
 ): LeadRecord | null {
   const leads = getLeads();
@@ -437,6 +512,26 @@ export function updateLeadById(
         : existing.contactPerson,
     phone:
       updates.phone !== undefined ? safeString(updates.phone) : existing.phone,
+    analysisStars:
+      updates.analysisStars !== undefined ? normalizeStars(updates.analysisStars) : existing.analysisStars,
+    analysisSummary:
+      updates.analysisSummary !== undefined
+        ? safeString(updates.analysisSummary)
+        : existing.analysisSummary,
+    foundJobTitles:
+      updates.foundJobTitles !== undefined
+        ? normalizeStringArray(updates.foundJobTitles, 8)
+        : existing.foundJobTitles,
+    foundCareerUrls:
+      updates.foundCareerUrls !== undefined
+        ? normalizeStringArray(updates.foundCareerUrls, 6)
+        : existing.foundCareerUrls,
+    qualityStars:
+      updates.qualityStars !== undefined ? normalizeStars(updates.qualityStars) : existing.qualityStars,
+    qualitySummary:
+      updates.qualitySummary !== undefined
+        ? safeString(updates.qualitySummary)
+        : existing.qualitySummary,
     updatedAt: now,
   });
 

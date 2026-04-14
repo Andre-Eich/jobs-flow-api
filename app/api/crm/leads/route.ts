@@ -21,6 +21,12 @@ type CrmLeadUpsertPayload = {
   website?: string;
   contactPerson?: string;
   industry?: string;
+  analysisStars?: 0 | 1 | 2 | 3;
+  analysisSummary?: string;
+  foundJobTitles?: string[];
+  foundCareerUrls?: string[];
+  qualityStars?: 0 | 1 | 2 | 3;
+  qualitySummary?: string;
 };
 
 function safeString(value: unknown) {
@@ -209,6 +215,22 @@ export async function POST(req: Request) {
           website: safeString(lead?.website),
           contactPerson: safeString(lead?.contactPerson),
           industry: safeString(lead?.industry),
+          analysisStars:
+            typeof lead?.analysisStars === "number"
+              ? (lead.analysisStars as 0 | 1 | 2 | 3)
+              : undefined,
+          analysisSummary: safeString(lead?.analysisSummary),
+          foundJobTitles: Array.isArray(lead?.foundJobTitles)
+            ? lead.foundJobTitles.map((item) => safeString(item)).filter(Boolean)
+            : undefined,
+          foundCareerUrls: Array.isArray(lead?.foundCareerUrls)
+            ? lead.foundCareerUrls.map((item) => safeString(item)).filter(Boolean)
+            : undefined,
+          qualityStars:
+            typeof lead?.qualityStars === "number"
+              ? (lead.qualityStars as 0 | 1 | 2 | 3)
+              : undefined,
+          qualitySummary: safeString(lead?.qualitySummary),
           channel: "streumail",
         })
       )

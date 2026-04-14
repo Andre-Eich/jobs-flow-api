@@ -21,6 +21,24 @@ export async function PATCH(
       contactPerson:
         typeof body.contactPerson === "string" ? body.contactPerson : undefined,
       phone: typeof body.phone === "string" ? body.phone : undefined,
+      analysisStars:
+        typeof body.analysisStars === "number"
+          ? (body.analysisStars as 0 | 1 | 2 | 3)
+          : undefined,
+      analysisSummary:
+        typeof body.analysisSummary === "string" ? body.analysisSummary : undefined,
+      foundJobTitles: Array.isArray(body.foundJobTitles)
+        ? body.foundJobTitles.map((item: unknown) => String(item || ""))
+        : undefined,
+      foundCareerUrls: Array.isArray(body.foundCareerUrls)
+        ? body.foundCareerUrls.map((item: unknown) => String(item || ""))
+        : undefined,
+      qualityStars:
+        typeof body.qualityStars === "number"
+          ? (body.qualityStars as 0 | 1 | 2 | 3)
+          : undefined,
+      qualitySummary:
+        typeof body.qualitySummary === "string" ? body.qualitySummary : undefined,
     });
 
     if (!lead) {

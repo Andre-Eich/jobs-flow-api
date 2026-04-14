@@ -26,6 +26,12 @@ type LeadRecord = {
   website: string;
   contactPerson: string;
   industry: string;
+  analysisStars: 0 | 1 | 2 | 3;
+  analysisSummary: string;
+  foundJobTitles: string[];
+  foundCareerUrls: string[];
+  qualityStars: 0 | 1 | 2 | 3;
+  qualitySummary: string;
   channel: "kaltakquise" | "streumail" | "mixed";
   createdAt: string;
   updatedAt: string;
@@ -70,6 +76,7 @@ type CrmSortKey =
   | "phone"
   | "channel"
   | "mails"
+  | "quality"
   | "updatedAt";
 
 type CrmSortDirection = "asc" | "desc";
@@ -143,6 +150,19 @@ function compareStrings(a: string, b: string) {
   return a.localeCompare(b, "de", { sensitivity: "base" });
 }
 
+function stars(value: number) {
+  const safe = Math.max(0, Math.min(3, Math.round(Number(value) || 0)));
+  if (safe <= 0) return "–";
+  return "★".repeat(safe);
+}
+
+function linesToItems(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 const tableHeadStyle: React.CSSProperties = {
   padding: "12px 14px",
   fontSize: "13px",
@@ -185,6 +205,12 @@ export default function CrmPage() {
   const [dashboardEditEmail, setDashboardEditEmail] = useState("");
   const [dashboardEditContactPerson, setDashboardEditContactPerson] = useState("");
   const [dashboardEditPhone, setDashboardEditPhone] = useState("");
+  const [dashboardAnalysisStars, setDashboardAnalysisStars] = useState<0 | 1 | 2 | 3>(0);
+  const [dashboardAnalysisSummary, setDashboardAnalysisSummary] = useState("");
+  const [dashboardFoundJobTitles, setDashboardFoundJobTitles] = useState("");
+  const [dashboardFoundCareerUrls, setDashboardFoundCareerUrls] = useState("");
+  const [dashboardQualityStars, setDashboardQualityStars] = useState<0 | 1 | 2 | 3>(0);
+  const [dashboardQualitySummary, setDashboardQualitySummary] = useState("");
   const [dashboardSaving, setDashboardSaving] = useState(false);
   const [dashboardHookBaseId, setDashboardHookBaseId] = useState("auto");
   const [dashboardActiveBlockIds, setDashboardActiveBlockIds] = useState<string[]>([]);
@@ -283,6 +309,8 @@ export default function CrmPage() {
         result = compareStrings(channelLabel(a.channel), channelLabel(b.channel));
       } else if (sortKey === "mails") {
         result = (a.mails.length || 0) - (b.mails.length || 0);
+      } else if (sortKey === "quality") {
+        result = (a.qualityStars || 0) - (b.qualityStars || 0);
       } else {
         result = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
       }
@@ -354,6 +382,12 @@ export default function CrmPage() {
     setDashboardEditEmail(lead.recipientEmail);
     setDashboardEditContactPerson(lead.contactPerson);
     setDashboardEditPhone(lead.phone);
+    setDashboardAnalysisStars(lead.analysisStars || 0);
+    setDashboardAnalysisSummary(lead.analysisSummary || "");
+    setDashboardFoundJobTitles((lead.foundJobTitles || []).join("\n"));
+    setDashboardFoundCareerUrls((lead.foundCareerUrls || []).join("\n"));
+    setDashboardQualityStars(lead.qualityStars || 0);
+    setDashboardQualitySummary(lead.qualitySummary || "");
     setDashboardHookBaseId("auto");
     setDashboardActiveBlockIds([]);
     setDashboardShortMode(false);
@@ -378,6 +412,12 @@ export default function CrmPage() {
           recipientEmail: dashboardEditEmail,
           contactPerson: dashboardEditContactPerson,
           phone: dashboardEditPhone,
+          analysisStars: dashboardAnalysisStars,
+          analysisSummary: dashboardAnalysisSummary,
+          foundJobTitles: linesToItems(dashboardFoundJobTitles),
+          foundCareerUrls: linesToItems(dashboardFoundCareerUrls),
+          qualityStars: dashboardQualityStars,
+          qualitySummary: dashboardQualitySummary,
         }),
       });
       const data = await response.json();
@@ -705,6 +745,9 @@ export default function CrmPage() {
                         <SortButton label="Mails" active={sortKey === "mails"} direction={sortDirection} onClick={() => toggleSort("mails")} />
                       </th>
                       <th style={tableHeadStyle}>
+                        <SortButton label="Qualitaet" active={sortKey === "quality"} direction={sortDirection} onClick={() => toggleSort("quality")} />
+                      </th>
+                      <th style={tableHeadStyle}>
                         <SortButton label="Letzte Aktivitaet" active={sortKey === "updatedAt"} direction={sortDirection} onClick={() => toggleSort("updatedAt")} />
                       </th>
                       <th style={tableHeadStyle}>Aktionen</th>
@@ -736,6 +779,9 @@ export default function CrmPage() {
                           <td style={tableCellStyle}>{lead.phone || "-"}</td>
                           <td style={tableCellStyle}>{channelLabel(lead.channel)}</td>
                           <td style={tableCellStyle}>{lead.mails.length}</td>
+                          <td style={tableCellStyle}>
+                            <div style={{ fontSize: "16px", fontWeight: 700 }}>{stars(lead.qualityStars)}</div>
+                          </td>
                           <td style={tableCellStyle}>{formatDate(lead.updatedAt)}</td>
                           <td style={tableCellStyle}>
                             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -976,6 +1022,98 @@ export default function CrmPage() {
                         style={inputStyle}
                       />
                     </div>
+                    <div
+                      style={{
+                        borderTop: "1px solid #e5e7eb",
+                        paddingTop: "10px",
+                        marginTop: "2px",
+                      }}
+                    >
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "8px" }}>
+                        Analyse
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "8px" }}>
+                        {[0, 1, 2, 3].map((value) => {
+                          const active = dashboardAnalysisStars === value;
+                          return (
+                            <button
+                              key={`analysis-${value}`}
+                              type="button"
+                              onClick={() => setDashboardAnalysisStars(value as 0 | 1 | 2 | 3)}
+                              style={{
+                                padding: "5px 10px",
+                                borderRadius: "999px",
+                                border: "1px solid #cbd5e1",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                                background: active ? "#111827" : "#ffffff",
+                                color: active ? "#ffffff" : "#111827",
+                              }}
+                            >
+                              {value === 0 ? "0" : stars(value)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <textarea
+                        value={dashboardAnalysisSummary}
+                        onChange={(e) => setDashboardAnalysisSummary(e.target.value)}
+                        placeholder="Analyse-Hinweise"
+                        style={{ ...inputStyle, minHeight: "90px", resize: "vertical" }}
+                      />
+                      <textarea
+                        value={dashboardFoundJobTitles}
+                        onChange={(e) => setDashboardFoundJobTitles(e.target.value)}
+                        placeholder="Titel, jeweils eine Zeile"
+                        style={{ ...inputStyle, minHeight: "72px", resize: "vertical", marginTop: "8px" }}
+                      />
+                      <textarea
+                        value={dashboardFoundCareerUrls}
+                        onChange={(e) => setDashboardFoundCareerUrls(e.target.value)}
+                        placeholder="Karriere-URLs, jeweils eine Zeile"
+                        style={{ ...inputStyle, minHeight: "72px", resize: "vertical", marginTop: "8px" }}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        borderTop: "1px solid #e5e7eb",
+                        paddingTop: "10px",
+                        marginTop: "2px",
+                      }}
+                    >
+                      <div style={{ fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "8px" }}>
+                        Qualitaet
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "8px" }}>
+                        {[0, 1, 2, 3].map((value) => {
+                          const active = dashboardQualityStars === value;
+                          return (
+                            <button
+                              key={`quality-${value}`}
+                              type="button"
+                              onClick={() => setDashboardQualityStars(value as 0 | 1 | 2 | 3)}
+                              style={{
+                                padding: "5px 10px",
+                                borderRadius: "999px",
+                                border: "1px solid #cbd5e1",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                                background: active ? "#111827" : "#ffffff",
+                                color: active ? "#ffffff" : "#111827",
+                              }}
+                            >
+                              {value === 0 ? "0" : stars(value)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <textarea
+                        value={dashboardQualitySummary}
+                        onChange={(e) => setDashboardQualitySummary(e.target.value)}
+                        placeholder="Qualitaets-Hinweise"
+                        style={{ ...inputStyle, minHeight: "90px", resize: "vertical" }}
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={saveDashboardLead}
@@ -1124,6 +1262,61 @@ export default function CrmPage() {
               <div
                 style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "20px" }}
               >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                    gap: "16px",
+                  }}
+                >
+                  <div
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "12px",
+                      padding: "16px",
+                      background: "#f9fafb",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "8px" }}>
+                      Analyse
+                    </div>
+                    <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "8px" }}>
+                      {stars(dashboardAnalysisStars)}
+                    </div>
+                    <div style={{ fontSize: "13px", lineHeight: 1.5, color: "#374151" }}>
+                      {dashboardAnalysisSummary || "Noch keine Analyse-Hinweise gespeichert."}
+                    </div>
+                    {linesToItems(dashboardFoundJobTitles).length > 0 ? (
+                      <div style={{ marginTop: "10px", fontSize: "12px", color: "#374151" }}>
+                        <strong>Titel:</strong> {linesToItems(dashboardFoundJobTitles).join(", ")}
+                      </div>
+                    ) : null}
+                    {linesToItems(dashboardFoundCareerUrls).length > 0 ? (
+                      <div style={{ marginTop: "10px", fontSize: "12px", color: "#374151", wordBreak: "break-all" }}>
+                        <strong>Karriere:</strong> {linesToItems(dashboardFoundCareerUrls)[0]}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "12px",
+                      padding: "16px",
+                      background: "#f9fafb",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "8px" }}>
+                      Lead-Qualitaet
+                    </div>
+                    <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "8px" }}>
+                      {stars(dashboardQualityStars)}
+                    </div>
+                    <div style={{ fontSize: "13px", lineHeight: 1.5, color: "#374151" }}>
+                      {dashboardQualitySummary || "Noch keine Qualitaets-Hinweise gespeichert."}
+                    </div>
+                  </div>
+                </div>
+
                 {/* Vorschau */}
                 <div>
                   <div
