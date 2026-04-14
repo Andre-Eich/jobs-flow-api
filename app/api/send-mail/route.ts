@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
 import { upsertLeadMail } from "@/lib/leadStore";
+import { buildFormalContactGreeting } from "@/lib/contactPerson";
 
 function escapeHtml(value: string) {
   return value
@@ -13,15 +14,21 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
-function normalizeGreeting(text: string) {
+function normalizeGreeting(text: string, contactPerson: string) {
   let normalized = text.trim();
+  const desiredGreeting = buildFormalContactGreeting(contactPerson);
+  const hasNamedContact = desiredGreeting !== "Guten Tag,";
 
-  normalized = normalized.replace(
-    /^(Sehr geehrte Damen und Herren,)\s*/i,
-    "Sehr geehrte Damen und Herren,\n\n"
+  normalized = normalized.replace(/^(Sehr geehrte Damen und Herren,)\s*/i, () =>
+    hasNamedContact ? `${desiredGreeting}\n\n` : "Sehr geehrte Damen und Herren,\n\n"
   );
 
-  normalized = normalized.replace(/^(Guten Tag [^\n,]+,)\s*/i, "$1\n\n");
+  normalized = normalized.replace(
+    /^(?:Guten Tag [^\n,]+,|Hallo [^\n,]+,|Sehr geehrte(?:r|n)? [^\n,]+,)\s*/i,
+    `${desiredGreeting}\n\n`
+  );
+
+  normalized = normalized.replace(/^(Guten Tag,)\s*/i, "$1\n\n");
 
   return normalized.trim();
 }
@@ -63,8 +70,8 @@ function lowercaseOnlyFirstLetterOfFirstSentence(text: string) {
   return `${greetingPrefix}${adjustedFirstSentence}${remainder}`;
 }
 
-function buildFinalText(text: string, hiddenMarker?: string) {
-  let cleanedText = normalizeGreeting(text);
+function buildFinalText(text: string, contactPerson: string, hiddenMarker?: string) {
+  let cleanedText = normalizeGreeting(text, contactPerson);
   cleanedText = lowercaseOnlyFirstLetterOfFirstSentence(cleanedText);
 
   cleanedText = cleanedText.replace(
@@ -215,7 +222,7 @@ export async function POST(req: Request) {
     const hiddenMarker =
       followUp && originalEmailId ? `REMINDER:${originalEmailId}` : undefined;
 
-    const finalText = buildFinalText(text, hiddenMarker);
+    const finalText = buildFinalText(text, String(contactPerson || "").trim(), hiddenMarker);
     const finalSubject = buildSubject(jobTitle, followUp);
     const crmMeta = {
       kind: "single" as const,

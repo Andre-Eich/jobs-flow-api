@@ -4,7 +4,7 @@ import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
 import { upsertLeadMail } from "@/lib/leadStore";
 import { updateBulkPackageMailStatus } from "@/lib/bulkPackageStore";
-import { sanitizeContactPerson } from "@/lib/contactPerson";
+import { buildFormalContactGreeting, sanitizeContactPerson } from "@/lib/contactPerson";
 import { compactInlineMailAttachments, loadJobsInlineMailAssets } from "@/lib/mailInlineAssets";
 
 function escapeHtml(value: string) {
@@ -47,8 +47,7 @@ function stripTrailingClosing(text: string) {
 }
 
 function buildGreeting(contactPerson: string) {
-  const safeContactPerson = sanitizeContactPerson(contactPerson);
-  return safeContactPerson ? `Guten Tag ${safeContactPerson},` : "Guten Tag,";
+  return buildFormalContactGreeting(contactPerson);
 }
 
 function lowercaseFirstContentSentence(text: string) {
