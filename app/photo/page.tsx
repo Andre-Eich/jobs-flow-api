@@ -157,6 +157,12 @@ function smallButtonStyle(disabled = false): React.CSSProperties {
   };
 }
 
+function insertLinkTemplate(text: string) {
+  const trimmed = String(text || "").trimEnd();
+  const template = "[Linktext](https://example.de)";
+  return trimmed ? `${trimmed}\n${template}` : template;
+}
+
 function Field({
   label,
   value,
@@ -1022,7 +1028,23 @@ export default function BulkMailServicePage() {
             <div style={{ fontSize: "16px", fontWeight: 700, marginBottom: "14px" }}>Textbaustein bearbeiten</div>
             <Field label="Badge-Titel" value={editingBulkTextBlock.title} onChange={(value) => setEditingBulkTextBlock((prev) => (prev ? { ...prev, title: value } : prev))} placeholder="z. B. Aktion XY" />
             <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: 600 }}>Textbaustein</label>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", marginBottom: "8px", flexWrap: "wrap" }}>
+                <label style={{ display: "block", fontWeight: 600 }}>Textbaustein</label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingBulkTextBlock((prev) =>
+                      prev ? { ...prev, text: insertLinkTemplate(prev.text) } : prev
+                    )
+                  }
+                  style={smallButtonStyle(false)}
+                >
+                  Link einfuegen
+                </button>
+              </div>
+              <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "8px" }}>
+                Verlinkung im Baustein mit Markdown-Syntax: `[Linktext](https://example.de)`
+              </div>
               <textarea value={editingBulkTextBlock.text} onChange={(e) => setEditingBulkTextBlock((prev) => (prev ? { ...prev, text: e.target.value } : prev))} rows={6} style={{ width: "100%", padding: "12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff", fontSize: "14px", boxSizing: "border-box", resize: "vertical", lineHeight: 1.5 }} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center" }}>

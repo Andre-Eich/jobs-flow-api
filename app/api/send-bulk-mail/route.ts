@@ -16,8 +16,21 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
-function textToHtml(text: string) {
-  return escapeHtml(text).replace(/\n/g, "<br/>");
+function textWithLinksToHtml(text: string) {
+  return escapeHtml(text)
+    .replace(
+      /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      (_match, label: string, url: string) =>
+        `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:#0f172a; text-decoration:underline;">${label}</a>`
+    )
+    .replace(/\n/g, "<br/>");
+}
+
+function markdownLinksToPlainText(text: string) {
+  return String(text || "").replace(
+    /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_match, label: string, url: string) => `${label}: ${url}`
+  );
 }
 
 function stripLeadingGreeting(text: string) {
@@ -128,6 +141,7 @@ export async function POST(req: Request) {
 
     const safeContactPerson = sanitizeContactPerson(String(contactPerson || ""));
     const preparedText = ensureGreetingAndClosing(String(text || ""), safeContactPerson);
+    const preparedTextPlain = markdownLinksToPlainText(preparedText);
     const normalizedTextBlockTitles = Array.isArray(textBlockTitles) ? textBlockTitles : [];
     const { portrait, footer } = await loadJobsInlineMailAssets();
     const portraitImageUrl = portrait ? `cid:${portrait.contentId}` : buildAssetUrl(req, "/andre-eichstaedt.png");
@@ -161,7 +175,7 @@ export async function POST(req: Request) {
 
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111111; font-size: 16px;">
-        <div style="margin-bottom: 24px;">${textToHtml(preparedText)}</div>
+        <div style="margin-bottom: 24px;">${textWithLinksToHtml(preparedText)}</div>
         <div style="margin: 20px 0 18px;">
           <img src="${portraitImageUrl}" alt="Andre Eichstaedt" style="display:block; max-width: 220px; width: 100%; height: auto; border: 0;" />
         </div>
@@ -187,7 +201,7 @@ export async function POST(req: Request) {
       to: actualRecipient,
       subject,
       html,
-      text: `${preparedText}\nAndre Eichstaedt\n\n${buildCrmMetaText(crmMeta)}\n[BULK_META:${JSON.stringify(bulkMeta)}]`,
+      text: `${preparedTextPlain}\nAndre Eichstaedt\n\n${buildCrmMetaText(crmMeta)}\n[BULK_META:${JSON.stringify(bulkMeta)}]`,
       attachments: compactInlineMailAttachments([portrait, footer]),
       bcc: isTestMode ? testRecipient || undefined : sendCopy ? "a.eichstaedt@jobs-in-berlin-brandenburg.de" : undefined,
     });
@@ -207,7 +221,7 @@ export async function POST(req: Request) {
       industry: String(industry || "").trim(),
       recipientEmail: actualRecipient,
       subject: String(subject || "").trim(),
-      bodyText: preparedText,
+      bodyText: preparedTextPlain,
       hookBaseId: "bulk",
       hookBaseLabel: "Streumail",
       hookVariantId: "bulk_v4",
@@ -240,7 +254,7 @@ export async function POST(req: Request) {
         emailId: String(emailId || ""),
         createdAt: new Date().toISOString(),
         subject: String(subject || "").trim(),
-        bodyText: preparedText,
+        bodyText: preparedTextPlain,
         textBlockTitles: normalizedTextBlockTitles,
         shortMode: Boolean(shortMode),
         testMode: Boolean(testMode),

@@ -38,9 +38,34 @@ function lowercaseFirstContentSentence(text: string) {
   );
 }
 
+function lowercaseOnlyFirstLetterOfFirstSentence(text: string) {
+  void lowercaseFirstContentSentence;
+  const source = String(text || "");
+  const greetingMatch = source.match(
+    /^((?:Sehr geehrte Damen und Herren,|Guten Tag [^\n,]+,)\n\n)?/
+  );
+  const greetingPrefix = greetingMatch?.[0] || "";
+  const body = source.slice(greetingPrefix.length);
+
+  if (!body) {
+    return source;
+  }
+
+  const firstSentenceMatch = body.match(/^[\s\S]*?[.!?](?=\s|$)/);
+  const firstSentence = firstSentenceMatch?.[0] || body;
+  const remainder = body.slice(firstSentence.length);
+  const adjustedFirstSentence = firstSentence.replace(
+    /(^|\s|["'(\[])([A-ZÄÖÜ])/,
+    (_match, prefix: string, firstChar: string) =>
+      `${prefix}${firstChar.toLocaleLowerCase("de-DE")}`
+  );
+
+  return `${greetingPrefix}${adjustedFirstSentence}${remainder}`;
+}
+
 function buildFinalText(text: string, hiddenMarker?: string) {
   let cleanedText = normalizeGreeting(text);
-  cleanedText = lowercaseFirstContentSentence(cleanedText);
+  cleanedText = lowercaseOnlyFirstLetterOfFirstSentence(cleanedText);
 
   cleanedText = cleanedText.replace(
     /(mit freundlichen gruessen[,!]?|freundliche gruesse[,!]?)\s*$/i,
@@ -48,13 +73,13 @@ function buildFinalText(text: string, hiddenMarker?: string) {
   ).trim();
 
   const infoBlock =
-    "Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenboerse finden Sie hier: www.jobs-berlin-brandenburg.de";
+    "Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenbörse finden Sie hier: www.jobs-berlin-brandenburg.de";
 
   if (!cleanedText.includes("Informationen zu unseren Anzeigenpreisen")) {
     cleanedText += `\n\n${infoBlock}`;
   }
 
-  let final = `${cleanedText}\n\nMit freundlichen Gruessen`;
+  let final = `${cleanedText}\n\nMit freundlichen Grüßen`;
 
   if (hiddenMarker) {
     final += `\n\n<!-- ${hiddenMarker} -->`;
@@ -89,15 +114,15 @@ function buildSubject(jobTitle?: string, followUp?: boolean) {
   const subjectVariants = safe
     ? [
         `Zur Position ${safe}: mehr passende Bewerber`,
-        `${safe}: zusaetzliche Bewerber erreichen`,
-        `Ihre ${safe}-Anzeige: mehr Reichweite moeglich`,
+        `${safe}: zusätzliche Bewerber erreichen`,
+        `Ihre ${safe}-Anzeige: mehr Reichweite möglich`,
         `Kurze Idee zu Ihrer ${safe}-Anzeige`,
         `Mehr passende Bewerbungen fuer ${safe}`,
       ]
     : [
         "Mehr Bewerber fuer Ihre Stellenanzeige",
-        "Zusaetzliche Bewerber fuer Ihre Anzeige",
-        "Ihre Stellenanzeige: mehr Reichweite moeglich",
+        "Zusätzliche Bewerber fuer Ihre Anzeige",
+        "Ihre Stellenanzeige: mehr Reichweite möglich",
         "Kurze Idee zu Ihrer Stellenanzeige",
         "Mehr passende Bewerbungen fuer Ihre Anzeige",
       ];

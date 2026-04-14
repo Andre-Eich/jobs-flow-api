@@ -101,6 +101,8 @@ WICHTIG:
 - Fokus auf Nutzen für das Unternehmen
 - kurz, vertrieblich, professionell
 - Der erste Satz nach der Anrede muss mit einem kleingeschriebenen Wort beginnen
+- Verwende echte deutsche Umlaute: ä, ö, ü
+- Wenn eine Grußformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
 - kein "Betreff:"
 - keine Grußformel am Ende
 - keine Signatur

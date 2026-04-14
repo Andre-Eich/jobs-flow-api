@@ -209,7 +209,7 @@ function buildExampleMailPreview(
       body:
         "gerade fuer Positionen wie Bauleiter kann zusaetzliche regionale Sichtbarkeit helfen, mehr passende Bewerber zu erreichen.\n\nueber jobs-in-berlin-brandenburg.de laesst sich die bestehende Reichweite Ihrer Anzeige sinnvoll ergaenzen. Gerne sende ich Ihnen ein unverbindliches Angebot zu.",
       signature:
-        footerEntry?.content || "Mit freundlichen Gruessen\n\nAndre Eichstaedt\nAnzeigenberater",
+        footerEntry?.content || "Mit freundlichen Grüßen\n\nAndre Eichstaedt\nAnzeigenberater",
       note: "Basis: aktuelle Kaltakquise-Betrefflogik plus gespeicherter Footer/Signatur.",
     };
   }
@@ -234,7 +234,7 @@ function buildExampleMailPreview(
       greeting: "Guten Tag Martina Schulz,",
       body: `${reminderText}\n\nWenn das fuer Sie interessant ist, sende ich Ihnen gern kurz weitere Infos.`,
       signature:
-        footerEntry?.content || "Mit freundlichen Gruessen\n\nAndre Eichstaedt\nAnzeigenberater",
+        footerEntry?.content || "Mit freundlichen Grüßen\n\nAndre Eichstaedt\nAnzeigenberater",
       note: "Basis: aktuelle Reminder-Betrefflogik, Reminder-Text und Erinnerungs-Signatur.",
     };
   }

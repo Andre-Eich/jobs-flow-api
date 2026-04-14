@@ -73,6 +73,8 @@ WICHTIG:
 - Keine Grußformel am Ende, die kommt später separat
 - Kein "Guten Tag", kein "Hallo", keine direkte Begruessung
 - Der erste inhaltliche Satz muss mit einem kleingeschriebenen Wort beginnen
+- Verwende echte deutsche Umlaute: ä, ö, ü
+- Wenn eine Grußformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
 - Falls ein Ansprechpartner im Kontext vorhanden ist, ist das immer genau ein Vorname und ein Nachname
 - Niemals Rollenwoerter oder Funktionsbezeichnungen verwenden, z. B. "Inhaber", "Geschaeftsfuehrer", "Kontaktperson"
 - Formuliere weich und unaufdringlich
@@ -106,7 +108,7 @@ Antworte nur als JSON mit diesem Format:
       input: [
         {
           role: "system",
-          content: "Du schreibst kurze, professionelle deutsche B2B-Outreach-Mails. Gib nur gültiges JSON aus.",
+          content: "Du schreibst kurze, professionelle deutsche B2B-Outreach-Mails. Verwende echte deutsche Umlaute und gib nur gültiges JSON aus.",
         },
         {
           role: "user",

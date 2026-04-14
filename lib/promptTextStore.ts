@@ -186,10 +186,10 @@ Follow-up ohne Jobtitel:
       area: "kaltakquise",
       title: "Kaltakquise Footer / Signatur",
       description: "Abschlussblock fuer die Einzelmail inklusive Preis-Hinweis und Signatur.",
-      preview: "Informationen zu unseren Anzeigenpreisen ... Mit freundlichen Gruessen",
+      preview: "Informationen zu unseren Anzeigenpreisen ... Mit freundlichen Grüßen",
       content: `Informationen zu unseren Anzeigenpreisen und weitere Details zur regionalen Stellenboerse finden Sie hier: www.jobs-berlin-brandenburg.de
 
-Mit freundlichen Gruessen
+Mit freundlichen Grüßen
 
 Andre Eichstaedt
 Anzeigenberater
@@ -492,6 +492,8 @@ WICHTIG:
 - Keine Grussformel am Ende, die kommt spaeter separat
 - Kein "Guten Tag", kein "Hallo", keine direkte Begruessung
 - Der erste inhaltliche Satz muss mit einem kleingeschriebenen Wort beginnen
+- Verwende echte deutsche Umlaute: ä, ö, ü
+- Wenn eine Grussformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
 - Falls ein Ansprechpartner verwendet wird, dann immer genau ein Vorname und ein Nachname
 - Niemals Rollenwoerter oder Funktionsbezeichnungen als Ansprechpartner verwenden, z. B. "Inhaber", "Geschaeftsfuehrer", "Kontaktperson"
 - Formuliere weich und unaufdringlich
@@ -543,14 +545,14 @@ Kurzmodus:
       area: "streumail",
       title: "Streumail Anrede / Footer / Signatur",
       description: "Zentrale Begruessungs- und Footer-Logik fuer Bulk-Mails.",
-      preview: "Guten Tag {contactPerson}, ... Mit freundlichen Gruessen",
+      preview: "Guten Tag {contactPerson}, ... Mit freundlichen Grüßen",
       content: `Anrede:
 - Mit Ansprechpartner: Guten Tag {contactPerson},
 - Ohne Ansprechpartner: Guten Tag,
 
 Abschluss:
 - Genau eine Grussformel am Ende
-- Mit freundlichen Gruessen
+- Mit freundlichen Grüßen
 
 Signatur / Footer:
 - Andre Eichstaedt
@@ -593,7 +595,7 @@ CTA Kaltakquise:
 Wenn das fuer Sie interessant ist, melde ich mich gern mit einem kurzen Vorschlag.
 
 Abschluss:
-Mit freundlichen Gruessen`,
+Mit freundlichen Grüßen`,
       usage: "Wird aktuell in app/api/crm/send-reminder/route.ts zusammengebaut.",
       placeholders: [],
       status: "aktiv",
@@ -623,7 +625,7 @@ Kaltakquise:
       title: "Erinnerungen Footer / Signatur",
       description: "Footer-Baustein fuer Reminder-Mails inklusive Bilder.",
       preview: "Andre Eichstaedt ... /andre-eichstaedt.png /footer-logos.png",
-      content: `Mit freundlichen Gruessen
+      content: `Mit freundlichen Grüßen
 
 Andre Eichstaedt
 Anzeigenberater
