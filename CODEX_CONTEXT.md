@@ -331,3 +331,81 @@ Wichtigster aktueller Ausbau:
 - ohne die bestehenden Bereiche Kaltakquise und Erinnerungen kaputtzumachen
 - CRM fuer Streumail auf Paketdarstellung umstellen
 - Bulk-Mail sprachlich und technisch sauber machen
+
+## 12. Schutzliste fuer stabile Bereiche
+
+Diese Schutzliste dient als feste Guardrail fuer kuenftige Aenderungen.
+
+### Schutzstufen
+
+#### `geschuetzt`
+- Keine strukturellen Umbauten ohne ausdrueckliche Rueckfrage.
+- Nur kleine Bugfixes oder klar begrenzte Erweiterungen.
+- Keine stillen Ersetzungen funktionierender bestehender Logik.
+
+#### `nur additiv`
+- Bestehende Logik nicht ersetzen.
+- Neue Funktionalitaet daneben oder als klar abgegrenzte Erweiterung bauen.
+- Bestehende UI, Datenfluesse und API-Verhalten muessen erhalten bleiben.
+
+#### `frei bearbeitbar`
+- Normale Aenderungen sind erlaubt.
+- Trotzdem bestehende Funktionen vor jedem groesseren Umbau pruefen.
+
+### Aktuelle Schutzliste
+
+#### `geschuetzt`
+- `app/crm/page.tsx`
+  CRM-Uebersicht, Sortierung, Oeffnungsraten, Lead-Details und Reminder-Auswahl
+- `app/api/crm/leads/route.ts`
+  CRM-Lead-Aufbereitung, Backfill und Anzeigegrundlage
+- `app/api/crm/emails/route.ts`
+  Historie, Reminder-Kandidaten und CRM-Meta-Auswertung
+- `app/api/send-mail/route.ts`
+  Einzelmail-Versand inklusive Signatur, CRM-Meta und Versandlogik
+- `app/api/send-bulk-mail/route.ts`
+  Streumail-Versand, Bilder, CRM-Meta und Paketstatus
+- `lib/leadStore.ts`
+  Persistenz der Leads, Mail-Zuordnung und CRM-Datenbasis
+
+#### `nur additiv`
+- `app/page.tsx`
+  Hauptnavigation und Bereichsumschaltung
+- `app/photo/page.tsx`
+  Streumail-UI und Bulk-Workflow
+- `app/photo/BulkLeadsTable.replacement.v4.tsx`
+  Tabellenlogik fuer Auswahl, Analyse, Kontaktdaten, Qualitaet und Versand
+- `app/prompts-text/page.tsx`
+  Prompt-Pflege, Untermenues und Beispielvorschauen
+- `lib/promptTextStore.ts`
+  Default-Prompts und Prompt-Speicher
+- `app/api/bulk-find-leads/route.ts`
+  Listen-Suche und Auswahlmischung
+- `app/api/bulk-collect-contact/route.ts`
+  Kontaktdatensammlung und Google-Unterstuetzung
+- `app/api/generate-bulk-email/route.ts`
+  Streumail-Erzeugung aus den Prompt-Bausteinen
+
+#### `frei bearbeitbar`
+- `docs/*`
+- `CODEX_CONTEXT.md`
+- `docs/guardrails.md`
+
+### Arbeitsregel fuer kuenftige Aenderungen
+
+Vor jeder groesseren Aenderung gilt:
+1. Pruefen, ob die Datei oder der Bereich in der Schutzliste steht.
+2. Bei `geschuetzt` nur gezielt reparieren oder vorher Rueckfrage halten.
+3. Bei `nur additiv` bestehende Logik erweitern statt ersetzen.
+4. Nach Aenderungen an geschuetzten Bereichen immer mindestens `eslint` und `tsc` laufen lassen.
+
+### Pflege durch den Nutzer
+
+Die Schutzliste kann direkt an zwei Stellen gepflegt werden:
+- `CODEX_CONTEXT.md`
+- `docs/guardrails.md`
+
+Wenn du einen Bereich staerker absichern willst, verschiebe ihn einfach von
+- `frei bearbeitbar` nach `nur additiv`
+oder von
+- `nur additiv` nach `geschuetzt`
