@@ -103,6 +103,8 @@ WICHTIG:
 - Der erste Satz nach der Anrede muss mit einem kleingeschriebenen Wort beginnen
 - Verwende echte deutsche Umlaute: ä, ö, ü
 - Wenn eine Grußformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
+- Falls ein Ansprechpartner erkannt wird, darf er nur in der Anrede vorkommen, niemals im eigentlichen Mailtext
+- Keine Formulierungen im Text wie "Herr X", "Frau X", "Herr Nachname", "Frau Nachname" oder direkte Ansprache im Fließtext
 - kein "Betreff:"
 - keine Grußformel am Ende
 - keine Signatur

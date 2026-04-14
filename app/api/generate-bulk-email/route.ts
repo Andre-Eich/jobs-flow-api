@@ -76,6 +76,8 @@ WICHTIG:
 - Verwende echte deutsche Umlaute: ä, ö, ü
 - Wenn eine Grußformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
 - Falls ein Ansprechpartner im Kontext vorhanden ist, ist das immer genau ein Vorname und ein Nachname
+- Der Ansprechpartner darf nur für die spätere Anrede verwendet werden, niemals im eigentlichen Mailtext
+- Keine Formulierungen im Text wie "Herr X", "Frau X", "Herr Nachname", "Frau Nachname" oder direkte Ansprache im Fließtext
 - Niemals Rollenwoerter oder Funktionsbezeichnungen verwenden, z. B. "Inhaber", "Geschaeftsfuehrer", "Kontaktperson"
 - Formuliere weich und unaufdringlich
 - Vermeide harte Formulierungen wie "wir platzieren" oder "wir erhöhen"

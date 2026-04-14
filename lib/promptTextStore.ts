@@ -495,6 +495,8 @@ WICHTIG:
 - Verwende echte deutsche Umlaute: ä, ö, ü
 - Wenn eine Grussformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
 - Falls ein Ansprechpartner verwendet wird, dann immer genau ein Vorname und ein Nachname
+- Der Ansprechpartner darf nur fuer die Anrede verwendet werden, niemals im eigentlichen Mailtext
+- Keine Formulierungen im Text wie "Herr X", "Frau X", "Herr Nachname", "Frau Nachname" oder direkte Ansprache im Fliesstext
 - Niemals Rollenwoerter oder Funktionsbezeichnungen als Ansprechpartner verwenden, z. B. "Inhaber", "Geschaeftsfuehrer", "Kontaktperson"
 - Formuliere weich und unaufdringlich
 - Vermeide harte Formulierungen wie "wir platzieren" oder "wir erhoehen"

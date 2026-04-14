@@ -298,7 +298,7 @@ export async function POST(req: Request) {
     const safeContactPerson = String(contactPerson || "").trim();
 
     const openingInstruction = safeContactPerson
-      ? `Nutze den Ansprechpartner "${safeContactPerson}" natürlich und professionell. Nach der Anrede folgt immer eine Leerzeile.`
+      ? `Verwende den Ansprechpartner "${safeContactPerson}" nur in der Anrede. Im eigentlichen Mailtext darf der Ansprechpartner nicht erwähnt oder direkt angesprochen werden. Nach der Anrede folgt immer eine Leerzeile.`
       : `Beginne mit "Sehr geehrte Damen und Herren,". Nach der Anrede folgt immer eine Leerzeile.`;
 
     const hookMeta = pickHook(selectedHookBaseId, safeJobTitle);
@@ -350,6 +350,8 @@ WICHTIG:
 - Der erste Satz nach der Anrede muss mit einem kleingeschriebenen Wort beginnen
 - Verwende echte deutsche Umlaute: ä, ö, ü
 - Wenn eine Grußformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
+- Der Ansprechpartner darf nur in der Anrede stehen, niemals im eigentlichen Mailtext
+- Keine Formulierungen im Text wie "Herr X", "Frau X", "Herr Nachname", "Frau Nachname" oder direkte Ansprache im Fließtext
 - keine Signatur
 - keine Grußformel
 - kein "Betreff:"
