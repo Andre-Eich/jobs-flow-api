@@ -30,6 +30,9 @@ type LeadRecord = {
   createdAt: string;
   updatedAt: string;
   mails: LeadMailRecord[];
+  openedCount?: number;
+  sentCount?: number;
+  openRate?: number;
 };
 
 type BulkTextBlock = {
@@ -40,6 +43,17 @@ type BulkTextBlock = {
 
 const BULK_TEXT_BLOCKS_KEY = "bulkTextBlocksV1";
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+type CrmSortKey =
+  | "company"
+  | "email"
+  | "postalCode"
+  | "city"
+  | "phone"
+  | "channel"
+  | "mails"
+  | "openRate"
+  | "updatedAt";
+type CrmSortDirection = "asc" | "desc";
 
 function formatDate(dateString: string) {
   try {
@@ -72,6 +86,46 @@ function buttonStyle(primary = false, disabled = false): React.CSSProperties {
     fontSize: "14px",
     opacity: disabled ? 0.65 : 1,
   };
+}
+
+function formatPercent(value: number) {
+  return `${Math.round((value || 0) * 100)} %`;
+}
+
+function SortButton({
+  label,
+  active,
+  direction,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  direction: CrmSortDirection;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: "none",
+        background: "transparent",
+        padding: 0,
+        cursor: "pointer",
+        fontSize: "13px",
+        fontWeight: 700,
+        color: "#111827",
+        textAlign: "left",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label} {active ? (direction === "asc" ? "↑" : "↓") : "↕"}
+    </button>
+  );
+}
+
+function compareStrings(a: string, b: string) {
+  return a.localeCompare(b, "de", { sensitivity: "base" });
 }
 
 const tableHeadStyle: React.CSSProperties = {
@@ -108,6 +162,8 @@ export default function CrmPage() {
   const [sendingReminder, setSendingReminder] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortKey, setSortKey] = useState<CrmSortKey>("updatedAt");
+  const [sortDirection, setSortDirection] = useState<CrmSortDirection>("desc");
 
   async function loadLeads() {
     try {
@@ -155,7 +211,41 @@ export default function CrmPage() {
     [bulkTextBlocks, activeBlockIds]
   );
 
-  const totalPages = Math.max(1, Math.ceil(leads.length / pageSize));
+  const sortedLeads = useMemo(() => {
+    return [...leads].sort((a, b) => {
+      let result = 0;
+
+      if (sortKey === "company") {
+        result = compareStrings(a.company || "", b.company || "");
+      } else if (sortKey === "email") {
+        result = compareStrings(a.recipientEmail || "", b.recipientEmail || "");
+      } else if (sortKey === "postalCode") {
+        result = compareStrings(a.postalCode || "", b.postalCode || "");
+      } else if (sortKey === "city") {
+        result = compareStrings(a.city || "", b.city || "");
+      } else if (sortKey === "phone") {
+        result = compareStrings(a.phone || "", b.phone || "");
+      } else if (sortKey === "channel") {
+        result = compareStrings(channelLabel(a.channel), channelLabel(b.channel));
+      } else if (sortKey === "mails") {
+        result = (a.mails.length || 0) - (b.mails.length || 0);
+      } else if (sortKey === "openRate") {
+        result =
+          (a.openRate || 0) - (b.openRate || 0) ||
+          (a.openedCount || 0) - (b.openedCount || 0);
+      } else {
+        result = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      }
+
+      if (result === 0) {
+        result = compareStrings(a.company || "", b.company || "");
+      }
+
+      return sortDirection === "asc" ? result : result * -1;
+    });
+  }, [leads, sortDirection, sortKey]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedLeads.length / pageSize));
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -165,13 +255,22 @@ export default function CrmPage() {
 
   const paginatedLeads = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return leads.slice(start, start + pageSize);
-  }, [currentPage, leads, pageSize]);
+    return sortedLeads.slice(start, start + pageSize);
+  }, [currentPage, pageSize, sortedLeads]);
 
   const selectedLeads = useMemo(
     () => leads.filter((lead) => selectedLeadIds.includes(lead.id)),
     [leads, selectedLeadIds]
   );
+
+  function toggleSort(nextKey: CrmSortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === "updatedAt" ? "desc" : "asc");
+  }
 
   const allCurrentPageSelected =
     paginatedLeads.length > 0 &&
@@ -360,14 +459,33 @@ export default function CrmPage() {
                           }
                         />
                       </th>
-                      <th style={tableHeadStyle}>Unternehmen</th>
-                      <th style={tableHeadStyle}>Email</th>
-                      <th style={tableHeadStyle}>PLZ</th>
-                      <th style={tableHeadStyle}>Ort</th>
-                      <th style={tableHeadStyle}>Telefon</th>
-                      <th style={tableHeadStyle}>Kanal</th>
-                      <th style={tableHeadStyle}>Mails</th>
-                      <th style={tableHeadStyle}>Letzte Aktivitaet</th>
+                      <th style={tableHeadStyle}>
+                        <SortButton label="Unternehmen" active={sortKey === "company"} direction={sortDirection} onClick={() => toggleSort("company")} />
+                      </th>
+                      <th style={tableHeadStyle}>
+                        <SortButton label="Email" active={sortKey === "email"} direction={sortDirection} onClick={() => toggleSort("email")} />
+                      </th>
+                      <th style={tableHeadStyle}>
+                        <SortButton label="PLZ" active={sortKey === "postalCode"} direction={sortDirection} onClick={() => toggleSort("postalCode")} />
+                      </th>
+                      <th style={tableHeadStyle}>
+                        <SortButton label="Ort" active={sortKey === "city"} direction={sortDirection} onClick={() => toggleSort("city")} />
+                      </th>
+                      <th style={tableHeadStyle}>
+                        <SortButton label="Telefon" active={sortKey === "phone"} direction={sortDirection} onClick={() => toggleSort("phone")} />
+                      </th>
+                      <th style={tableHeadStyle}>
+                        <SortButton label="Kanal" active={sortKey === "channel"} direction={sortDirection} onClick={() => toggleSort("channel")} />
+                      </th>
+                      <th style={tableHeadStyle}>
+                        <SortButton label="Mails" active={sortKey === "mails"} direction={sortDirection} onClick={() => toggleSort("mails")} />
+                      </th>
+                      <th style={tableHeadStyle}>
+                        <SortButton label="Öffnungsrate" active={sortKey === "openRate"} direction={sortDirection} onClick={() => toggleSort("openRate")} />
+                      </th>
+                      <th style={tableHeadStyle}>
+                        <SortButton label="Letzte Aktivitaet" active={sortKey === "updatedAt"} direction={sortDirection} onClick={() => toggleSort("updatedAt")} />
+                      </th>
                       <th style={tableHeadStyle}>Aktionen</th>
                     </tr>
                   </thead>
@@ -397,6 +515,12 @@ export default function CrmPage() {
                           <td style={tableCellStyle}>{lead.phone || "-"}</td>
                           <td style={tableCellStyle}>{channelLabel(lead.channel)}</td>
                           <td style={tableCellStyle}>{lead.mails.length}</td>
+                          <td style={tableCellStyle}>
+                            <div style={{ fontWeight: 600 }}>{formatPercent(lead.openRate || 0)}</div>
+                            <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                              {lead.openedCount || 0} von {lead.sentCount || lead.mails.length}
+                            </div>
+                          </td>
                           <td style={tableCellStyle}>{formatDate(lead.updatedAt)}</td>
                           <td style={tableCellStyle}>
                             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>

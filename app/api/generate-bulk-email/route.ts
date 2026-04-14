@@ -25,6 +25,12 @@ function pickRandom<T>(items: T[]) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+function lowercaseFirstContentSentence(text: string) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return trimmed;
+  return trimmed.replace(/^([A-ZÄÖÜ])/, (match) => match.toLocaleLowerCase("de-DE"));
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -66,6 +72,7 @@ WICHTIG:
 - Keine Anrede am Anfang
 - Keine Grußformel am Ende, die kommt später separat
 - Kein "Guten Tag", kein "Hallo", keine direkte Begruessung
+- Der erste inhaltliche Satz muss mit einem kleingeschriebenen Wort beginnen
 - Falls ein Ansprechpartner im Kontext vorhanden ist, ist das immer genau ein Vorname und ein Nachname
 - Niemals Rollenwoerter oder Funktionsbezeichnungen verwenden, z. B. "Inhaber", "Geschaeftsfuehrer", "Kontaktperson"
 - Formuliere weich und unaufdringlich
@@ -124,7 +131,7 @@ Antworte nur als JSON mit diesem Format:
     });
 
     const parsed = JSON.parse(response.output_text || "{}");
-    const bodyText = String(parsed.body || "").trim();
+    const bodyText = lowercaseFirstContentSentence(String(parsed.body || "").trim());
     const ctaText = String(parsed.cta || "").trim() || "Gerne sende ich Ihnen bei Interesse ein unverbindliches Angebot zu.";
 
     if (!bodyText) {

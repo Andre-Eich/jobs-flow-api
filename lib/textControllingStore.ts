@@ -61,6 +61,7 @@ export function getTextControllingEntries(): TextControllingEntry[] {
 }
 
 export function saveTextControllingEntry(entry: TextControllingEntry) {
+  ensureFile();
   const entries = getTextControllingEntries();
   entries.unshift(entry);
   fs.writeFileSync(filePath, JSON.stringify(entries, null, 2), "utf-8");
@@ -70,6 +71,7 @@ export function updateTextControllingEntry(
   id: string,
   updates: Partial<TextControllingEntry>
 ) {
+  ensureFile();
   const entries = getTextControllingEntries();
   const index = entries.findIndex((item) => item.id === id);
 

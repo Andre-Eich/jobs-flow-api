@@ -59,6 +59,160 @@ function smallButtonStyle(active = false): React.CSSProperties {
   };
 }
 
+type ExampleMailPreview = {
+  label: string;
+  subject: string;
+  greeting: string;
+  body: string;
+  signature: string;
+  note: string;
+};
+
+function replacePreviewVars(text: string, values: Record<string, string>) {
+  let result = text;
+  for (const [key, value] of Object.entries(values)) {
+    result = result.replaceAll(key, value);
+  }
+  return result;
+}
+
+function extractFirstBulletByHeading(content: string, heading: string) {
+  const lines = content.split(/\r?\n/);
+  let inSection = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (!line.startsWith("-") && line.endsWith(":")) {
+      inSection = line.slice(0, -1).trim().toLowerCase() === heading.trim().toLowerCase();
+      continue;
+    }
+
+    if (inSection && line.startsWith("-")) {
+      return line.replace(/^-+\s*/, "").trim();
+    }
+  }
+
+  return "";
+}
+
+function extractFooterLines(content: string, heading: string) {
+  const lines = content.split(/\r?\n/);
+  const result: string[] = [];
+  let inSection = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      if (inSection && result.length > 0) break;
+      continue;
+    }
+
+    if (!line.startsWith("-") && line.endsWith(":")) {
+      const normalized = line.slice(0, -1).trim().toLowerCase();
+      if (inSection && normalized !== heading.trim().toLowerCase()) break;
+      inSection = normalized === heading.trim().toLowerCase();
+      continue;
+    }
+
+    if (inSection && line.startsWith("-")) {
+      const cleaned = line.replace(/^-+\s*/, "").trim();
+      if (cleaned.toLowerCase().includes("bild:")) continue;
+      result.push(cleaned);
+    }
+  }
+
+  return result;
+}
+
+function buildPreviewEntries(entries: PromptTextEntry[], draftEntry: PromptTextEntry | null) {
+  if (!draftEntry) return entries;
+  return entries.map((entry) => (entry.id === draftEntry.id ? draftEntry : entry));
+}
+
+function buildExampleMailPreview(
+  area: PromptTextArea,
+  entries: PromptTextEntry[]
+): ExampleMailPreview | null {
+  const sampleVars = {
+    "{company}": "Musterbau GmbH",
+    "{contactPerson}": "Martina Schulz",
+    "{jobTitle}": "Bauleiter",
+  };
+
+  if (area === "streumail") {
+    const subjectEntry = entries.find((entry) => entry.id === "bulk-subject-logic");
+    const footerEntry = entries.find((entry) => entry.id === "bulk-greeting-footer");
+    const subject =
+      replacePreviewVars(
+        extractFirstBulletByHeading(subjectEntry?.content || "", "Standard") ||
+          "Zusaetzliche regionale Sichtbarkeit fuer offene Positionen",
+        sampleVars
+      ) || "Zusaetzliche regionale Sichtbarkeit fuer offene Positionen";
+    const footerLines = extractFooterLines(footerEntry?.content || "", "Signatur / Footer");
+
+    return {
+      label: "Beispielmail Streumail",
+      subject,
+      greeting: "Guten Tag Martina Schulz,",
+      body:
+        "ich habe gesehen, dass sich offene Positionen bei Musterbau GmbH mit zusaetzlicher regionaler Reichweite sinnvoll ergaenzen lassen.\n\nueber jobs-in-berlin-brandenburg.de werden offene Positionen gezielt in Berlin-Brandenburg sichtbar. Das kann helfen, passende Bewerbungen aus dem direkten Umfeld zu erhalten.\n\nGerne sende ich Ihnen bei Interesse ein unverbindliches Angebot zu.",
+      signature: footerLines.join("\n") || "Andre Eichstaedt\nAnzeigenberater\nJobs in Berlin-Brandenburg",
+      note: "Basis: aktueller Streumail-Betreff, Anrede-/Footer-Baustein und Standard-Logik.",
+    };
+  }
+
+  if (area === "kaltakquise") {
+    const subjectEntry = entries.find((entry) => entry.id === "coldmail-subject-logic");
+    const footerEntry = entries.find((entry) => entry.id === "coldmail-footer-signature");
+    const subject =
+      replacePreviewVars(
+        extractFirstBulletByHeading(subjectEntry?.content || "", "Erstmail mit Jobtitel") ||
+          "Zur Position {jobTitle}: mehr passende Bewerber",
+        sampleVars
+      ) || "Zur Position Bauleiter: mehr passende Bewerber";
+
+    return {
+      label: "Beispielmail Kaltakquise",
+      subject,
+      greeting: "Guten Tag Martina Schulz,",
+      body:
+        "gerade fuer Positionen wie Bauleiter kann zusaetzliche regionale Sichtbarkeit helfen, mehr passende Bewerber zu erreichen.\n\nueber jobs-in-berlin-brandenburg.de laesst sich die bestehende Reichweite Ihrer Anzeige sinnvoll ergaenzen. Gerne sende ich Ihnen ein unverbindliches Angebot zu.",
+      signature:
+        footerEntry?.content || "Mit freundlichen Gruessen\n\nAndre Eichstaedt\nAnzeigenberater",
+      note: "Basis: aktuelle Kaltakquise-Betrefflogik plus gespeicherter Footer/Signatur.",
+    };
+  }
+
+  if (area === "erinnerungen") {
+    const subjectEntry = entries.find((entry) => entry.id === "crm-reminder-subject");
+    const textEntry = entries.find((entry) => entry.id === "crm-reminder-text");
+    const footerEntry = entries.find((entry) => entry.id === "reminder-footer-signature");
+    const subject =
+      replacePreviewVars(
+        extractFirstBulletByHeading(subjectEntry?.content || "", "Streumail") ||
+          "Kurzes Follow-up zu regionaler Sichtbarkeit fuer {company}",
+        sampleVars
+      ) || "Kurzes Follow-up zu regionaler Sichtbarkeit fuer Musterbau GmbH";
+    const reminderText =
+      extractFirstBulletByHeading(textEntry?.content || "", "Streumail Erinnerung standard") ||
+      "ich wollte mich noch einmal kurz melden, falls zusaetzliche regionale Sichtbarkeit fuer offene Positionen fuer Sie aktuell interessant sein sollte.";
+
+    return {
+      label: "Beispielmail Erinnerung",
+      subject,
+      greeting: "Guten Tag Martina Schulz,",
+      body: `${reminderText}\n\nWenn das fuer Sie interessant ist, sende ich Ihnen gern kurz weitere Infos.`,
+      signature:
+        footerEntry?.content || "Mit freundlichen Gruessen\n\nAndre Eichstaedt\nAnzeigenberater",
+      note: "Basis: aktuelle Reminder-Betrefflogik, Reminder-Text und Erinnerungs-Signatur.",
+    };
+  }
+
+  return null;
+}
+
 export default function PromptsTextPage() {
   const [entries, setEntries] = useState<PromptTextEntry[]>([]);
   const [activeArea, setActiveArea] = useState<PromptTextArea>("kaltakquise");
@@ -101,6 +255,16 @@ export default function PromptsTextPage() {
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) || null,
     [entries, selectedEntryId]
+  );
+
+  const effectiveEntries = useMemo(
+    () => buildPreviewEntries(entries, draftEntry),
+    [entries, draftEntry]
+  );
+
+  const exampleMailPreview = useMemo(
+    () => buildExampleMailPreview(activeArea, effectiveEntries),
+    [activeArea, effectiveEntries]
   );
 
   function openEntry(entry: PromptTextEntry) {
@@ -278,6 +442,72 @@ export default function PromptsTextPage() {
             ))}
           </div>
         )}
+
+        {exampleMailPreview ? (
+          <div
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: "16px",
+              background: "#ffffff",
+              padding: "22px",
+            }}
+          >
+            <div style={{ fontSize: "20px", fontWeight: 700, marginBottom: "6px" }}>
+              {exampleMailPreview.label}
+            </div>
+            <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "18px" }}>
+              {exampleMailPreview.note}
+            </div>
+
+            <div style={{ display: "grid", gap: "14px" }}>
+              <div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280", marginBottom: "6px" }}>
+                  Betreff
+                </div>
+                <div style={{ fontSize: "15px", fontWeight: 600 }}>{exampleMailPreview.subject}</div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280", marginBottom: "6px" }}>
+                  Anrede
+                </div>
+                <div style={{ fontSize: "15px" }}>{exampleMailPreview.greeting}</div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280", marginBottom: "6px" }}>
+                  Text
+                </div>
+                <div
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    fontSize: "15px",
+                    lineHeight: 1.7,
+                    color: "#111827",
+                  }}
+                >
+                  {exampleMailPreview.body}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280", marginBottom: "6px" }}>
+                  Signatur
+                </div>
+                <div
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    fontSize: "14px",
+                    lineHeight: 1.6,
+                    color: "#374151",
+                  }}
+                >
+                  {exampleMailPreview.signature}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {selectedEntry && draftEntry ? (

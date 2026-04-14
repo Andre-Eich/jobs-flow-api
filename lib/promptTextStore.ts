@@ -215,6 +215,7 @@ WICHTIG:
 - Keine Anrede am Anfang
 - Keine Grussformel am Ende, die kommt spaeter separat
 - Kein "Guten Tag", kein "Hallo", keine direkte Begruessung
+- Der erste inhaltliche Satz muss mit einem kleingeschriebenen Wort beginnen
 - Falls ein Ansprechpartner verwendet wird, dann immer genau ein Vorname und ein Nachname
 - Niemals Rollenwoerter oder Funktionsbezeichnungen als Ansprechpartner verwenden, z. B. "Inhaber", "Geschaeftsfuehrer", "Kontaktperson"
 - Formuliere weich und unaufdringlich

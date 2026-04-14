@@ -38,11 +38,21 @@ function buildGreeting(contactPerson: string) {
   return safeContactPerson ? `Guten Tag ${safeContactPerson},` : "Guten Tag,";
 }
 
+function lowercaseFirstContentSentence(text: string) {
+  return String(text || "").replace(
+    /^(\s*)([A-ZÄÖÜ])/,
+    (_match, whitespace: string, firstChar: string) =>
+      `${whitespace}${firstChar.toLocaleLowerCase("de-DE")}`
+  );
+}
+
 function ensureGreetingAndClosing(text: string, contactPerson: string) {
   const trimmed = String(text || "").trim();
   if (!trimmed) return trimmed;
 
-  const cleanBody = stripTrailingClosing(stripLeadingGreeting(trimmed));
+  const cleanBody = lowercaseFirstContentSentence(
+    stripTrailingClosing(stripLeadingGreeting(trimmed))
+  );
   return `${buildGreeting(contactPerson)}\n\n${cleanBody}\n\nMit freundlichen Grüßen`;
 }
 

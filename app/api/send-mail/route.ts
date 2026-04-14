@@ -30,8 +30,17 @@ function textToHtml(text: string) {
   return escapeHtml(text).replace(/\n/g, "<br/>");
 }
 
+function lowercaseFirstContentSentence(text: string) {
+  return String(text || "").replace(
+    /^((?:Sehr geehrte Damen und Herren,|Guten Tag [^\n,]+,)\n\n)?(\s*)([A-ZÄÖÜ])/,
+    (_match, greeting = "", whitespace: string, firstChar: string) =>
+      `${greeting}${whitespace}${firstChar.toLocaleLowerCase("de-DE")}`
+  );
+}
+
 function buildFinalText(text: string, hiddenMarker?: string) {
   let cleanedText = normalizeGreeting(text);
+  cleanedText = lowercaseFirstContentSentence(cleanedText);
 
   cleanedText = cleanedText.replace(
     /(mit freundlichen gruessen[,!]?|freundliche gruesse[,!]?)\s*$/i,

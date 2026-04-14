@@ -110,6 +110,7 @@ WICHTIG:
   - "Bewerbung"
 - Fokus auf Nutzen für das Unternehmen
 - kurz, vertrieblich, professionell
+- Der erste Satz nach der Anrede muss mit einem kleingeschriebenen Wort beginnen
 - kein "Betreff:"
 - keine Grußformel am Ende
 - keine Signatur

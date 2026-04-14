@@ -237,7 +237,6 @@ export default function BulkMailServicePage() {
   const [bulkOnlyNewContacts, setBulkOnlyNewContacts] = useState(false);
   const [bulkLeads, setBulkLeads] = useState<BulkLead[]>(EMPTY_BULK_LEADS);
   const [ignoredLeadKeysBySearch, setIgnoredLeadKeysBySearch] = useState<Record<string, string[]>>({});
-  const [exhaustedBulkSearches, setExhaustedBulkSearches] = useState<Record<string, boolean>>({});
   const [findingBulkLeads, setFindingBulkLeads] = useState(false);
   const [bulkTestMode, setBulkTestMode] = useState(true);
   const [bulkShortMode, setBulkShortMode] = useState(false);
@@ -367,10 +366,6 @@ export default function BulkMailServicePage() {
     [bulkLocation, bulkFocus, bulkRadius, bulkCount, bulkOnlyNewContacts]
   );
 
-  const canLoadNextBulkLeads =
-    (ignoredLeadKeysBySearch[currentBulkSearchKey] || []).length > 0 &&
-    !exhaustedBulkSearches[currentBulkSearchKey];
-
   async function loadHistory() {
     try {
       setLoadingHistory(true);
@@ -455,7 +450,7 @@ export default function BulkMailServicePage() {
     );
   }
 
-  async function handleFindBulkLeads(mode: "fresh" | "next" = "fresh") {
+  async function handleFindBulkLeads() {
     setError("");
     setSuccessMessage("");
     const location = bulkLocation.trim();
@@ -469,7 +464,6 @@ export default function BulkMailServicePage() {
     try {
       setFindingBulkLeads(true);
       const excludeKeys = ignoredLeadKeysBySearch[currentBulkSearchKey] || [];
-      setExhaustedBulkSearches((prev) => ({ ...prev, [currentBulkSearchKey]: false }));
       const response = await fetch("/api/bulk-find-leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -490,15 +484,8 @@ export default function BulkMailServicePage() {
       const nextLeads: BulkLead[] = Array.isArray(data.leads) ? data.leads : [];
 
       if (nextLeads.length === 0) {
-        setExhaustedBulkSearches((prev) => ({ ...prev, [currentBulkSearchKey]: true }));
-        if (mode === "fresh") {
-          setBulkLeads([]);
-        }
-        setSuccessMessage(
-          mode === "next"
-            ? "Keine weiteren Treffer fuer diese Suche gefunden."
-            : "Keine passenden Unternehmen fuer diese Suche gefunden."
-        );
+        setBulkLeads([]);
+        setSuccessMessage("Keine passenden Unternehmen fuer diese Suche gefunden.");
         return;
       }
 
@@ -511,22 +498,13 @@ export default function BulkMailServicePage() {
           [currentBulkSearchKey]: Array.from(new Set([...existingKeys, ...nextKeys])),
         };
       });
-      setExhaustedBulkSearches((prev) => ({ ...prev, [currentBulkSearchKey]: false }));
 
-      setSuccessMessage(
-        mode === "next"
-          ? `${nextLeads.length} weitere Unternehmen fuer ${location} geladen.`
-          : `${nextLeads.length} Unternehmen fuer ${location} geladen.`
-      );
+      setSuccessMessage(`${nextLeads.length} Unternehmen fuer ${location} geladen.`);
     } catch {
       setError("Die Firmenliste konnte nicht geladen werden.");
     } finally {
       setFindingBulkLeads(false);
     }
-  }
-
-  function handleFindNextBulkLeads() {
-    void handleFindBulkLeads("next");
   }
 
   function updateBulkLead(id: string, patch: Partial<BulkLead>) {
@@ -938,16 +916,8 @@ export default function BulkMailServicePage() {
                 </select>
               </div>
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: isMobile ? "stretch" : "flex-start" }}>
-                <button type="button" onClick={() => void handleFindBulkLeads("fresh")} disabled={findingBulkLeads} style={primaryButtonStyle(findingBulkLeads)}>
+                <button type="button" onClick={() => void handleFindBulkLeads()} disabled={findingBulkLeads} style={primaryButtonStyle(findingBulkLeads)}>
                   {findingBulkLeads ? "Wird gesucht..." : "Liste finden"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleFindNextBulkLeads}
-                  disabled={findingBulkLeads || !canLoadNextBulkLeads}
-                  style={smallButtonStyle(findingBulkLeads || !canLoadNextBulkLeads)}
-                >
-                  Naechste Treffer
                 </button>
               </div>
             </div>

@@ -347,6 +347,7 @@ WICHTIG:
 - Das ist KEINE Bewerbung
 - Fokus auf Nutzen für das Unternehmen
 - kurz, klar, professionell
+- Der erste Satz nach der Anrede muss mit einem kleingeschriebenen Wort beginnen
 - keine Signatur
 - keine Grußformel
 - kein "Betreff:"
