@@ -49,6 +49,18 @@ export type UpsertLeadMailInput = {
   mail: LeadMailRecord;
 };
 
+export type UpsertLeadInput = {
+  company: string;
+  postalCode?: string;
+  city?: string;
+  recipientEmail?: string;
+  phone?: string;
+  website?: string;
+  contactPerson?: string;
+  industry?: string;
+  channel: "kaltakquise" | "streumail";
+};
+
 function ensureFile() {
   const dir = path.dirname(filePath);
 
@@ -186,6 +198,90 @@ function findLeadIndex(leads: LeadRecord[], input: UpsertLeadMailInput) {
 
     return emailMatch || websiteMatch || companyMatch;
   });
+}
+
+function findLeadIndexByLeadData(leads: LeadRecord[], input: UpsertLeadInput) {
+  const normalizedEmail = safeString(input.recipientEmail).toLowerCase();
+  const normalizedWebsite = normalizeWebsite(safeString(input.website)).toLowerCase();
+  const normalizedName = normalizeCompany(input.company);
+  const normalizedCity = safeString(input.city).toLowerCase();
+
+  return leads.findIndex((lead) => {
+    const emailMatch =
+      normalizedEmail && safeString(lead.recipientEmail).toLowerCase() === normalizedEmail;
+    const websiteMatch =
+      normalizedWebsite &&
+      normalizeWebsite(safeString(lead.website)).toLowerCase() === normalizedWebsite;
+    const companyMatch =
+      normalizedName &&
+      normalizeCompany(lead.company) === normalizedName &&
+      (!normalizedCity || safeString(lead.city).toLowerCase() === normalizedCity);
+
+    return emailMatch || websiteMatch || companyMatch;
+  });
+}
+
+export function upsertLead(input: UpsertLeadInput) {
+  const safeEmail = safeString(input.recipientEmail);
+  const safeCompany = safeString(input.company);
+
+  if (!safeEmail && !safeCompany) {
+    return null;
+  }
+
+  const leads = getLeads();
+  const index = findLeadIndexByLeadData(leads, {
+    ...input,
+    recipientEmail: safeEmail,
+    company: safeCompany,
+  });
+  const location = deriveLocationParts({
+    postalCode: input.postalCode,
+    city: input.city,
+  });
+  const now = new Date().toISOString();
+
+  if (index === -1) {
+    const createdLead: LeadRecord = normalizeLeadRecord({
+      id: crypto.randomUUID(),
+      company: safeCompany,
+      postalCode: location.postalCode,
+      city: location.city,
+      recipientEmail: safeEmail,
+      phone: safeString(input.phone),
+      website: normalizeWebsite(safeString(input.website)),
+      contactPerson: safeString(input.contactPerson),
+      industry: safeString(input.industry),
+      channel: input.channel,
+      createdAt: now,
+      updatedAt: now,
+      mails: [],
+    });
+
+    leads.unshift(createdLead);
+    saveLeads(leads);
+    return createdLead;
+  }
+
+  const existing = leads[index];
+
+  leads[index] = normalizeLeadRecord({
+    ...existing,
+    company: safeCompany || existing.company,
+    postalCode: location.postalCode || existing.postalCode,
+    city: location.city || existing.city,
+    recipientEmail: safeEmail || existing.recipientEmail,
+    phone: safeString(input.phone) || existing.phone,
+    website: normalizeWebsite(safeString(input.website)) || existing.website,
+    contactPerson: safeString(input.contactPerson) || existing.contactPerson,
+    industry: safeString(input.industry) || existing.industry,
+    channel: deriveChannel(existing.channel, input.channel),
+    updatedAt: now,
+    mails: existing.mails,
+  });
+
+  saveLeads(leads);
+  return leads[index];
 }
 
 export function upsertLeadMail(input: UpsertLeadMailInput) {

@@ -716,6 +716,31 @@ export default function BulkMailServicePage() {
 
     const packageId = crypto.randomUUID();
     const textBlockTitles = activeBulkTextBlocks.map((block) => block.title);
+
+    const crmCreateResponse = await fetch("/api/crm/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        leads: leadsToSend.map((lead) => ({
+          company: lead.company,
+          postalCode: "",
+          city: lead.city || bulkLocation.trim(),
+          recipientEmail: lead.email,
+          phone: lead.phone || "",
+          website: lead.website || "",
+          contactPerson: lead.contactPerson || "",
+          industry: lead.industry || "",
+        })),
+      }),
+    });
+    const crmCreateData = await crmCreateResponse.json();
+
+    if (!crmCreateResponse.ok) {
+      leadsToSend.forEach((lead) => updateBulkLead(lead.id, { sendStatus: "error" }));
+      setError(crmCreateData.error || "Ausgewaehlte Kontakte konnten nicht ins CRM uebernommen werden.");
+      return;
+    }
+
     const generatedEntries = await Promise.all(
       leadsToSend.map(async (lead) => {
         try {

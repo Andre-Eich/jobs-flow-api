@@ -23,6 +23,31 @@ type PromptTextEntry = {
   updatedAt: string;
 };
 
+type KaltSubTab = "standard" | "advanced";
+
+type HookVariantStats = {
+  hookVariantId: string;
+  hookText: string;
+  sent: number;
+  opened: number;
+  openRate: number;
+  reminderSent: number;
+  reminderRate: number;
+};
+
+type HookBaseStats = {
+  hookBaseId: string;
+  hookBaseLabel: string;
+  sent: number;
+  opened: number;
+  openRate: number;
+  reminderSent: number;
+  reminderRate: number;
+  bestVariantId: string;
+  bestVariantOpenRate: number;
+  variants: HookVariantStats[];
+};
+
 const AREA_OPTIONS: Array<{ key: PromptTextArea; label: string }> = [
   { key: "kaltakquise", label: "Kaltakquise-Mails" },
   { key: "streumail", label: "Streumails" },
@@ -57,6 +82,10 @@ function smallButtonStyle(active = false): React.CSSProperties {
     fontSize: "13px",
     fontWeight: 600,
   };
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(1)} %`;
 }
 
 type ExampleMailPreview = {
@@ -216,12 +245,15 @@ function buildExampleMailPreview(
 export default function PromptsTextPage() {
   const [entries, setEntries] = useState<PromptTextEntry[]>([]);
   const [activeArea, setActiveArea] = useState<PromptTextArea>("kaltakquise");
+  const [kaltSubTab, setKaltSubTab] = useState<KaltSubTab>("standard");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [draftEntry, setDraftEntry] = useState<PromptTextEntry | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingStats, setLoadingStats] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [textStats, setTextStats] = useState<HookBaseStats[]>([]);
 
   async function loadEntries() {
     try {
@@ -247,10 +279,85 @@ export default function PromptsTextPage() {
     loadEntries();
   }, []);
 
+  useEffect(() => {
+    async function loadTextStats() {
+      try {
+        setLoadingStats(true);
+        const response = await fetch("/api/crm/text-stats");
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(data.error || "Text-Auswertungen konnten nicht geladen werden.");
+          return;
+        }
+
+        setTextStats(Array.isArray(data.hooks) ? data.hooks : []);
+      } catch {
+        setError("Text-Auswertungen konnten nicht geladen werden.");
+      } finally {
+        setLoadingStats(false);
+      }
+    }
+
+    if (activeArea === "kaltakquise" && kaltSubTab === "advanced") {
+      loadTextStats();
+    }
+  }, [activeArea, kaltSubTab]);
+
   const filteredEntries = useMemo(
     () => entries.filter((entry) => entry.area === activeArea),
     [entries, activeArea]
   );
+
+  const visibleEntries = useMemo(() => {
+    if (activeArea !== "kaltakquise") return filteredEntries;
+
+    const isAdvanced = (entry: PromptTextEntry) =>
+      entry.id === "coldmail-advanced-prompts" || entry.id.startsWith("coldmail-hook-");
+
+    return filteredEntries.filter((entry) =>
+      kaltSubTab === "advanced" ? isAdvanced(entry) : !isAdvanced(entry)
+    );
+  }, [activeArea, filteredEntries, kaltSubTab]);
+
+  const kaltBadgeGroups = useMemo(() => {
+    if (activeArea !== "kaltakquise" || kaltSubTab !== "standard") return [];
+
+    return [
+      {
+        label: "10 Basis-Texte",
+        items: filteredEntries.filter((entry) => entry.id.startsWith("coldmail-hook-")),
+      },
+      {
+        label: "Zusatzhinweise",
+        items: filteredEntries.filter((entry) => entry.id.startsWith("coldmail-hint-")),
+      },
+    ].filter((group) => group.items.length > 0);
+  }, [activeArea, filteredEntries, kaltSubTab]);
+
+  const statsSummary = useMemo(() => {
+    if (textStats.length === 0) {
+      return {
+        sent: 0,
+        opened: 0,
+        reminderSent: 0,
+        openRate: 0,
+        reminderRate: 0,
+      };
+    }
+
+    const sent = textStats.reduce((sum, item) => sum + item.sent, 0);
+    const opened = textStats.reduce((sum, item) => sum + item.opened, 0);
+    const reminderSent = textStats.reduce((sum, item) => sum + item.reminderSent, 0);
+
+    return {
+      sent,
+      opened,
+      reminderSent,
+      openRate: sent ? opened / sent : 0,
+      reminderRate: sent ? reminderSent / sent : 0,
+    };
+  }, [textStats]);
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) || null,
@@ -347,7 +454,12 @@ export default function PromptsTextPage() {
             <button
               key={area.key}
               type="button"
-              onClick={() => setActiveArea(area.key)}
+              onClick={() => {
+                setActiveArea(area.key);
+                if (area.key !== "kaltakquise") {
+                  setKaltSubTab("standard");
+                }
+              }}
               style={smallButtonStyle(activeArea === area.key)}
             >
               {area.label}
@@ -355,14 +467,267 @@ export default function PromptsTextPage() {
           ))}
         </div>
 
+        {activeArea === "kaltakquise" ? (
+          <div
+            style={{
+              display: "flex",
+              gap: "10px",
+              flexWrap: "wrap",
+              padding: "14px",
+              borderRadius: "14px",
+              border: "1px solid #d1d5db",
+              background: "#ffffff",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setKaltSubTab("standard")}
+              style={smallButtonStyle(kaltSubTab === "standard")}
+            >
+              Kalt-Emails
+            </button>
+            <button
+              type="button"
+              onClick={() => setKaltSubTab("advanced")}
+              style={smallButtonStyle(kaltSubTab === "advanced")}
+            >
+              Erweiterte Prompts & Auswertungen
+            </button>
+          </div>
+        ) : null}
+
         {error ? <div style={{ color: "#b91c1c", fontWeight: 600 }}>{error}</div> : null}
         {successMessage ? (
           <div style={{ color: "#166534", fontWeight: 600 }}>{successMessage}</div>
         ) : null}
 
+        {kaltBadgeGroups.length > 0 ? (
+          <div style={{ display: "grid", gap: "14px" }}>
+            {kaltBadgeGroups.map((group) => (
+              <div
+                key={group.label}
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: "16px",
+                  background: "#ffffff",
+                  padding: "16px",
+                }}
+              >
+                <div style={{ fontSize: "16px", fontWeight: 700, marginBottom: "12px" }}>
+                  {group.label}
+                </div>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                  {group.items.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => openEntry(entry)}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: "999px",
+                        border: "1px solid #cbd5e1",
+                        background: "#ffffff",
+                        color: "#111827",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {entry.title.replace(/^Basis-Text:\s*/i, "").replace(/^Hinweis-Prompt:\s*/i, "")}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {activeArea === "kaltakquise" && kaltSubTab === "advanced" ? (
+          <div
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: "16px",
+              background: "#ffffff",
+              padding: "22px",
+            }}
+          >
+            <div style={{ fontSize: "20px", fontWeight: 700, marginBottom: "6px" }}>
+              Erweiterte Prompts & Auswertungen
+            </div>
+            <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "18px" }}>
+              Hier laufen die alte Hook-Logik mit den 10 Basis-Texten, ihre Mutationen und die
+              aktuelle Oeffnungs- beziehungsweise Reminder-Auswertung zusammen.
+            </div>
+
+            {loadingStats ? (
+              <div style={{ color: "#6b7280" }}>Auswertungen werden geladen...</div>
+            ) : textStats.length === 0 ? (
+              <div style={{ color: "#6b7280" }}>Noch keine Textdaten fuer die Auswertung vorhanden.</div>
+            ) : (
+              <div style={{ display: "grid", gap: "20px" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                    gap: "12px",
+                  }}
+                >
+                  <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "14px" }}>
+                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>
+                      Gesendet
+                    </div>
+                    <div style={{ fontSize: "22px", fontWeight: 700 }}>{statsSummary.sent}</div>
+                  </div>
+                  <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "14px" }}>
+                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>
+                      Geoeffnet
+                    </div>
+                    <div style={{ fontSize: "22px", fontWeight: 700 }}>{statsSummary.opened}</div>
+                  </div>
+                  <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "14px" }}>
+                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>
+                      Oeffnungsrate
+                    </div>
+                    <div style={{ fontSize: "22px", fontWeight: 700 }}>
+                      {formatPercent(statsSummary.openRate)}
+                    </div>
+                  </div>
+                  <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "14px" }}>
+                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>
+                      Reminder-Quote
+                    </div>
+                    <div style={{ fontSize: "22px", fontWeight: 700 }}>
+                      {formatPercent(statsSummary.reminderRate)}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: "14px" }}>
+                  {textStats.map((hook) => (
+                    <div
+                      key={hook.hookBaseId}
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "14px",
+                        padding: "16px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          gap: "16px",
+                          flexWrap: "wrap",
+                          marginBottom: "12px",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "17px", fontWeight: 700, marginBottom: "4px" }}>
+                            {hook.hookBaseLabel}
+                          </div>
+                          <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                            {hook.sent} gesendet, {hook.opened} geoeffnet, bester Variantencode:{" "}
+                            {hook.bestVariantId}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matchingEntry = entries.find(
+                              (entry) => entry.id === `coldmail-hook-${hook.hookBaseId}`
+                            );
+                            if (matchingEntry) openEntry(matchingEntry);
+                          }}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: "999px",
+                            border: "1px solid #cbd5e1",
+                            background: "#ffffff",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Basis-Text oeffnen
+                        </button>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                          gap: "10px",
+                          marginBottom: "12px",
+                        }}
+                      >
+                        <div style={{ background: "#f9fafb", borderRadius: "10px", padding: "10px 12px" }}>
+                          <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "4px" }}>
+                            Oeffnungsrate
+                          </div>
+                          <div style={{ fontSize: "16px", fontWeight: 700 }}>
+                            {formatPercent(hook.openRate)}
+                          </div>
+                        </div>
+                        <div style={{ background: "#f9fafb", borderRadius: "10px", padding: "10px 12px" }}>
+                          <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "4px" }}>
+                            Reminder-Quote
+                          </div>
+                          <div style={{ fontSize: "16px", fontWeight: 700 }}>
+                            {formatPercent(hook.reminderRate)}
+                          </div>
+                        </div>
+                        <div style={{ background: "#f9fafb", borderRadius: "10px", padding: "10px 12px" }}>
+                          <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "4px" }}>
+                            Varianten
+                          </div>
+                          <div style={{ fontSize: "16px", fontWeight: 700 }}>{hook.variants.length}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gap: "10px" }}>
+                        {hook.variants.slice(0, 3).map((variant) => (
+                          <div
+                            key={variant.hookVariantId}
+                            style={{
+                              border: "1px solid #f3f4f6",
+                              borderRadius: "10px",
+                              padding: "12px",
+                              background: "#fcfcfd",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: "12px",
+                                flexWrap: "wrap",
+                                marginBottom: "6px",
+                              }}
+                            >
+                              <div style={{ fontWeight: 700 }}>{variant.hookVariantId}</div>
+                              <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                                {variant.sent} gesendet, {variant.opened} geoeffnet,{" "}
+                                {formatPercent(variant.openRate)}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: "13px", color: "#374151", lineHeight: 1.5 }}>
+                              {variant.hookText}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
         {loading ? (
           <div style={{ color: "#6b7280" }}>Prompts & Texte werden geladen...</div>
-        ) : filteredEntries.length === 0 ? (
+        ) : visibleEntries.length === 0 ? (
           <div style={{ color: "#6b7280" }}>Fuer diesen Bereich gibt es noch keine Eintraege.</div>
         ) : (
           <div
@@ -372,7 +737,7 @@ export default function PromptsTextPage() {
               gap: "16px",
             }}
           >
-            {filteredEntries.map((entry) => (
+            {visibleEntries.map((entry) => (
               <button
                 key={entry.id}
                 type="button"

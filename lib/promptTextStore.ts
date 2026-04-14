@@ -70,12 +70,26 @@ export function getPromptTextEntries() {
     ensureFile();
     const file = fs.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(file);
+    const defaults = buildDefaultEntries();
 
-    return Array.isArray(parsed)
-      ? parsed
-          .map((item) => normalizeEntry(item))
-          .sort((a, b) => a.title.localeCompare(b.title, "de", { sensitivity: "base" }))
-      : buildDefaultEntries();
+    if (!Array.isArray(parsed)) {
+      return defaults;
+    }
+
+    const storedEntries = parsed.map((item) => normalizeEntry(item));
+    const merged = new Map<string, PromptTextEntry>();
+
+    for (const entry of defaults) {
+      merged.set(entry.id, entry);
+    }
+
+    for (const entry of storedEntries) {
+      merged.set(entry.id, entry);
+    }
+
+    return Array.from(merged.values()).sort((a, b) =>
+      a.title.localeCompare(b.title, "de", { sensitivity: "base" })
+    );
   } catch {
     return buildDefaultEntries();
   }
@@ -186,6 +200,268 @@ Leipziger Str. 56
 15236 Frankfurt (Oder)
 www.jobs-in-berlin-brandenburg.de`,
       usage: "Wird in app/api/send-mail/route.ts zum finalen Text und HTML kombiniert.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hint-multiple-jobs",
+      area: "kaltakquise",
+      title: "Hinweis-Prompt: Mehrere Jobs",
+      description: "Zusatzhinweis fuer den Fall, dass mehrere aehnliche Stellen offen sind.",
+      preview: "Erwaehne die Moeglichkeit, mehrere Anzeigen gleichzeitig guenstig zu schalten.",
+      content: `Wenn mehrere aehnliche Stellen offen sind, erwaehne die Moeglichkeit, mehrere Anzeigen gleichzeitig guenstig zu schalten.`,
+      usage: "Wird als zuschaltbarer Hinweis im Kaltakquise-Generator verwendet.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hint-social-media",
+      area: "kaltakquise",
+      title: "Hinweis-Prompt: Social Media",
+      description: "Zusatzhinweis fuer Facebook- und Instagram-Ausspielung.",
+      preview: "Hebe hervor, dass Stellenanzeigen zusaetzlich auf Facebook und Instagram ausgespielt werden.",
+      content: `Hebe hervor, dass Stellenanzeigen zusaetzlich auf Facebook und Instagram ausgespielt werden und so auch passive Kandidaten erreicht werden.`,
+      usage: "Wird als zuschaltbarer Hinweis im Kaltakquise-Generator verwendet.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hint-print",
+      area: "kaltakquise",
+      title: "Hinweis-Prompt: Print-Anzeige",
+      description: "Zusatzhinweis fuer die enthaltene Print-Anzeige bei BB CROSS.",
+      preview: "Erwaehne die enthaltene Print-Anzeige bei BB CROSS.",
+      content: `Erwaehne die enthaltene Print-Anzeige bei BB CROSS und nenne kurz Vorteile wie regionale Sichtbarkeit und zusaetzliche Reichweite.`,
+      usage: "Wird als zuschaltbarer Hinweis im Kaltakquise-Generator verwendet.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hint-multiposting",
+      area: "kaltakquise",
+      title: "Hinweis-Prompt: Multiposting",
+      description: "Zusatzhinweis fuer Multiposting auf weitere Portale.",
+      preview: "Erwaehne die Moeglichkeit, Stellenanzeigen zusaetzlich ueber Indeed, MeineStadt und Stepstone zu buchen.",
+      content: `Erwaehne die Moeglichkeit, Stellenanzeigen zusaetzlich ueber Indeed, MeineStadt und Stepstone zu buchen.`,
+      usage: "Wird als zuschaltbarer Hinweis im Kaltakquise-Generator verwendet.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-hybrid",
+      area: "kaltakquise",
+      title: "Basis-Text: Hybrid",
+      description: "Einstiegslogik Hybrid mit drei Mutationen.",
+      preview: "Fuer Positionen wie Ihre nutzen viele Unternehmen zusaetzlich unsere Plattform...",
+      content: `Variante 1:
+- Fuer Positionen wie Ihre nutzen viele Unternehmen zusaetzlich unsere Plattform, um mehr passende Bewerber zu erreichen. Ueber 30.000 Jobsuchende sind monatlich auf unseren regionalen Stellenboersen aktiv.
+
+Variante 2:
+- Viele Unternehmen nutzen fuer Positionen wie Ihre zusaetzlich unsere Plattform, um ihre Reichweite zu erhoehen. Monatlich suchen ueber 30.000 Jobsuchende auf unseren regionalen Stellenboersen nach neuen Chancen.
+
+Variante 3:
+- Gerade fuer Stellen wie {jobTitle} kann zusaetzliche regionale Reichweite entscheidend sein. Ueber 30.000 Jobsuchende sind monatlich auf unseren regionalen Stellenboersen aktiv.`,
+      usage: "Entspricht dem Hook-Block `hybrid` aus app/api/regenerate-email/route.ts.",
+      placeholders: ["{jobTitle}"],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-punch",
+      area: "kaltakquise",
+      title: "Basis-Text: Punch",
+      description: "Direkter Einstiegsblock mit Zahlen und Reichweitenimpuls.",
+      preview: "Ueber 30.000 Bewerber suchen monatlich auf unseren regionalen Stellenboersen...",
+      content: `Variante 1:
+- Ueber 30.000 Bewerber suchen monatlich auf unseren regionalen Stellenboersen nach neuen Positionen - gerade in Berlin und Brandenburg sehen wir hier oft deutlich mehr Ruecklauf.
+
+Variante 2:
+- Monatlich nutzen ueber 30.000 Jobsuchende unsere regionalen Stellenboersen. Gerade in Berlin und Brandenburg laesst sich so haeufig zusaetzlicher Ruecklauf erzeugen.
+
+Variante 3:
+- Ueber 30.000 Jobsuchende informieren sich monatlich auf unseren regionalen Stellenboersen ueber neue Positionen. Das schafft zusaetzliche Sichtbarkeit genau in Ihrer Region.`,
+      usage: "Entspricht dem Hook-Block `punch` aus app/api/regenerate-email/route.ts.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-soft-personal",
+      area: "kaltakquise",
+      title: "Basis-Text: Soft Personal",
+      description: "Persoenlicher, weicher Einstieg fuer konkrete Stellen.",
+      preview: "Gerade bei Positionen wie {jobTitle} sehen wir haeufig...",
+      content: `Variante 1:
+- Gerade bei Positionen wie {jobTitle} sehen wir haeufig, dass zusaetzliche regionale Reichweite den Unterschied macht.
+
+Variante 2:
+- Bei Stellen wie {jobTitle} kann eine ergaenzende regionale Veroeffentlichung sinnvoll sein, um mehr passende Bewerber zu erreichen.
+
+Variante 3:
+- Gerade fuer Positionen wie {jobTitle} lohnt sich oft zusaetzliche Sichtbarkeit in Berlin und Brandenburg.`,
+      usage: "Entspricht dem Hook-Block `soft-personal` aus app/api/regenerate-email/route.ts.",
+      placeholders: ["{jobTitle}"],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-problem-focus",
+      area: "kaltakquise",
+      title: "Basis-Text: Problem-Fokus",
+      description: "Einstieg ueber Recruiting-Herausforderung und Engpass.",
+      preview: "Viele Unternehmen berichten uns aktuell, dass es zunehmend schwieriger wird...",
+      content: `Variante 1:
+- Viele Unternehmen berichten uns aktuell, dass es zunehmend schwieriger wird, passende Bewerber fuer Positionen wie {jobTitle} zu erreichen.
+
+Variante 2:
+- Gerade bei Stellen wie {jobTitle} bleibt der gewuenschte Ruecklauf oft hinter den Erwartungen zurueck, wenn nur auf wenigen Kanaelen veroeffentlicht wird.
+
+Variante 3:
+- Viele Unternehmen stehen derzeit vor der Herausforderung, qualifizierte Bewerber zuverlaessig und regional sichtbar zu erreichen.`,
+      usage: "Entspricht dem Hook-Block `problem-focus` aus app/api/regenerate-email/route.ts.",
+      placeholders: ["{jobTitle}"],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-regional",
+      area: "kaltakquise",
+      title: "Basis-Text: Regional",
+      description: "Regionaler Einstieg mit Fokus Berlin-Brandenburg.",
+      preview: "Mit unserer regionalen Reichweite in Berlin und Brandenburg lassen sich Stellenanzeigen gezielt dort sichtbar machen...",
+      content: `Variante 1:
+- Mit unserer regionalen Reichweite in Berlin und Brandenburg lassen sich Stellenanzeigen gezielt dort sichtbar machen, wo passende Bewerber tatsaechlich suchen.
+
+Variante 2:
+- Gerade in Berlin und Brandenburg kann zusaetzliche regionale Sichtbarkeit helfen, Ihre Anzeige gezielt vor passende Bewerber zu bringen.
+
+Variante 3:
+- Unsere regionalen Stellenboersen werden gezielt von Jobsuchenden aus Berlin und Brandenburg genutzt - genau dort kann Ihre Anzeige zusaetzliche Reichweite gewinnen.`,
+      usage: "Entspricht dem Hook-Block `regional` aus app/api/regenerate-email/route.ts.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-reach",
+      area: "kaltakquise",
+      title: "Basis-Text: Reichweite",
+      description: "Reichweitenfokus als neutraler Basistext.",
+      preview: "Viele Unternehmen erweitern ihre Reichweite gezielt, um mehr passende Bewerber zu erreichen...",
+      content: `Variante 1:
+- Viele Unternehmen erweitern ihre Reichweite gezielt, um mehr passende Bewerber zu erreichen und offene Stellen schneller sichtbar zu machen.
+
+Variante 2:
+- Zusaetzliche Sichtbarkeit kann ein entscheidender Hebel sein, wenn Stellenanzeigen mehr passende Reichweite erhalten sollen.
+
+Variante 3:
+- Ergaenzende Reichweite ueber regionale Stellenboersen hilft haeufig dabei, zusaetzliche qualifizierte Bewerber anzusprechen.`,
+      usage: "Entspricht dem Hook-Block `reach` aus app/api/regenerate-email/route.ts.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-competition",
+      area: "kaltakquise",
+      title: "Basis-Text: Wettbewerb",
+      description: "Einstieg ueber Wettbewerb um Bewerber.",
+      preview: "Viele Unternehmen in der Region erhoehen aktuell ihre Sichtbarkeit...",
+      content: `Variante 1:
+- Viele Unternehmen in der Region erhoehen aktuell ihre Sichtbarkeit, um im Wettbewerb um passende Bewerber besser wahrgenommen zu werden.
+
+Variante 2:
+- Im Wettbewerb um qualifizierte Bewerber kann zusaetzliche regionale Praesenz ein klarer Vorteil sein.
+
+Variante 3:
+- Gerade in angespannten Bewerbermaerkten ist zusaetzliche Sichtbarkeit oft entscheidend, um schneller passende Rueckmeldungen zu erhalten.`,
+      usage: "Entspricht dem Hook-Block `competition` aus app/api/regenerate-email/route.ts.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-social-proof",
+      area: "kaltakquise",
+      title: "Basis-Text: Kundenbeweis",
+      description: "Social-Proof-Einstieg ueber andere Unternehmen/Kunden.",
+      preview: "Viele unserer Kunden nutzen unsere Plattform ergaenzend...",
+      content: `Variante 1:
+- Viele unserer Kunden nutzen unsere Plattform ergaenzend, um zusaetzliche Bewerbungen aus der Region zu erhalten.
+
+Variante 2:
+- Unternehmen aus Berlin und Brandenburg setzen unsere regionalen Stellenboersen ein, um ihre Reichweite gezielt zu erweitern.
+
+Variante 3:
+- Unsere Plattform wird von vielen Unternehmen ergaenzend genutzt, wenn zusaetzliche regionale Sichtbarkeit fuer offene Positionen gefragt ist.`,
+      usage: "Entspricht dem Hook-Block `social-proof` aus app/api/regenerate-email/route.ts.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-minimal",
+      area: "kaltakquise",
+      title: "Basis-Text: Minimal",
+      description: "Minimaler, sehr kompakter Basiseinstieg.",
+      preview: "Wir unterstuetzen Unternehmen dabei, ihre Stellenanzeigen regional sichtbarer zu machen.",
+      content: `Variante 1:
+- Wir unterstuetzen Unternehmen dabei, ihre Stellenanzeigen regional sichtbarer zu machen.
+
+Variante 2:
+- Ueber unsere regionalen Stellenboersen lassen sich offene Positionen gezielt in Berlin und Brandenburg sichtbar machen.
+
+Variante 3:
+- Mit zusaetzlicher regionaler Sichtbarkeit lassen sich passende Bewerber oft gezielter erreichen.`,
+      usage: "Entspricht dem Hook-Block `minimal` aus app/api/regenerate-email/route.ts.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-hook-consultative",
+      area: "kaltakquise",
+      title: "Basis-Text: Beratend",
+      description: "Beratender Basiseinstieg mit weichem Beratungsangebot.",
+      preview: "Gern zeige ich Ihnen, wie Ihre Stellenanzeige zusaetzlich regional sichtbar gemacht werden kann.",
+      content: `Variante 1:
+- Gern zeige ich Ihnen, wie Ihre Stellenanzeige zusaetzlich regional sichtbar gemacht werden kann.
+
+Variante 2:
+- Ich moechte Ihnen kurz zeigen, wie sich die Reichweite Ihrer Anzeige in Berlin und Brandenburg sinnvoll ergaenzen laesst.
+
+Variante 3:
+- Gern gebe ich Ihnen einen kurzen Ueberblick, wie zusaetzliche regionale Sichtbarkeit fuer Ihre Anzeige aussehen kann.`,
+      usage: "Entspricht dem Hook-Block `consultative` aus app/api/regenerate-email/route.ts.",
+      placeholders: [],
+      status: "aktiv",
+      updatedAt: now,
+    },
+    {
+      id: "coldmail-advanced-prompts",
+      area: "kaltakquise",
+      title: "Erweiterte Prompts & Auswertungen",
+      description: "Dokumentiert die Hook-Auswahl, Mutationen und die zugehoerige Auswertungslogik.",
+      preview: "10 Basis-Texte, Mutationen, Hook-Auswahl und Oeffnungsraten-Auswertung.",
+      content: `Enthaelt:
+- 10 Basis-Texte / Hook-Bloecke
+- pro Block 3 Mutationen
+- Hook-Auswahl "auto" oder gezielt per HookBaseId
+- Text-Auswertung ueber Oeffnungen, Reminder-Quote und Bestperformer
+
+Datenquellen:
+- Hook-Logik: app/api/regenerate-email/route.ts
+- Auswertung: app/api/crm/text-stats/route.ts
+- Speicherung: lib/textControllingStore.ts
+
+Ziel:
+Die Basis-Texte und ihre Mutationen sollen zentral in Prompts & Texte sichtbar und pflegbar sein.`,
+      usage: "Wird als Unterpunkt und Uebersicht fuer die alte Kaltakquise-Logik in Prompts & Texte genutzt.",
       placeholders: [],
       status: "aktiv",
       updatedAt: now,
