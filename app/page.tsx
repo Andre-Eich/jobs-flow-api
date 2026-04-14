@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import BulkMailPage from "./photo/page.replacement.v4";
-import ColdMailPage from "./photo/page.replacement";
-import CrmPage from "./crm/page";
-import PromptsTextPage from "./prompts-text/page";
-import SocialPostsPage from "./social-posts/page";
+import BulkMailServiceEntry from "./services/bulk-mail-entry";
+import ColdMailServiceEntry from "./services/cold-mail-entry";
+import CrmServiceEntry from "./services/crm-entry";
+import PromptsTextServiceEntry from "./services/prompts-text-entry";
+import SocialPostsServiceEntry from "./services/social-posts-entry";
 
 const DEFAULT_SERVICE_TASK = `Erstelle einen natürlichen deutschen Text mit genau {count} Wörtern.
 
@@ -213,11 +213,11 @@ export default function Home() {
         {activeTool === "text-generator" && (
           <TextGeneratorPlaceholder isMobile={isMobile} />
         )}
-        {activeTool === "photo-mail" && <ColdMailPage serviceMode="cold" />}
-        {activeTool === "bulk-mail" && <BulkMailPage />}
-        {activeTool === "crm" && <CrmPage />}
-        {activeTool === "prompts-text" && <PromptsTextPage />}
-        {activeTool === "social-posts" && <SocialPostsPage />}
+        {activeTool === "photo-mail" && <ColdMailServiceEntry />}
+        {activeTool === "bulk-mail" && <BulkMailServiceEntry />}
+        {activeTool === "crm" && <CrmServiceEntry />}
+        {activeTool === "prompts-text" && <PromptsTextServiceEntry />}
+        {activeTool === "social-posts" && <SocialPostsServiceEntry />}
       </main>
     </div>
   );
