@@ -28,6 +28,20 @@ Diese Datei ist die kurze, leicht pflegbare Schutzliste fuer stabile Bereiche im
 - `app/api/send-bulk-mail/route.ts`
 - `lib/leadStore.ts`
 
+## Kritikalitaet innerhalb von `geschuetzt`
+
+### `rot`
+Bei einer geplanten Aenderung in diesen Bereichen erst mit roter Warnung Rueckfrage halten:
+- `lib/leadStore.ts`
+- `app/api/send-bulk-mail/route.ts`
+- `app/api/send-mail/route.ts`
+- `app/api/crm/leads/route.ts`
+
+### `gelb`
+Bei einer geplanten Aenderung in diesen Bereichen mit gelber Warnung Rueckfrage halten:
+- `app/api/crm/emails/route.ts`
+- `app/crm/page.tsx`
+
 ### `nur additiv`
 - `app/page.tsx`
 - `app/photo/page.tsx`
