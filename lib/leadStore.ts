@@ -36,6 +36,10 @@ export type LeadRecord = {
   foundCareerUrls: string[];
   qualityStars: 0 | 1 | 2 | 3;
   qualitySummary: string;
+  optOut: boolean;
+  optOutAt: string;
+  archived: boolean;
+  archivedAt: string;
   channel: LeadChannel;
   createdAt: string;
   updatedAt: string;
@@ -70,6 +74,8 @@ export type UpsertLeadInput = {
   foundCareerUrls?: string[];
   qualityStars?: 0 | 1 | 2 | 3;
   qualitySummary?: string;
+  optOut?: boolean;
+  archived?: boolean;
   channel: "kaltakquise" | "streumail";
 };
 
@@ -183,6 +189,10 @@ function normalizeLeadRecord(lead: LeadRecord): LeadRecord {
     foundCareerUrls: normalizeStringArray(lead.foundCareerUrls, 6),
     qualityStars: normalizeStars(lead.qualityStars),
     qualitySummary: safeString(lead.qualitySummary),
+    optOut: Boolean(lead.optOut),
+    optOutAt: safeString(lead.optOutAt),
+    archived: Boolean(lead.archived),
+    archivedAt: safeString(lead.archivedAt),
     channel:
       lead.channel === "kaltakquise" || lead.channel === "streumail" || lead.channel === "mixed"
         ? lead.channel
@@ -289,6 +299,10 @@ export function upsertLead(input: UpsertLeadInput) {
       foundCareerUrls: normalizeStringArray(input.foundCareerUrls, 6),
       qualityStars: normalizeStars(input.qualityStars),
       qualitySummary: safeString(input.qualitySummary),
+      optOut: Boolean(input.optOut),
+      optOutAt: Boolean(input.optOut) ? now : "",
+      archived: Boolean(input.archived),
+      archivedAt: Boolean(input.archived) ? now : "",
       channel: input.channel,
       createdAt: now,
       updatedAt: now,
@@ -332,6 +346,20 @@ export function upsertLead(input: UpsertLeadInput) {
       input.qualitySummary !== undefined
         ? safeString(input.qualitySummary)
         : existing.qualitySummary,
+    optOut: input.optOut !== undefined ? Boolean(input.optOut) : existing.optOut,
+    optOutAt:
+      input.optOut !== undefined
+        ? input.optOut
+          ? existing.optOutAt || now
+          : ""
+        : existing.optOutAt,
+    archived: input.archived !== undefined ? Boolean(input.archived) : existing.archived,
+    archivedAt:
+      input.archived !== undefined
+        ? input.archived
+          ? existing.archivedAt || now
+          : ""
+        : existing.archivedAt,
     channel: deriveChannel(existing.channel, input.channel),
     updatedAt: now,
     mails: existing.mails,
@@ -375,6 +403,10 @@ export function upsertLeadMail(input: UpsertLeadMailInput) {
       foundCareerUrls: [],
       qualityStars: 0,
       qualitySummary: "",
+      optOut: false,
+      optOutAt: "",
+      archived: false,
+      archivedAt: "",
       channel: input.channel,
       createdAt: now,
       updatedAt: now,
@@ -414,6 +446,10 @@ export function upsertLeadMail(input: UpsertLeadMailInput) {
     foundCareerUrls: existing.foundCareerUrls,
     qualityStars: existing.qualityStars,
     qualitySummary: existing.qualitySummary,
+    optOut: existing.optOut,
+    optOutAt: existing.optOutAt,
+    archived: existing.archived,
+    archivedAt: existing.archivedAt,
     channel: deriveChannel(existing.channel, input.channel),
     updatedAt: now,
     mails: nextMails,
@@ -487,6 +523,8 @@ export function updateLeadById(
     foundCareerUrls?: string[];
     qualityStars?: 0 | 1 | 2 | 3;
     qualitySummary?: string;
+    optOut?: boolean;
+    archived?: boolean;
   }
 ): LeadRecord | null {
   const leads = getLeads();
@@ -532,9 +570,31 @@ export function updateLeadById(
       updates.qualitySummary !== undefined
         ? safeString(updates.qualitySummary)
         : existing.qualitySummary,
+    optOut: updates.optOut !== undefined ? Boolean(updates.optOut) : existing.optOut,
+    optOutAt:
+      updates.optOut !== undefined
+        ? updates.optOut
+          ? existing.optOutAt || now
+          : ""
+        : existing.optOutAt,
+    archived: updates.archived !== undefined ? Boolean(updates.archived) : existing.archived,
+    archivedAt:
+      updates.archived !== undefined
+        ? updates.archived
+          ? existing.archivedAt || now
+          : ""
+        : existing.archivedAt,
     updatedAt: now,
   });
 
   saveLeads(leads);
   return leads[index];
+}
+
+export function archiveLeadById(id: string) {
+  return updateLeadById(id, { archived: true });
+}
+
+export function restoreLeadById(id: string) {
+  return updateLeadById(id, { archived: false });
 }

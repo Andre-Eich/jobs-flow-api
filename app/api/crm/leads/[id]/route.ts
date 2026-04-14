@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { updateLeadById } from "@/lib/leadStore";
+import { archiveLeadById, restoreLeadById, updateLeadById } from "@/lib/leadStore";
 
 export async function PATCH(
   req: Request,
@@ -39,6 +39,10 @@ export async function PATCH(
           : undefined,
       qualitySummary:
         typeof body.qualitySummary === "string" ? body.qualitySummary : undefined,
+      optOut:
+        typeof body.optOut === "boolean" ? body.optOut : undefined,
+      archived:
+        typeof body.archived === "boolean" ? body.archived : undefined,
     });
 
     if (!lead) {
@@ -55,6 +59,63 @@ export async function PATCH(
         error:
           error instanceof Error ? error.message : "Speichern fehlgeschlagen.",
       },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  _req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+
+    if (!id) {
+      return NextResponse.json({ error: "Lead-ID fehlt." }, { status: 400 });
+    }
+
+    const lead = archiveLeadById(id);
+
+    if (!lead) {
+      return NextResponse.json({ error: "Lead nicht gefunden." }, { status: 404 });
+    }
+
+    return NextResponse.json({ lead, archived: true });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Archivieren fehlgeschlagen." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+    const body = await req.json().catch(() => ({}));
+
+    if (!id) {
+      return NextResponse.json({ error: "Lead-ID fehlt." }, { status: 400 });
+    }
+
+    if (body?.action === "restore") {
+      const lead = restoreLeadById(id);
+
+      if (!lead) {
+        return NextResponse.json({ error: "Lead nicht gefunden." }, { status: 404 });
+      }
+
+      return NextResponse.json({ lead, restored: true });
+    }
+
+    return NextResponse.json({ error: "Unbekannte Aktion." }, { status: 400 });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Aktion fehlgeschlagen." },
       { status: 500 }
     );
   }

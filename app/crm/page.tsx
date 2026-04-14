@@ -32,6 +32,10 @@ type LeadRecord = {
   foundCareerUrls: string[];
   qualityStars: 0 | 1 | 2 | 3;
   qualitySummary: string;
+  optOut: boolean;
+  optOutAt: string;
+  archived: boolean;
+  archivedAt: string;
   channel: "kaltakquise" | "streumail" | "mixed";
   createdAt: string;
   updatedAt: string;
@@ -194,6 +198,7 @@ const inputStyle: React.CSSProperties = {
 
 export default function CrmPage() {
   const [leads, setLeads] = useState<LeadRecord[]>([]);
+  const [archivedLeads, setArchivedLeads] = useState<LeadRecord[]>([]);
   const [bulkTextBlocks, setBulkTextBlocks] = useState<BulkTextBlock[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -211,6 +216,7 @@ export default function CrmPage() {
   const [dashboardFoundCareerUrls, setDashboardFoundCareerUrls] = useState("");
   const [dashboardQualityStars, setDashboardQualityStars] = useState<0 | 1 | 2 | 3>(0);
   const [dashboardQualitySummary, setDashboardQualitySummary] = useState("");
+  const [dashboardOptOut, setDashboardOptOut] = useState(false);
   const [dashboardSaving, setDashboardSaving] = useState(false);
   const [dashboardHookBaseId, setDashboardHookBaseId] = useState("auto");
   const [dashboardActiveBlockIds, setDashboardActiveBlockIds] = useState<string[]>([]);
@@ -235,6 +241,7 @@ export default function CrmPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortKey, setSortKey] = useState<CrmSortKey>("updatedAt");
   const [sortDirection, setSortDirection] = useState<CrmSortDirection>("desc");
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   async function loadLeads() {
     try {
@@ -246,9 +253,11 @@ export default function CrmPage() {
         return;
       }
       const newLeads: LeadRecord[] = Array.isArray(data.leads) ? data.leads : [];
+      const newArchivedLeads: LeadRecord[] = Array.isArray(data.archivedLeads) ? data.archivedLeads : [];
       setLeads(newLeads);
+      setArchivedLeads(newArchivedLeads);
       setDashboardLead((prev) =>
-        prev ? (newLeads.find((l) => l.id === prev.id) ?? prev) : null
+        prev ? (newLeads.find((l) => l.id === prev.id) ?? newArchivedLeads.find((l) => l.id === prev.id) ?? prev) : null
       );
     } catch {
       setError("CRM konnte nicht geladen werden.");
@@ -388,6 +397,7 @@ export default function CrmPage() {
     setDashboardFoundCareerUrls((lead.foundCareerUrls || []).join("\n"));
     setDashboardQualityStars(lead.qualityStars || 0);
     setDashboardQualitySummary(lead.qualitySummary || "");
+    setDashboardOptOut(Boolean(lead.optOut));
     setDashboardHookBaseId("auto");
     setDashboardActiveBlockIds([]);
     setDashboardShortMode(false);
@@ -418,6 +428,7 @@ export default function CrmPage() {
           foundCareerUrls: linesToItems(dashboardFoundCareerUrls),
           qualityStars: dashboardQualityStars,
           qualitySummary: dashboardQualitySummary,
+          optOut: dashboardOptOut,
         }),
       });
       const data = await response.json();
@@ -428,6 +439,7 @@ export default function CrmPage() {
       if (data.lead) {
         setDashboardLead(data.lead);
         setLeads((prev) => prev.map((l) => (l.id === data.lead.id ? data.lead : l)));
+        setArchivedLeads((prev) => prev.map((l) => (l.id === data.lead.id ? data.lead : l)));
       }
       setDashboardSuccess("Gespeichert.");
       setTimeout(() => setDashboardSuccess(""), 2000);
@@ -476,7 +488,7 @@ export default function CrmPage() {
   }
 
   async function sendDashboardMail() {
-    if (!dashboardLead || !dashboardPreviewText.trim()) return;
+    if (!dashboardLead || !dashboardPreviewText.trim() || dashboardOptOut) return;
     setDashboardSending(true);
     setDashboardError("");
     setDashboardSuccess("");
@@ -521,7 +533,7 @@ export default function CrmPage() {
   }
 
   async function sendDashboardReminder() {
-    if (!dashboardLead) return;
+    if (!dashboardLead || dashboardOptOut) return;
     setDashboardSendingReminder(true);
     setDashboardError("");
     setDashboardSuccess("");
@@ -557,7 +569,7 @@ export default function CrmPage() {
   }
 
   function openReminderModal(targets: LeadRecord[]) {
-    setReminderTargets(targets);
+    setReminderTargets(targets.filter((lead) => !lead.optOut && !lead.archived));
     setActiveBlockIds([]);
     setShortMode(false);
     setTestMode(true);
@@ -615,6 +627,75 @@ export default function CrmPage() {
 
   const isBusy =
     dashboardSaving || dashboardGenerating || dashboardSending || dashboardSendingReminder;
+
+  async function archiveLead(id: string) {
+    try {
+      setError("");
+      const response = await fetch(`/api/crm/leads/${id}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "Lead konnte nicht archiviert werden.");
+        return;
+      }
+      await loadLeads();
+      setSelectedLeadIds((prev) => prev.filter((leadId) => leadId !== id));
+      if (dashboardLead?.id === id) {
+        setDashboardLead(data.lead || null);
+      }
+      setSuccessMessage("Lead wurde ins Archiv verschoben.");
+    } catch {
+      setError("Lead konnte nicht archiviert werden.");
+    }
+  }
+
+  async function restoreLead(id: string) {
+    try {
+      setError("");
+      const response = await fetch(`/api/crm/leads/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore" }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "Lead konnte nicht wiederhergestellt werden.");
+        return;
+      }
+      await loadLeads();
+      setSuccessMessage("Lead wurde aus dem Archiv wiederhergestellt.");
+    } catch {
+      setError("Lead konnte nicht wiederhergestellt werden.");
+    }
+  }
+
+  async function toggleLeadOptOut(lead: LeadRecord, nextOptOut: boolean) {
+    try {
+      setError("");
+      const response = await fetch(`/api/crm/leads/${lead.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optOut: nextOptOut }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "Opt-out konnte nicht gespeichert werden.");
+        return;
+      }
+      if (data.lead) {
+        setLeads((prev) => prev.map((item) => (item.id === data.lead.id ? data.lead : item)));
+        setArchivedLeads((prev) => prev.map((item) => (item.id === data.lead.id ? data.lead : item)));
+        if (dashboardLead?.id === data.lead.id) {
+          setDashboardLead(data.lead);
+          setDashboardOptOut(Boolean(data.lead.optOut));
+        }
+      }
+      setSuccessMessage(nextOptOut ? "Lead als Opt-out markiert." : "Opt-out aufgehoben.");
+    } catch {
+      setError("Opt-out konnte nicht gespeichert werden.");
+    }
+  }
 
   return (
     <>
@@ -680,6 +761,9 @@ export default function CrmPage() {
                 </label>
                 <div style={{ fontSize: "13px", color: "#6b7280" }}>
                   {selectedLeads.length} ausgewaehlt von {leads.length}
+                </div>
+                <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                  Archiv: {archivedLeads.length}
                 </div>
               </div>
 
@@ -772,6 +856,11 @@ export default function CrmPage() {
                             <div style={{ fontSize: "12px", color: "#6b7280" }}>
                               {lead.contactPerson || "-"}
                             </div>
+                            {lead.optOut ? (
+                              <div style={{ marginTop: "6px", fontSize: "12px", color: "#b91c1c", fontWeight: 700 }}>
+                                Opt-out
+                              </div>
+                            ) : null}
                           </td>
                           <td style={tableCellStyle}>{lead.recipientEmail || "-"}</td>
                           <td style={tableCellStyle}>{lead.postalCode || "-"}</td>
@@ -794,10 +883,25 @@ export default function CrmPage() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => toggleLeadOptOut(lead, !lead.optOut)}
+                                style={buttonStyle(false)}
+                              >
+                                {lead.optOut ? "Opt-in" : "Opt-out"}
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => openReminderModal([lead])}
-                                style={buttonStyle(true)}
+                                disabled={lead.optOut}
+                                style={buttonStyle(true, lead.optOut)}
                               >
                                 Erinnerung schicken
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => archiveLead(lead.id)}
+                                style={buttonStyle(false)}
+                              >
+                                Archivieren
                               </button>
                             </div>
                           </td>
@@ -856,6 +960,69 @@ export default function CrmPage() {
                 </button>
               </div>
             </div>
+
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "16px" }}>
+              <button
+                type="button"
+                onClick={() => setArchiveOpen((prev) => !prev)}
+                style={buttonStyle(false)}
+              >
+                {archiveOpen ? `Archiv ausblenden (${archivedLeads.length})` : `Archiv oeffnen (${archivedLeads.length})`}
+              </button>
+            </div>
+
+            {archiveOpen ? (
+              <div
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  background: "#f9fafb",
+                }}
+              >
+                <div style={{ fontSize: "16px", fontWeight: 700, marginBottom: "12px" }}>
+                  Archiv
+                </div>
+                {archivedLeads.length === 0 ? (
+                  <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                    Noch keine archivierten Leads vorhanden.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {archivedLeads.slice(0, 10).map((lead) => (
+                      <div
+                        key={lead.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: "12px",
+                          alignItems: "center",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "10px",
+                          padding: "12px",
+                          background: "#ffffff",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{lead.company || "Unbekannter Lead"}</div>
+                          <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                            {lead.recipientEmail || "-"}{lead.archivedAt ? ` · archiviert ${formatDate(lead.archivedAt)}` : ""}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => openDashboard(lead)} style={buttonStyle(false)}>
+                            Lead-Dashboard
+                          </button>
+                          <button type="button" onClick={() => restoreLead(lead.id)} style={buttonStyle(false)}>
+                            Aktivieren
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
           </>
         )}
       </div>
@@ -1114,6 +1281,22 @@ export default function CrmPage() {
                         style={{ ...inputStyle, minHeight: "90px", resize: "vertical" }}
                       />
                     </div>
+                    <div
+                      style={{
+                        borderTop: "1px solid #e5e7eb",
+                        paddingTop: "10px",
+                        marginTop: "2px",
+                      }}
+                    >
+                      <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", fontWeight: 600 }}>
+                        <input
+                          type="checkbox"
+                          checked={dashboardOptOut}
+                          onChange={(e) => setDashboardOptOut(e.target.checked)}
+                        />
+                        Opt-out markieren
+                      </label>
+                    </div>
                     <button
                       type="button"
                       onClick={saveDashboardLead}
@@ -1242,18 +1425,25 @@ export default function CrmPage() {
                   <button
                     type="button"
                     onClick={sendDashboardMail}
-                    disabled={dashboardSending || !dashboardPreviewText.trim()}
-                    style={buttonStyle(true, dashboardSending || !dashboardPreviewText.trim())}
+                    disabled={dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut}
+                    style={buttonStyle(true, dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut)}
                   >
                     {dashboardSending ? "Wird gesendet..." : "Kalt-Mail senden"}
                   </button>
                   <button
                     type="button"
                     onClick={sendDashboardReminder}
-                    disabled={dashboardSendingReminder}
-                    style={buttonStyle(false, dashboardSendingReminder)}
+                    disabled={dashboardSendingReminder || dashboardOptOut}
+                    style={buttonStyle(false, dashboardSendingReminder || dashboardOptOut)}
                   >
                     {dashboardSendingReminder ? "Wird gesendet..." : "Erinnerung senden"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => dashboardLead && archiveLead(dashboardLead.id)}
+                    style={buttonStyle(false)}
+                  >
+                    Ins Archiv verschieben
                   </button>
                 </div>
               </div>
@@ -1314,6 +1504,11 @@ export default function CrmPage() {
                     <div style={{ fontSize: "13px", lineHeight: 1.5, color: "#374151" }}>
                       {dashboardQualitySummary || "Noch keine Qualitaets-Hinweise gespeichert."}
                     </div>
+                    {dashboardOptOut ? (
+                      <div style={{ marginTop: "10px", fontSize: "12px", fontWeight: 700, color: "#b91c1c" }}>
+                        Opt-out aktiv
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 

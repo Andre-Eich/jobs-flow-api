@@ -141,7 +141,13 @@ export async function GET() {
 
     if (!apiKey) {
       return NextResponse.json({
-        leads: leads.map((lead) => ({
+        leads: leads.filter((lead) => !lead.archived).map((lead) => ({
+          ...lead,
+          openedCount: 0,
+          sentCount: lead.mails.length,
+          openRate: 0,
+        })),
+        archivedLeads: leads.filter((lead) => lead.archived).map((lead) => ({
           ...lead,
           openedCount: 0,
           sentCount: lead.mails.length,
@@ -170,7 +176,22 @@ export async function GET() {
     );
 
     return NextResponse.json({
-      leads: leads.map((lead) => {
+      leads: leads.filter((lead) => !lead.archived).map((lead) => {
+        const sentCount = lead.mails.length;
+        const openedCount = lead.mails.filter((mail) => {
+          const lastEvent = lastEventByEmailId.get(safeString(mail.emailId));
+          const entry = entryByEmailId.get(safeString(mail.emailId));
+          return lastEvent === "opened" || lastEvent === "clicked" || Boolean(entry?.opened);
+        }).length;
+
+        return {
+          ...lead,
+          openedCount,
+          sentCount,
+          openRate: sentCount ? openedCount / sentCount : 0,
+        };
+      }),
+      archivedLeads: leads.filter((lead) => lead.archived).map((lead) => {
         const sentCount = lead.mails.length;
         const openedCount = lead.mails.filter((mail) => {
           const lastEvent = lastEventByEmailId.get(safeString(mail.emailId));
