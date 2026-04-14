@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import BulkMailPage from "./photo/page";
+import BulkMailPage from "./photo/page.replacement.v4";
 import ColdMailPage from "./photo/page.replacement";
 import CrmPage from "./crm/page";
 import PromptsTextPage from "./prompts-text/page";
