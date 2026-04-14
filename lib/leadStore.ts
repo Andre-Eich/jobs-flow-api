@@ -404,3 +404,42 @@ export function syncLeadsFromTextControlling() {
 export function getLeadById(id: string) {
   return syncLeadsFromTextControlling().find((lead) => lead.id === safeString(id)) || null;
 }
+
+export function updateLeadById(
+  id: string,
+  updates: {
+    company?: string;
+    recipientEmail?: string;
+    contactPerson?: string;
+    phone?: string;
+  }
+): LeadRecord | null {
+  const leads = getLeads();
+  const index = leads.findIndex((lead) => safeString(lead.id) === safeString(id));
+  if (index === -1) return null;
+
+  const existing = leads[index];
+  const now = new Date().toISOString();
+
+  leads[index] = normalizeLeadRecord({
+    ...existing,
+    company:
+      updates.company !== undefined
+        ? safeString(updates.company) || existing.company
+        : existing.company,
+    recipientEmail:
+      updates.recipientEmail !== undefined
+        ? safeString(updates.recipientEmail)
+        : existing.recipientEmail,
+    contactPerson:
+      updates.contactPerson !== undefined
+        ? safeString(updates.contactPerson)
+        : existing.contactPerson,
+    phone:
+      updates.phone !== undefined ? safeString(updates.phone) : existing.phone,
+    updatedAt: now,
+  });
+
+  saveLeads(leads);
+  return leads[index];
+}

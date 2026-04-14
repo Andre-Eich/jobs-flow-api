@@ -30,9 +30,6 @@ type LeadRecord = {
   createdAt: string;
   updatedAt: string;
   mails: LeadMailRecord[];
-  openedCount?: number;
-  sentCount?: number;
-  openRate?: number;
 };
 
 type BulkTextBlock = {
@@ -41,8 +38,30 @@ type BulkTextBlock = {
   text: string;
 };
 
+type DashboardHookMeta = {
+  hookBaseId: string;
+  hookBaseLabel: string;
+  hookVariantId: string;
+  hookText: string;
+};
+
+const HOOK_STYLE_OPTIONS = [
+  { id: "auto", label: "Automatisch" },
+  { id: "hybrid", label: "Hybrid" },
+  { id: "punch", label: "Punch" },
+  { id: "soft-personal", label: "Soft Personal" },
+  { id: "problem-focus", label: "Problem-Fokus" },
+  { id: "regional", label: "Regional" },
+  { id: "reach", label: "Reichweite" },
+  { id: "competition", label: "Wettbewerb" },
+  { id: "social-proof", label: "Kundenbeweis" },
+  { id: "minimal", label: "Minimal" },
+  { id: "consultative", label: "Beratend" },
+];
+
 const BULK_TEXT_BLOCKS_KEY = "bulkTextBlocksV1";
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
 type CrmSortKey =
   | "company"
   | "email"
@@ -51,8 +70,8 @@ type CrmSortKey =
   | "phone"
   | "channel"
   | "mails"
-  | "openRate"
   | "updatedAt";
+
 type CrmSortDirection = "asc" | "desc";
 
 function formatDate(dateString: string) {
@@ -86,10 +105,6 @@ function buttonStyle(primary = false, disabled = false): React.CSSProperties {
     fontSize: "14px",
     opacity: disabled ? 0.65 : 1,
   };
-}
-
-function formatPercent(value: number) {
-  return `${Math.round((value || 0) * 100)} %`;
 }
 
 function SortButton({
@@ -147,13 +162,43 @@ const tableCellStyle: React.CSSProperties = {
   fontSize: "14px",
 };
 
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: "8px",
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  fontSize: "14px",
+  boxSizing: "border-box",
+};
+
 export default function CrmPage() {
   const [leads, setLeads] = useState<LeadRecord[]>([]);
   const [bulkTextBlocks, setBulkTextBlocks] = useState<BulkTextBlock[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [selectedLead, setSelectedLead] = useState<LeadRecord | null>(null);
+
+  // Lead-Dashboard
+  const [dashboardLead, setDashboardLead] = useState<LeadRecord | null>(null);
+  const [dashboardEditCompany, setDashboardEditCompany] = useState("");
+  const [dashboardEditEmail, setDashboardEditEmail] = useState("");
+  const [dashboardEditContactPerson, setDashboardEditContactPerson] = useState("");
+  const [dashboardEditPhone, setDashboardEditPhone] = useState("");
+  const [dashboardSaving, setDashboardSaving] = useState(false);
+  const [dashboardHookBaseId, setDashboardHookBaseId] = useState("auto");
+  const [dashboardActiveBlockIds, setDashboardActiveBlockIds] = useState<string[]>([]);
+  const [dashboardShortMode, setDashboardShortMode] = useState(false);
+  const [dashboardTestMode, setDashboardTestMode] = useState(true);
+  const [dashboardPreviewText, setDashboardPreviewText] = useState("");
+  const [dashboardHookMeta, setDashboardHookMeta] = useState<DashboardHookMeta | null>(null);
+  const [dashboardGenerating, setDashboardGenerating] = useState(false);
+  const [dashboardSending, setDashboardSending] = useState(false);
+  const [dashboardSendingReminder, setDashboardSendingReminder] = useState(false);
+  const [dashboardError, setDashboardError] = useState("");
+  const [dashboardSuccess, setDashboardSuccess] = useState("");
+
+  // Batch-Erinnerung
   const [reminderTargets, setReminderTargets] = useState<LeadRecord[]>([]);
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [activeBlockIds, setActiveBlockIds] = useState<string[]>([]);
@@ -174,7 +219,11 @@ export default function CrmPage() {
         setError(data.error || "CRM konnte nicht geladen werden.");
         return;
       }
-      setLeads(Array.isArray(data.leads) ? data.leads : []);
+      const newLeads: LeadRecord[] = Array.isArray(data.leads) ? data.leads : [];
+      setLeads(newLeads);
+      setDashboardLead((prev) =>
+        prev ? (newLeads.find((l) => l.id === prev.id) ?? prev) : null
+      );
     } catch {
       setError("CRM konnte nicht geladen werden.");
     } finally {
@@ -211,6 +260,11 @@ export default function CrmPage() {
     [bulkTextBlocks, activeBlockIds]
   );
 
+  const dashboardActiveBlocks = useMemo(
+    () => bulkTextBlocks.filter((block) => dashboardActiveBlockIds.includes(block.id)),
+    [bulkTextBlocks, dashboardActiveBlockIds]
+  );
+
   const sortedLeads = useMemo(() => {
     return [...leads].sort((a, b) => {
       let result = 0;
@@ -229,10 +283,6 @@ export default function CrmPage() {
         result = compareStrings(channelLabel(a.channel), channelLabel(b.channel));
       } else if (sortKey === "mails") {
         result = (a.mails.length || 0) - (b.mails.length || 0);
-      } else if (sortKey === "openRate") {
-        result =
-          (a.openRate || 0) - (b.openRate || 0) ||
-          (a.openedCount || 0) - (b.openedCount || 0);
       } else {
         result = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
       }
@@ -298,6 +348,174 @@ export default function CrmPage() {
     );
   }
 
+  function openDashboard(lead: LeadRecord) {
+    setDashboardLead(lead);
+    setDashboardEditCompany(lead.company);
+    setDashboardEditEmail(lead.recipientEmail);
+    setDashboardEditContactPerson(lead.contactPerson);
+    setDashboardEditPhone(lead.phone);
+    setDashboardHookBaseId("auto");
+    setDashboardActiveBlockIds([]);
+    setDashboardShortMode(false);
+    setDashboardTestMode(true);
+    setDashboardPreviewText("");
+    setDashboardHookMeta(null);
+    setDashboardError("");
+    setDashboardSuccess("");
+  }
+
+  async function saveDashboardLead() {
+    if (!dashboardLead) return;
+    setDashboardSaving(true);
+    setDashboardError("");
+    setDashboardSuccess("");
+    try {
+      const response = await fetch(`/api/crm/leads/${dashboardLead.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company: dashboardEditCompany,
+          recipientEmail: dashboardEditEmail,
+          contactPerson: dashboardEditContactPerson,
+          phone: dashboardEditPhone,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setDashboardError(data.error || "Speichern fehlgeschlagen.");
+        return;
+      }
+      if (data.lead) {
+        setDashboardLead(data.lead);
+        setLeads((prev) => prev.map((l) => (l.id === data.lead.id ? data.lead : l)));
+      }
+      setDashboardSuccess("Gespeichert.");
+      setTimeout(() => setDashboardSuccess(""), 2000);
+    } catch {
+      setDashboardError("Speichern fehlgeschlagen.");
+    } finally {
+      setDashboardSaving(false);
+    }
+  }
+
+  async function generateDashboardPreview() {
+    if (!dashboardLead) return;
+    setDashboardGenerating(true);
+    setDashboardError("");
+    try {
+      const response = await fetch("/api/regenerate-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company: dashboardEditCompany || dashboardLead.company,
+          contactPerson: dashboardEditContactPerson || dashboardLead.contactPerson,
+          selectedHookBaseId: dashboardHookBaseId,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setDashboardError(data.error || "Vorschau konnte nicht generiert werden.");
+        return;
+      }
+      setDashboardPreviewText(data.generatedEmail || "");
+      setDashboardHookMeta(
+        data.hookBaseId
+          ? {
+              hookBaseId: data.hookBaseId,
+              hookBaseLabel: data.hookBaseLabel || "",
+              hookVariantId: data.hookVariantId || "",
+              hookText: data.hookText || "",
+            }
+          : null
+      );
+    } catch {
+      setDashboardError("Vorschau konnte nicht generiert werden.");
+    } finally {
+      setDashboardGenerating(false);
+    }
+  }
+
+  async function sendDashboardMail() {
+    if (!dashboardLead || !dashboardPreviewText.trim()) return;
+    setDashboardSending(true);
+    setDashboardError("");
+    setDashboardSuccess("");
+    try {
+      const response = await fetch("/api/send-mail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: dashboardEditEmail || dashboardLead.recipientEmail,
+          text: dashboardPreviewText,
+          testMode: dashboardTestMode,
+          company: dashboardEditCompany || dashboardLead.company,
+          contactPerson: dashboardEditContactPerson || dashboardLead.contactPerson,
+          phone: dashboardEditPhone || dashboardLead.phone,
+          city: dashboardLead.city,
+          postalCode: dashboardLead.postalCode,
+          shortMode: dashboardShortMode,
+          textBlockTitles: dashboardActiveBlocks.map((b) => b.title),
+          hookBaseId: dashboardHookMeta?.hookBaseId,
+          hookBaseLabel: dashboardHookMeta?.hookBaseLabel,
+          hookVariantId: dashboardHookMeta?.hookVariantId,
+          hookText: dashboardHookMeta?.hookText,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setDashboardError(data.error || "Mail konnte nicht gesendet werden.");
+        return;
+      }
+      setDashboardSuccess(
+        dashboardTestMode ? "Testmail gesendet." : "Mail gesendet."
+      );
+      setTimeout(() => setDashboardSuccess(""), 3000);
+      setDashboardPreviewText("");
+      setDashboardHookMeta(null);
+      await loadLeads();
+    } catch {
+      setDashboardError("Mail konnte nicht gesendet werden.");
+    } finally {
+      setDashboardSending(false);
+    }
+  }
+
+  async function sendDashboardReminder() {
+    if (!dashboardLead) return;
+    setDashboardSendingReminder(true);
+    setDashboardError("");
+    setDashboardSuccess("");
+    try {
+      const response = await fetch("/api/crm/send-reminder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: dashboardLead.id,
+          recipientEmail: dashboardEditEmail || dashboardLead.recipientEmail,
+          company: dashboardEditCompany || dashboardLead.company,
+          city: dashboardLead.city,
+          shortMode: dashboardShortMode,
+          testMode: dashboardTestMode,
+          textBlocks: dashboardActiveBlocks,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setDashboardError(data.error || "Erinnerung konnte nicht gesendet werden.");
+        return;
+      }
+      setDashboardSuccess(
+        dashboardTestMode ? "Test-Erinnerung gesendet." : "Erinnerung gesendet."
+      );
+      setTimeout(() => setDashboardSuccess(""), 3000);
+      await loadLeads();
+    } catch {
+      setDashboardError("Erinnerung konnte nicht gesendet werden.");
+    } finally {
+      setDashboardSendingReminder(false);
+    }
+  }
+
   function openReminderModal(targets: LeadRecord[]) {
     setReminderTargets(targets);
     setActiveBlockIds([]);
@@ -354,6 +572,9 @@ export default function CrmPage() {
       setSendingReminder(false);
     }
   }
+
+  const isBusy =
+    dashboardSaving || dashboardGenerating || dashboardSending || dashboardSendingReminder;
 
   return (
     <>
@@ -450,7 +671,7 @@ export default function CrmPage() {
               }}
             >
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "1100px" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "900px" }}>
                   <thead>
                     <tr>
                       <th style={tableHeadStyle}>
@@ -484,9 +705,6 @@ export default function CrmPage() {
                         <SortButton label="Mails" active={sortKey === "mails"} direction={sortDirection} onClick={() => toggleSort("mails")} />
                       </th>
                       <th style={tableHeadStyle}>
-                        <SortButton label="Öffnungsrate" active={sortKey === "openRate"} direction={sortDirection} onClick={() => toggleSort("openRate")} />
-                      </th>
-                      <th style={tableHeadStyle}>
                         <SortButton label="Letzte Aktivitaet" active={sortKey === "updatedAt"} direction={sortDirection} onClick={() => toggleSort("updatedAt")} />
                       </th>
                       <th style={tableHeadStyle}>Aktionen</th>
@@ -518,21 +736,15 @@ export default function CrmPage() {
                           <td style={tableCellStyle}>{lead.phone || "-"}</td>
                           <td style={tableCellStyle}>{channelLabel(lead.channel)}</td>
                           <td style={tableCellStyle}>{lead.mails.length}</td>
-                          <td style={tableCellStyle}>
-                            <div style={{ fontWeight: 600 }}>{formatPercent(lead.openRate || 0)}</div>
-                            <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                              {lead.openedCount || 0} von {lead.sentCount || lead.mails.length}
-                            </div>
-                          </td>
                           <td style={tableCellStyle}>{formatDate(lead.updatedAt)}</td>
                           <td style={tableCellStyle}>
                             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                               <button
                                 type="button"
-                                onClick={() => setSelectedLead(lead)}
+                                onClick={() => openDashboard(lead)}
                                 style={buttonStyle(false)}
                               >
-                                Gesendete Emails
+                                Lead-Dashboard
                               </button>
                               <button
                                 type="button"
@@ -602,14 +814,15 @@ export default function CrmPage() {
         )}
       </div>
 
-      {selectedLead ? (
+      {/* Lead-Dashboard */}
+      {dashboardLead ? (
         <div
-          onClick={() => setSelectedLead(null)}
+          onClick={() => !isBusy && setDashboardLead(null)}
           style={{
             position: "fixed",
             inset: 0,
             background: "rgba(17, 24, 39, 0.45)",
-            zIndex: 50,
+            zIndex: 60,
             padding: "24px",
             overflowY: "auto",
           }}
@@ -617,126 +830,418 @@ export default function CrmPage() {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              maxWidth: "860px",
+              maxWidth: "1200px",
               margin: "40px auto",
               background: "#ffffff",
               borderRadius: "14px",
-              padding: "20px",
+              padding: "24px",
               boxSizing: "border-box",
             }}
           >
+            {/* Header */}
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 gap: "16px",
-                alignItems: "flex-start",
-                marginBottom: "18px",
+                alignItems: "center",
+                marginBottom: "20px",
               }}
             >
               <div>
-                <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "4px" }}>
-                  {selectedLead.company || "Lead"}
+                <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "2px" }}>
+                  Lead-Dashboard
                 </div>
-                <div style={{ color: "#374151", fontSize: "14px" }}>
-                  {selectedLead.recipientEmail || "-"}
+                <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                  {dashboardLead.company || dashboardLead.recipientEmail}
                 </div>
               </div>
-              <button type="button" onClick={() => setSelectedLead(null)} style={buttonStyle(false)}>
+              <button
+                type="button"
+                onClick={() => setDashboardLead(null)}
+                disabled={isBusy}
+                style={buttonStyle(false, isBusy)}
+              >
                 Schliessen
               </button>
             </div>
 
-            <div style={{ display: "grid", gap: "10px", marginBottom: "18px", fontSize: "14px" }}>
-              <div>
-                <strong>PLZ / Ort:</strong>{" "}
-                {[selectedLead.postalCode, selectedLead.city].filter(Boolean).join(" ") || "-"}
+            {dashboardError ? (
+              <div style={{ marginBottom: "14px", color: "#b91c1c", fontWeight: 600 }}>
+                {dashboardError}
               </div>
-              <div>
-                <strong>Kanal:</strong> {channelLabel(selectedLead.channel)}
+            ) : null}
+            {dashboardSuccess ? (
+              <div style={{ marginBottom: "14px", color: "#166534", fontWeight: 600 }}>
+                {dashboardSuccess}
               </div>
-              <div>
-                <strong>Telefon:</strong> {selectedLead.phone || "-"}
-              </div>
-              <div>
-                <strong>Website:</strong> {selectedLead.website || "-"}
-              </div>
-            </div>
+            ) : null}
 
-            <div style={{ display: "grid", gap: "12px" }}>
-              {selectedLead.mails.length === 0 ? (
-                <div style={{ fontSize: "14px", color: "#6b7280" }}>
-                  Noch keine gesendeten E-Mails vorhanden.
+            {/* Two-column layout */}
+            <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
+
+              {/* Left panel: 1/3 */}
+              <div
+                style={{
+                  width: "320px",
+                  minWidth: "260px",
+                  flexShrink: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                {/* Edit lead fields */}
+                <div
+                  style={{
+                    background: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    padding: "16px",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "12px" }}>
+                    Lead bearbeiten
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: "#6b7280",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Unternehmen
+                      </label>
+                      <input
+                        value={dashboardEditCompany}
+                        onChange={(e) => setDashboardEditCompany(e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: "#6b7280",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        E-Mail
+                      </label>
+                      <input
+                        value={dashboardEditEmail}
+                        onChange={(e) => setDashboardEditEmail(e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: "#6b7280",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Ansprechpartner
+                      </label>
+                      <input
+                        value={dashboardEditContactPerson}
+                        onChange={(e) => setDashboardEditContactPerson(e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: "#6b7280",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Telefon
+                      </label>
+                      <input
+                        value={dashboardEditPhone}
+                        onChange={(e) => setDashboardEditPhone(e.target.value)}
+                        style={inputStyle}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={saveDashboardLead}
+                      disabled={dashboardSaving}
+                      style={buttonStyle(false, dashboardSaving)}
+                    >
+                      {dashboardSaving ? "Wird gespeichert..." : "Speichern"}
+                    </button>
+                  </div>
                 </div>
-              ) : (
-                selectedLead.mails.map((mail) => (
+
+                {/* Text-Stil */}
+                <div
+                  style={{
+                    background: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    padding: "16px",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "10px" }}>
+                    Text-Stil
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {HOOK_STYLE_OPTIONS.map((option) => {
+                      const active = dashboardHookBaseId === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setDashboardHookBaseId(option.id)}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: "999px",
+                            border: "1px solid #cbd5e1",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            background: active ? "#111827" : "#ffffff",
+                            color: active ? "#ffffff" : "#111827",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Textbausteine */}
+                {bulkTextBlocks.length > 0 ? (
                   <div
-                    key={mail.id}
                     style={{
+                      background: "#f9fafb",
                       border: "1px solid #e5e7eb",
                       borderRadius: "12px",
-                      padding: "14px",
-                      background: "#f9fafb",
+                      padding: "16px",
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                        marginBottom: "8px",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ fontWeight: 700 }}>{mail.subject || "Ohne Betreff"}</div>
-                      <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                        {formatDate(mail.createdAt)}
-                      </div>
+                    <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "10px" }}>
+                      Textbausteine
                     </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: "6px",
-                        fontSize: "13px",
-                        color: "#374151",
-                        marginBottom: "10px",
-                      }}
-                    >
-                      <div>
-                        <strong>Kanal:</strong> {channelLabel(mail.channel)}
-                      </div>
-                      <div>
-                        <strong>Kurze Mail:</strong> {mail.shortMode ? "Ja" : "Nein"}
-                      </div>
-                      <div>
-                        <strong>Testmodus:</strong> {mail.testMode ? "Ja" : "Nein"}
-                      </div>
-                      <div>
-                        <strong>Text-Bausteine:</strong>{" "}
-                        {mail.textBlockTitles.length ? mail.textBlockTitles.join(", ") : "-"}
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        whiteSpace: "pre-wrap",
-                        background: "#ffffff",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "10px",
-                        padding: "12px",
-                        fontSize: "14px",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {mail.bodyText || "Kein gespeicherter Inhalt vorhanden."}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {bulkTextBlocks.map((block) => {
+                        const active = dashboardActiveBlockIds.includes(block.id);
+                        return (
+                          <button
+                            key={block.id}
+                            type="button"
+                            onClick={() =>
+                              setDashboardActiveBlockIds((prev) =>
+                                prev.includes(block.id)
+                                  ? prev.filter((id) => id !== block.id)
+                                  : [...prev, block.id]
+                              )
+                            }
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: "999px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "12px",
+                              cursor: "pointer",
+                              background: active ? "#111827" : "#ffffff",
+                              color: active ? "#ffffff" : "#111827",
+                            }}
+                          >
+                            {block.title}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                ))
-              )}
+                ) : null}
+
+                {/* Optionen */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "14px" }}>
+                  <label style={{ cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={dashboardTestMode}
+                      onChange={(e) => setDashboardTestMode(e.target.checked)}
+                      style={{ marginRight: "6px" }}
+                    />
+                    Testmodus
+                  </label>
+                  <label style={{ cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={dashboardShortMode}
+                      onChange={(e) => setDashboardShortMode(e.target.checked)}
+                      style={{ marginRight: "6px" }}
+                    />
+                    Kurze Mail
+                  </label>
+                </div>
+
+                {/* Aktionsbuttons */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={generateDashboardPreview}
+                    disabled={dashboardGenerating}
+                    style={buttonStyle(false, dashboardGenerating)}
+                  >
+                    {dashboardGenerating ? "Wird generiert..." : "Vorschau generieren"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendDashboardMail}
+                    disabled={dashboardSending || !dashboardPreviewText.trim()}
+                    style={buttonStyle(true, dashboardSending || !dashboardPreviewText.trim())}
+                  >
+                    {dashboardSending ? "Wird gesendet..." : "Kalt-Mail senden"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendDashboardReminder}
+                    disabled={dashboardSendingReminder}
+                    style={buttonStyle(false, dashboardSendingReminder)}
+                  >
+                    {dashboardSendingReminder ? "Wird gesendet..." : "Erinnerung senden"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Right panel: 2/3 */}
+              <div
+                style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "20px" }}
+              >
+                {/* Vorschau */}
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      fontSize: "14px",
+                      marginBottom: "8px",
+                      color: dashboardPreviewText ? "#111827" : "#6b7280",
+                    }}
+                  >
+                    {dashboardPreviewText
+                      ? "Text-Vorschau (editierbar)"
+                      : "Text-Vorschau — erst Vorschau generieren"}
+                  </div>
+                  <textarea
+                    value={dashboardPreviewText}
+                    onChange={(e) => setDashboardPreviewText(e.target.value)}
+                    placeholder="Stil wählen und 'Vorschau generieren' klicken..."
+                    style={{
+                      width: "100%",
+                      minHeight: "340px",
+                      padding: "14px",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "10px",
+                      fontSize: "14px",
+                      lineHeight: 1.6,
+                      fontFamily: "Arial, sans-serif",
+                      resize: "vertical",
+                      background: dashboardPreviewText ? "#ffffff" : "#f9fafb",
+                      boxSizing: "border-box",
+                      color: "#111827",
+                    }}
+                  />
+                </div>
+
+                {/* Gesendete E-Mails */}
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "10px" }}>
+                    Gesendete E-Mails ({dashboardLead.mails.length})
+                  </div>
+                  {dashboardLead.mails.length === 0 ? (
+                    <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                      Noch keine gesendeten E-Mails vorhanden.
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                      {dashboardLead.mails.map((mail) => (
+                        <div
+                          key={mail.id}
+                          style={{
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "10px",
+                            padding: "12px",
+                            background: "#f9fafb",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              gap: "12px",
+                              marginBottom: "6px",
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <div style={{ fontWeight: 600, fontSize: "14px" }}>
+                              {mail.subject || "Ohne Betreff"}
+                            </div>
+                            <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                              {formatDate(mail.createdAt)}
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "#6b7280",
+                              display: "flex",
+                              gap: "10px",
+                              flexWrap: "wrap",
+                              marginBottom: mail.bodyText ? "8px" : 0,
+                            }}
+                          >
+                            <span>{channelLabel(mail.channel)}</span>
+                            {mail.shortMode ? <span>Kurze Mail</span> : null}
+                            {mail.testMode ? <span>Testmodus</span> : null}
+                            {mail.textBlockTitles.length > 0 ? (
+                              <span>Bausteine: {mail.textBlockTitles.join(", ")}</span>
+                            ) : null}
+                          </div>
+                          {mail.bodyText ? (
+                            <div
+                              style={{
+                                whiteSpace: "pre-wrap",
+                                fontSize: "13px",
+                                lineHeight: 1.5,
+                                background: "#ffffff",
+                                border: "1px solid #e5e7eb",
+                                borderRadius: "8px",
+                                padding: "10px",
+                                maxHeight: "140px",
+                                overflowY: "auto",
+                              }}
+                            >
+                              {mail.bodyText}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
       ) : null}
 
+      {/* Batch-Erinnerung */}
       {reminderTargets.length > 0 ? (
         <div
           onClick={() => !sendingReminder && setReminderTargets([])}
