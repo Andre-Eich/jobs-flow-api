@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
-import { getLeadById, upsertLeadMail } from "@/lib/leadStore";
+import { getLeadById, syncLeadsFromTextControlling, upsertLeadMail } from "@/lib/leadStore";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
 import { sanitizeContactPerson } from "@/lib/contactPerson";
 import { compactInlineMailAttachments, loadJobsInlineMailAssets } from "@/lib/mailInlineAssets";
@@ -14,6 +14,40 @@ type TextBlock = {
 
 function safeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeCompany(company: string) {
+  return company
+    .toLowerCase()
+    .replace(/\b(gmbh|mbh|ag|ug|kg|e\.v\.|ev|stadt|gemeinde)\b/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findLeadForReminder(args: {
+  leadId: string;
+  recipientEmail?: string;
+  company?: string;
+  city?: string;
+}) {
+  const byId = getLeadById(safeString(args.leadId));
+  if (byId) return byId;
+
+  const recipientEmail = safeString(args.recipientEmail).toLowerCase();
+  const normalizedCompany = normalizeCompany(safeString(args.company));
+  const city = safeString(args.city).toLowerCase();
+
+  return syncLeadsFromTextControlling().find((lead) => {
+    const sameEmail =
+      recipientEmail && safeString(lead.recipientEmail).toLowerCase() === recipientEmail;
+    const sameCompany =
+      normalizedCompany &&
+      normalizeCompany(lead.company) === normalizedCompany &&
+      (!city || safeString(lead.city).toLowerCase() === city);
+
+    return sameEmail || sameCompany;
+  }) || null;
 }
 
 function escapeHtml(value: string) {
@@ -91,12 +125,20 @@ export async function POST(req: Request) {
 
     const {
       leadId,
+      recipientEmail: lookupRecipientEmail = "",
+      company = "",
+      city = "",
       shortMode = false,
       testMode = true,
       textBlocks = [],
     } = await req.json();
 
-    const lead = getLeadById(safeString(leadId));
+    const lead = findLeadForReminder({
+      leadId: safeString(leadId),
+      recipientEmail: safeString(lookupRecipientEmail),
+      company: safeString(company),
+      city: safeString(city),
+    });
     if (!lead) {
       return NextResponse.json({ error: "Lead wurde nicht gefunden." }, { status: 404 });
     }

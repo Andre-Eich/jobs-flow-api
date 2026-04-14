@@ -321,6 +321,9 @@ export default function CrmPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             leadId: lead.id,
+            recipientEmail: lead.recipientEmail,
+            company: lead.company,
+            city: lead.city,
             shortMode,
             testMode,
             textBlocks: activeBlocks,
