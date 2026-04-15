@@ -488,9 +488,9 @@ WICHTIG:
 - Keine Bewerbung
 - Kein Betreff
 - Keine Signatur
-- Keine Anrede am Anfang
+- Keine Anrede im KI-Body; sie wird anschliessend automatisch als "Guten Tag ..." ergaenzt
 - Keine Grussformel am Ende, die kommt spaeter separat
-- Kein "Guten Tag", kein "Hallo", keine direkte Begruessung
+- Kein "Guten Tag", kein "Hallo", keine direkte Begruessung im JSON-Body
 - Der erste inhaltliche Satz muss mit einem kleingeschriebenen Wort beginnen
 - Verwende echte deutsche Umlaute: ä, ö, ü
 - Wenn eine Grussformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
@@ -549,7 +549,8 @@ Kurzmodus:
       description: "Zentrale Begruessungs- und Footer-Logik fuer Bulk-Mails.",
       preview: "Guten Tag {contactPerson}, ... Mit freundlichen Grüßen",
       content: `Anrede:
-- Mit Ansprechpartner: Guten Tag {contactPerson},
+- Mit Ansprechpartner: Guten Tag Frau/Herr {lastName}, wenn das Geschlecht aus dem Vornamen erkennbar ist
+- Mit Ansprechpartner ohne eindeutiges Geschlecht: Guten Tag {lastName},
 - Ohne Ansprechpartner: Guten Tag,
 
 Abschluss:

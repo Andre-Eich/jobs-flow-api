@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
-import { sanitizeContactPerson } from "@/lib/contactPerson";
+import { buildFormalContactGreeting, sanitizeContactPerson } from "@/lib/contactPerson";
 
 type TextBlock = {
   id?: string;
@@ -69,9 +69,9 @@ WICHTIG:
 - Keine Bewerbung
 - Kein Betreff
 - Keine Signatur
-- Keine Anrede am Anfang
+- Keine Anrede im JSON-Body; sie wird anschliessend automatisch als "Guten Tag ..." ergaenzt
 - Keine Grußformel am Ende, die kommt später separat
-- Kein "Guten Tag", kein "Hallo", keine direkte Begruessung
+- Kein "Guten Tag", kein "Hallo", keine direkte Begruessung im JSON-Body
 - Der erste inhaltliche Satz muss mit einem kleingeschriebenen Wort beginnen
 - Verwende echte deutsche Umlaute: ä, ö, ü
 - Wenn eine Grußformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
@@ -143,6 +143,8 @@ Antworte nur als JSON mit diesem Format:
     }
 
     const finalText = [
+      buildFormalContactGreeting(contactPerson),
+      "",
       bodyText,
       ...(blockTexts.length ? ["", ...blockTexts] : []),
       "",

@@ -3,7 +3,7 @@ import { Resend } from "resend";
 import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { getLeadById, syncLeadsFromTextControlling, upsertLeadMail } from "@/lib/leadStore";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
-import { sanitizeContactPerson } from "@/lib/contactPerson";
+import { buildFormalContactGreeting, sanitizeContactPerson } from "@/lib/contactPerson";
 import { compactInlineMailAttachments, loadJobsInlineMailAssets } from "@/lib/mailInlineAssets";
 
 type TextBlock = {
@@ -103,7 +103,7 @@ function buildReminderText(args: {
   textBlocks: TextBlock[];
 }) {
   const safeContactPerson = sanitizeContactPerson(args.contactPerson);
-  const greeting = safeContactPerson ? `Guten Tag ${safeContactPerson},` : "Guten Tag,";
+  const greeting = buildFormalContactGreeting(safeContactPerson);
   const blocks = args.textBlocks
     .map((block) => safeString(block?.text))
     .filter(Boolean);

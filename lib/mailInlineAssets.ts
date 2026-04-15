@@ -3,7 +3,7 @@ import path from "node:path";
 
 type InlineAttachment = {
   filename: string;
-  content: Buffer;
+  content: string;
   contentType: string;
   contentId: string;
 };
@@ -20,7 +20,7 @@ async function loadInlineAttachment(args: {
     const content = await fs.readFile(filePath);
     return {
       filename: args.filename,
-      content,
+      content: content.toString("base64"),
       contentType: args.contentType,
       contentId: args.contentId,
     } satisfies InlineAttachment;
