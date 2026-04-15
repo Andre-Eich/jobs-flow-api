@@ -8,7 +8,8 @@ type PromptTextArea =
   | "erinnerungen"
   | "crm"
   | "service-text"
-  | "text-generator";
+  | "text-generator"
+  | "textbausteine";
 
 type PromptTextEntry = {
   id: string;
@@ -24,6 +25,12 @@ type PromptTextEntry = {
 };
 
 type KaltSubTab = "standard" | "advanced";
+
+type BulkTextBlock = {
+  id: string;
+  title: string;
+  text: string;
+};
 
 type HookVariantStats = {
   hookVariantId: string;
@@ -55,7 +62,10 @@ const AREA_OPTIONS: Array<{ key: PromptTextArea; label: string }> = [
   { key: "crm", label: "CRM" },
   { key: "service-text", label: "Service Text" },
   { key: "text-generator", label: "Text Generator" },
+  { key: "textbausteine", label: "Textbausteine" },
 ];
+
+const BULK_TEXT_BLOCKS_KEY = "bulkTextBlocksV1";
 
 function formatDate(dateString: string) {
   try {
@@ -254,6 +264,9 @@ export default function PromptsTextPage() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [textStats, setTextStats] = useState<HookBaseStats[]>([]);
+  const [bulkTextBlocks, setBulkTextBlocks] = useState<BulkTextBlock[]>([]);
+  const [bulkTextBlocksLoaded, setBulkTextBlocksLoaded] = useState(false);
+  const [editingBulkTextBlock, setEditingBulkTextBlock] = useState<BulkTextBlock | null>(null);
 
   async function loadEntries() {
     try {
@@ -278,6 +291,37 @@ export default function PromptsTextPage() {
   useEffect(() => {
     loadEntries();
   }, []);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(BULK_TEXT_BLOCKS_KEY);
+      if (!stored) {
+        setBulkTextBlocksLoaded(true);
+        return;
+      }
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setBulkTextBlocks(
+          parsed
+            .map((item) => ({
+              id: String(item?.id || crypto.randomUUID()),
+              title: String(item?.title || "").trim(),
+              text: String(item?.text || "").trim(),
+            }))
+            .filter((item) => item.title || item.text)
+        );
+      }
+    } catch {
+      setBulkTextBlocks([]);
+    } finally {
+      setBulkTextBlocksLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!bulkTextBlocksLoaded) return;
+    localStorage.setItem(BULK_TEXT_BLOCKS_KEY, JSON.stringify(bulkTextBlocks));
+  }, [bulkTextBlocks, bulkTextBlocksLoaded]);
 
   useEffect(() => {
     async function loadTextStats() {
@@ -373,6 +417,42 @@ export default function PromptsTextPage() {
     () => buildExampleMailPreview(activeArea, effectiveEntries),
     [activeArea, effectiveEntries]
   );
+
+  function openNewBulkTextBlock() {
+    setEditingBulkTextBlock({ id: crypto.randomUUID(), title: "", text: "" });
+    setError("");
+    setSuccessMessage("");
+  }
+
+  function saveBulkTextBlock() {
+    if (!editingBulkTextBlock) return;
+
+    const title = editingBulkTextBlock.title.trim();
+    const text = editingBulkTextBlock.text.trim();
+    if (!title || !text) {
+      setError("Bitte Titel und Text fuer den Baustein ausfuellen.");
+      return;
+    }
+
+    setBulkTextBlocks((prev) => {
+      const exists = prev.some((item) => item.id === editingBulkTextBlock.id);
+      const nextBlock = { ...editingBulkTextBlock, title, text };
+      if (exists) {
+        return prev.map((item) => (item.id === editingBulkTextBlock.id ? nextBlock : item));
+      }
+      return [...prev, nextBlock];
+    });
+    setEditingBulkTextBlock(null);
+    setError("");
+    setSuccessMessage(`Textbaustein "${title}" wurde gespeichert.`);
+  }
+
+  function deleteBulkTextBlock(id: string) {
+    const block = bulkTextBlocks.find((item) => item.id === id);
+    setBulkTextBlocks((prev) => prev.filter((item) => item.id !== id));
+    setEditingBulkTextBlock(null);
+    setSuccessMessage(block ? `Textbaustein "${block.title}" wurde geloescht.` : "Textbaustein wurde geloescht.");
+  }
 
   function openEntry(entry: PromptTextEntry) {
     setSelectedEntryId(entry.id);
@@ -725,7 +805,183 @@ export default function PromptsTextPage() {
           </div>
         ) : null}
 
-        {loading ? (
+        {activeArea === "textbausteine" ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: "18px",
+              alignItems: "flex-start",
+            }}
+          >
+            <div
+              style={{
+                border: "1px solid #d1d5db",
+                borderRadius: "16px",
+                background: "#ffffff",
+                padding: "18px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "12px",
+                  marginBottom: "14px",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "18px", fontWeight: 700 }}>Textbausteine</div>
+                  <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
+                    Wiederverwendbare Bausteine fuer Streumails und CRM-Erinnerungen.
+                  </div>
+                </div>
+                <button type="button" onClick={openNewBulkTextBlock} style={smallButtonStyle(false)}>
+                  + Baustein
+                </button>
+              </div>
+
+              {bulkTextBlocks.length === 0 ? (
+                <div style={{ color: "#6b7280", fontSize: "14px" }}>
+                  Noch keine Textbausteine vorhanden.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "10px" }}>
+                  {bulkTextBlocks.map((block) => (
+                    <button
+                      key={block.id}
+                      type="button"
+                      onClick={() => setEditingBulkTextBlock({ ...block })}
+                      style={{
+                        textAlign: "left",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "12px",
+                        background: editingBulkTextBlock?.id === block.id ? "#f9fafb" : "#ffffff",
+                        padding: "14px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ fontSize: "15px", fontWeight: 700, marginBottom: "6px" }}>
+                        {block.title}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          color: "#374151",
+                          lineHeight: 1.45,
+                          whiteSpace: "pre-wrap",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {block.text}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                border: "1px solid #d1d5db",
+                borderRadius: "16px",
+                background: "#ffffff",
+                padding: "18px",
+              }}
+            >
+              <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "14px" }}>
+                {editingBulkTextBlock ? "Textbaustein bearbeiten" : "Textbaustein auswaehlen"}
+              </div>
+
+              {editingBulkTextBlock ? (
+                <div style={{ display: "grid", gap: "14px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", fontWeight: 700, marginBottom: "6px" }}>
+                      Badge-Titel
+                    </label>
+                    <input
+                      value={editingBulkTextBlock.title}
+                      onChange={(event) =>
+                        setEditingBulkTextBlock((prev) =>
+                          prev ? { ...prev, title: event.target.value } : prev
+                        )
+                      }
+                      placeholder="z. B. Aktion"
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        boxSizing: "border-box",
+                        fontSize: "14px",
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", fontWeight: 700, marginBottom: "6px" }}>
+                      Textbaustein
+                    </label>
+                    <textarea
+                      value={editingBulkTextBlock.text}
+                      onChange={(event) =>
+                        setEditingBulkTextBlock((prev) =>
+                          prev ? { ...prev, text: event.target.value } : prev
+                        )
+                      }
+                      rows={10}
+                      placeholder="Text, der optional in Mails eingefuegt wird. Links koennen als [Linktext](https://example.de) geschrieben werden."
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "8px",
+                        boxSizing: "border-box",
+                        fontSize: "14px",
+                        resize: "vertical",
+                        lineHeight: 1.5,
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+                    <div>
+                      {bulkTextBlocks.some((item) => item.id === editingBulkTextBlock.id) ? (
+                        <button
+                          type="button"
+                          onClick={() => deleteBulkTextBlock(editingBulkTextBlock.id)}
+                          style={{ ...smallButtonStyle(false), borderColor: "#fca5a5", color: "#b91c1c" }}
+                        >
+                          Loeschen
+                        </button>
+                      ) : null}
+                    </div>
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => setEditingBulkTextBlock(null)}
+                        style={smallButtonStyle(false)}
+                      >
+                        Abbrechen
+                      </button>
+                      <button type="button" onClick={saveBulkTextBlock} style={smallButtonStyle(true)}>
+                        Speichern
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color: "#6b7280", fontSize: "14px", lineHeight: 1.5 }}>
+                  Waehle links einen bestehenden Baustein oder lege einen neuen an.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : loading ? (
           <div style={{ color: "#6b7280" }}>Prompts & Texte werden geladen...</div>
         ) : visibleEntries.length === 0 ? (
           <div style={{ color: "#6b7280" }}>Fuer diesen Bereich gibt es noch keine Eintraege.</div>
