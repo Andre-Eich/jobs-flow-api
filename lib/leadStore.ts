@@ -81,6 +81,40 @@ export type UpsertLeadInput = {
   channel: "kaltakquise" | "streumail";
 };
 
+function readJsonArray(file: string) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf-8").replace(/^\uFEFF/, ""));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function findNewestNonEmptyBackup() {
+  if (!fs.existsSync(backupDir)) return "";
+
+  return fs
+    .readdirSync(backupDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => {
+      const currentPath = path.join(backupDir, entry.name);
+      return {
+        path: currentPath,
+        mtime: fs.statSync(currentPath).mtime.getTime(),
+      };
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+    .find((entry) => readJsonArray(entry.path).length > 0)?.path || "";
+}
+
+function restoreLeadsFromBackupIfPossible() {
+  const backupPath = findNewestNonEmptyBackup();
+  if (!backupPath) return false;
+
+  fs.copyFileSync(backupPath, filePath);
+  return true;
+}
+
 function ensureFile() {
   const dir = path.dirname(filePath);
 
@@ -89,7 +123,15 @@ function ensureFile() {
   }
 
   if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, "[]", "utf-8");
+    if (!restoreLeadsFromBackupIfPossible()) {
+      fs.writeFileSync(filePath, "[]", "utf-8");
+    }
+    return;
+  }
+
+  const leads = readJsonArray(filePath);
+  if (leads.length === 0) {
+    restoreLeadsFromBackupIfPossible();
   }
 }
 
@@ -210,9 +252,7 @@ function normalizeLeadRecord(lead: LeadRecord): LeadRecord {
 export function getLeads() {
   try {
     ensureFile();
-    const file = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(file);
-    return Array.isArray(parsed) ? parsed.map((item) => normalizeLeadRecord(item)) : [];
+    return readJsonArray(filePath).map((item) => normalizeLeadRecord(item));
   } catch {
     return [];
   }
@@ -247,19 +287,13 @@ function findLeadIndex(leads: LeadRecord[], input: UpsertLeadMailInput) {
   const normalizedName = normalizeCompany(input.company);
   const normalizedCity = safeString(input.city).toLowerCase();
 
-  if (normalizedEmail) {
-    return leads.findIndex(
-      (lead) => safeString(lead.recipientEmail).toLowerCase() === normalizedEmail
-    );
-  }
-
   if (normalizedWebsite) {
     return leads.findIndex(
       (lead) => normalizeWebsite(safeString(lead.website)).toLowerCase() === normalizedWebsite
     );
   }
 
-  return leads.findIndex((lead) => {
+  const companyIndex = leads.findIndex((lead) => {
     const companyMatch =
       normalizedName &&
       normalizeCompany(lead.company) === normalizedName &&
@@ -267,6 +301,18 @@ function findLeadIndex(leads: LeadRecord[], input: UpsertLeadMailInput) {
 
     return companyMatch;
   });
+
+  if (companyIndex !== -1) {
+    return companyIndex;
+  }
+
+  if (normalizedEmail && !normalizedName) {
+    return leads.findIndex(
+      (lead) => safeString(lead.recipientEmail).toLowerCase() === normalizedEmail
+    );
+  }
+
+  return -1;
 }
 
 function findLeadIndexByLeadData(leads: LeadRecord[], input: UpsertLeadInput) {
@@ -275,19 +321,13 @@ function findLeadIndexByLeadData(leads: LeadRecord[], input: UpsertLeadInput) {
   const normalizedName = normalizeCompany(input.company);
   const normalizedCity = safeString(input.city).toLowerCase();
 
-  if (normalizedEmail) {
-    return leads.findIndex(
-      (lead) => safeString(lead.recipientEmail).toLowerCase() === normalizedEmail
-    );
-  }
-
   if (normalizedWebsite) {
     return leads.findIndex(
       (lead) => normalizeWebsite(safeString(lead.website)).toLowerCase() === normalizedWebsite
     );
   }
 
-  return leads.findIndex((lead) => {
+  const companyIndex = leads.findIndex((lead) => {
     const companyMatch =
       normalizedName &&
       normalizeCompany(lead.company) === normalizedName &&
@@ -295,6 +335,18 @@ function findLeadIndexByLeadData(leads: LeadRecord[], input: UpsertLeadInput) {
 
     return companyMatch;
   });
+
+  if (companyIndex !== -1) {
+    return companyIndex;
+  }
+
+  if (normalizedEmail && !normalizedName) {
+    return leads.findIndex(
+      (lead) => safeString(lead.recipientEmail).toLowerCase() === normalizedEmail
+    );
+  }
+
+  return -1;
 }
 
 export function upsertLead(input: UpsertLeadInput) {

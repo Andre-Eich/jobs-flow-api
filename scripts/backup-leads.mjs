@@ -23,11 +23,22 @@ function timestamp(date = new Date()) {
 
 function safeJsonArray(filePath) {
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8").replace(/^\uFEFF/, ""));
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
+}
+
+function hasNonEmptyBackup() {
+  if (!fs.existsSync(backupDir)) return false;
+
+  return fs
+    .readdirSync(backupDir, { withFileTypes: true })
+    .some((entry) => {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) return false;
+      return safeJsonArray(path.join(backupDir, entry.name)).length > 0;
+    });
 }
 
 function cleanupOldBackups() {
@@ -54,6 +65,12 @@ if (!fs.existsSync(sourcePath)) {
 fs.mkdirSync(backupDir, { recursive: true });
 
 const leads = safeJsonArray(sourcePath);
+
+if (leads.length === 0 && hasNonEmptyBackup()) {
+  console.log("Lead-Backup uebersprungen: leads.json ist leer, ein nicht-leeres Backup existiert bereits.");
+  process.exit(0);
+}
+
 const backupPath = path.join(backupDir, `leads-${timestamp()}.json`);
 fs.copyFileSync(sourcePath, backupPath);
 cleanupOldBackups();

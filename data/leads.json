@@ -1,1 +1,182 @@
-﻿[]
+﻿[
+    {
+        "id":  "45b8a9e9-ece8-46ce-9db6-8e076634438f",
+        "company":  "BildungstrÃ¤ger 15230 18",
+        "postalCode":  "",
+        "city":  "",
+        "recipientEmail":  "a.eichstaedt@jobs-in-berlin-brandenburg.de",
+        "phone":  "",
+        "website":  "",
+        "contactPerson":  "",
+        "industry":  "",
+        "analysisStars":  0,
+        "analysisSummary":  "",
+        "foundJobTitles":  [
+
+                           ],
+        "foundCareerUrls":  [
+
+                            ],
+        "qualityStars":  0,
+        "qualitySummary":  "",
+        "optOut":  false,
+        "optOutAt":  "",
+        "archived":  false,
+        "archivedAt":  "",
+        "channel":  "streumail",
+        "createdAt":  "2026-04-10T10:49:33.591Z",
+        "updatedAt":  "2026-04-15T08:36:07.1460991Z",
+        "mails":  [
+                      {
+                          "id":  "45b8a9e9-ece8-46ce-9db6-8e076634438f",
+                          "emailId":  "",
+                          "createdAt":  "2026-04-10T10:49:33.591Z",
+                          "subject":  "ZusÃ¤tzliche Bewerber fÃ¼r Ihre Anzeige",
+                          "bodyText":  "",
+                          "textBlockTitles":  [
+                                                  null
+                                              ],
+                          "shortMode":  false,
+                          "testMode":  false,
+                          "channel":  "streumail",
+                          "followUp":  false,
+                          "originalEmailId":  ""
+                      }
+                  ]
+    },
+    {
+        "id":  "b0acdbd2-6f43-4651-981a-47e18a040e76",
+        "company":  "Immobilienservice 15230 15",
+        "postalCode":  "",
+        "city":  "",
+        "recipientEmail":  "a.eichstaedt@jobs-in-berlin-brandenburg.de",
+        "phone":  "",
+        "website":  "",
+        "contactPerson":  "",
+        "industry":  "",
+        "analysisStars":  0,
+        "analysisSummary":  "",
+        "foundJobTitles":  [
+
+                           ],
+        "foundCareerUrls":  [
+
+                            ],
+        "qualityStars":  0,
+        "qualitySummary":  "",
+        "optOut":  false,
+        "optOutAt":  "",
+        "archived":  false,
+        "archivedAt":  "",
+        "channel":  "streumail",
+        "createdAt":  "2026-04-10T10:49:33.477Z",
+        "updatedAt":  "2026-04-15T08:36:07.1460991Z",
+        "mails":  [
+                      {
+                          "id":  "b0acdbd2-6f43-4651-981a-47e18a040e76",
+                          "emailId":  "",
+                          "createdAt":  "2026-04-10T10:49:33.477Z",
+                          "subject":  "ZusÃ¤tzliche Bewerber fÃ¼r Ihre Anzeige",
+                          "bodyText":  "",
+                          "textBlockTitles":  [
+                                                  null
+                                              ],
+                          "shortMode":  false,
+                          "testMode":  false,
+                          "channel":  "streumail",
+                          "followUp":  false,
+                          "originalEmailId":  ""
+                      }
+                  ]
+    },
+    {
+        "id":  "69ca8880-e53b-4621-9a39-9253e82f26c8",
+        "company":  "Gastro Service 15230 12",
+        "postalCode":  "",
+        "city":  "",
+        "recipientEmail":  "a.eichstaedt@jobs-in-berlin-brandenburg.de",
+        "phone":  "",
+        "website":  "",
+        "contactPerson":  "",
+        "industry":  "",
+        "analysisStars":  0,
+        "analysisSummary":  "",
+        "foundJobTitles":  [
+
+                           ],
+        "foundCareerUrls":  [
+
+                            ],
+        "qualityStars":  0,
+        "qualitySummary":  "",
+        "optOut":  false,
+        "optOutAt":  "",
+        "archived":  false,
+        "archivedAt":  "",
+        "channel":  "streumail",
+        "createdAt":  "2026-04-10T10:49:33.370Z",
+        "updatedAt":  "2026-04-15T08:36:07.1460991Z",
+        "mails":  [
+                      {
+                          "id":  "69ca8880-e53b-4621-9a39-9253e82f26c8",
+                          "emailId":  "",
+                          "createdAt":  "2026-04-10T10:49:33.370Z",
+                          "subject":  "Kurze Idee zu Ihrer Stellenanzeige",
+                          "bodyText":  "",
+                          "textBlockTitles":  [
+                                                  null
+                                              ],
+                          "shortMode":  false,
+                          "testMode":  false,
+                          "channel":  "streumail",
+                          "followUp":  false,
+                          "originalEmailId":  ""
+                      }
+                  ]
+    },
+    {
+        "id":  "cbd0cff5-d25f-4569-a938-3a31f28c325e",
+        "company":  "Elektrotechnik 15230 11",
+        "postalCode":  "",
+        "city":  "",
+        "recipientEmail":  "a.eichstaedt@jobs-in-berlin-brandenburg.de",
+        "phone":  "",
+        "website":  "",
+        "contactPerson":  "",
+        "industry":  "",
+        "analysisStars":  0,
+        "analysisSummary":  "",
+        "foundJobTitles":  [
+
+                           ],
+        "foundCareerUrls":  [
+
+                            ],
+        "qualityStars":  0,
+        "qualitySummary":  "",
+        "optOut":  false,
+        "optOutAt":  "",
+        "archived":  false,
+        "archivedAt":  "",
+        "channel":  "streumail",
+        "createdAt":  "2026-04-10T10:49:33.248Z",
+        "updatedAt":  "2026-04-15T08:36:07.1460991Z",
+        "mails":  [
+                      {
+                          "id":  "cbd0cff5-d25f-4569-a938-3a31f28c325e",
+                          "emailId":  "",
+                          "createdAt":  "2026-04-10T10:49:33.248Z",
+                          "subject":  "ZusÃ¤tzliche Bewerber fÃ¼r Ihre Anzeige",
+                          "bodyText":  "",
+                          "textBlockTitles":  [
+                                                  null
+                                              ],
+                          "shortMode":  false,
+                          "testMode":  false,
+                          "channel":  "streumail",
+                          "followUp":  false,
+                          "originalEmailId":  ""
+                      }
+                  ]
+    }
+]

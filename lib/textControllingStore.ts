@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 
 const filePath = path.join(process.cwd(), "data", "textControlling.json");
+const backupRoot = path.join(process.cwd(), "data", "backups");
 
 export type TextControllingEntry = {
   id: string;
@@ -36,6 +37,48 @@ export type TextControllingEntry = {
   reminderSent?: boolean;
 };
 
+function readJsonArray(file: string) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf-8").replace(/^\uFEFF/, ""));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function findTextControllingBackups(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+
+  const result: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      result.push(...findTextControllingBackups(entryPath));
+      continue;
+    }
+    if (entry.isFile() && entry.name === "textControlling.json") {
+      result.push(entryPath);
+    }
+  }
+
+  return result;
+}
+
+function restoreTextControllingFromBackupIfPossible() {
+  const backupPath = findTextControllingBackups(backupRoot)
+    .map((currentPath) => ({
+      path: currentPath,
+      mtime: fs.statSync(currentPath).mtime.getTime(),
+    }))
+    .sort((a, b) => b.mtime - a.mtime)
+    .find((entry) => readJsonArray(entry.path).length > 0)?.path;
+
+  if (!backupPath) return false;
+
+  fs.copyFileSync(backupPath, filePath);
+  return true;
+}
+
 function ensureFile() {
   const dir = path.dirname(filePath);
 
@@ -44,17 +87,21 @@ function ensureFile() {
   }
 
   if (!fs.existsSync(filePath)) {
-    fs.writeFileSync(filePath, "[]", "utf-8");
+    if (!restoreTextControllingFromBackupIfPossible()) {
+      fs.writeFileSync(filePath, "[]", "utf-8");
+    }
+    return;
+  }
+
+  if (readJsonArray(filePath).length === 0) {
+    restoreTextControllingFromBackupIfPossible();
   }
 }
 
 export function getTextControllingEntries(): TextControllingEntry[] {
   try {
     ensureFile();
-    const file = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(file);
-
-    return Array.isArray(parsed) ? parsed : [];
+    return readJsonArray(filePath);
   } catch {
     return [];
   }
