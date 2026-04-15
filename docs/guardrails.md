@@ -37,6 +37,7 @@ Bei einer geplanten Aenderung in diesen Bereichen erst mit roter Warnung Rueckfr
 - `app/api/send-bulk-mail/route.ts`
 - `app/api/send-mail/route.ts`
 - `app/api/crm/leads/route.ts`
+- `data/*.json` darf niemals fuer normale Code-Aenderungen gestaged, committed oder gepusht werden
 
 ### `gelb`
 Bei einer geplanten Aenderung in diesen Bereichen mit gelber Warnung Rueckfrage halten:
@@ -74,3 +75,8 @@ Vor Aenderungen an `geschuetzt` oder `nur additiv`:
 - zuerst vorhandene Logik lesen
 - bestehendes Verhalten erhalten
 - nachher mindestens `eslint` und `tsc --noEmit` pruefen
+
+Vor jedem `cup`:
+- `git status --short` pruefen
+- keine Laufzeitdaten committen: `data/leads.json`, `data/textControlling.json`, `data/reminders.json`, `data/bulkPackages.json`
+- wenn eine dieser Dateien auftaucht: stoppen und erst klaeren, niemals einfach mitstagen
