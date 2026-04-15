@@ -139,7 +139,7 @@ export async function POST(req: Request) {
     }
 
     const safeContactPerson = sanitizeContactPerson(String(contactPerson || ""));
-    const preparedText = ensureGreetingAndClosing(String(text || ""), safeContactPerson);
+    const preparedText = ensureGreetingAndClosing(String(text || ""), String(contactPerson || ""));
     const preparedTextPlain = markdownLinksToPlainText(preparedText);
     const normalizedTextBlockTitles = Array.isArray(textBlockTitles) ? textBlockTitles : [];
     const { portrait, footer } = await loadJobsInlineMailAssets();

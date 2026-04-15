@@ -28,14 +28,18 @@ const ROLE_WORDS = new Set([
 const FEMALE_FIRST_NAMES = new Set([
   "anna",
   "anne",
+  "antje",
   "birgit",
   "carmen",
   "christine",
   "claudia",
   "daniela",
+  "diana",
   "eva",
   "franziska",
+  "gabriele",
   "heike",
+  "ines",
   "julia",
   "kathrin",
   "katrin",
@@ -44,7 +48,9 @@ const FEMALE_FIRST_NAMES = new Set([
   "maria",
   "marie",
   "melanie",
+  "petra",
   "nina",
+  "sabine",
   "sandra",
   "sarah",
   "simone",
@@ -58,6 +64,7 @@ const FEMALE_FIRST_NAMES = new Set([
 const MALE_FIRST_NAMES = new Set([
   "alexander",
   "andreas",
+  "andre",
   "christian",
   "daniel",
   "david",
@@ -77,6 +84,7 @@ const MALE_FIRST_NAMES = new Set([
   "martin",
   "michael",
   "mike",
+  "paul",
   "oliver",
   "peter",
   "rene",
@@ -157,6 +165,13 @@ function inferGenderFromFirstName(firstName: string) {
   return "";
 }
 
+function inferExplicitSalutation(value: string) {
+  const normalized = String(value || "").toLocaleLowerCase("de-DE");
+  if (/(^|\s)frau(\s|\.|,|$)/.test(normalized)) return "female";
+  if (/(^|\s)herr(\s|\.|,|$)/.test(normalized)) return "male";
+  return "";
+}
+
 export function buildFormalContactGreeting(value: string) {
   const safeContactPerson = sanitizeContactPerson(value);
   if (!safeContactPerson) {
@@ -166,7 +181,7 @@ export function buildFormalContactGreeting(value: string) {
   const tokens = safeContactPerson.split(/\s+/).filter(Boolean);
   const firstName = tokens[0] || "";
   const lastName = tokens[tokens.length - 1] || "";
-  const gender = inferGenderFromFirstName(firstName);
+  const gender = inferExplicitSalutation(value) || inferGenderFromFirstName(firstName);
 
   if (gender === "female" && lastName) {
     return `Guten Tag Frau ${lastName},`;
@@ -176,7 +191,7 @@ export function buildFormalContactGreeting(value: string) {
     return `Guten Tag Herr ${lastName},`;
   }
 
-  return lastName ? `Guten Tag ${lastName},` : "Guten Tag,";
+  return lastName ? `Guten Tag Herr ${lastName},` : "Guten Tag,";
 }
 
 export function sanitizeContactPersonOptions(values: string[]) {

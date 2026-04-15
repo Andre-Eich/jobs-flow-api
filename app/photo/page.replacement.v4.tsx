@@ -21,25 +21,19 @@ type MailRecord = {
   text: string;
   status: "sent" | "test" | "failed" | "draft";
   createdAt: string;
+  kind?: "single" | "bulk";
+  batchId?: string;
+  searchLocation?: string;
+  radiusKm?: string;
+  textBlockTitles?: string[];
+  shortMode?: boolean;
+  testMode?: boolean;
+  phone?: string;
   lastEvent?: string;
   reminderLabel?: string;
   reminded?: boolean;
   reminderSentAt?: string;
   reminderSubject?: string;
-};
-
-type MailDetail = {
-  id: string;
-  to: string[];
-  from: string;
-  subject: string;
-  createdAt: string;
-  html: string;
-  text: string;
-  lastEvent: string;
-  cc: string[];
-  bcc: string[];
-  replyTo: string[];
 };
 
 type HookVariantStats = {
@@ -83,6 +77,22 @@ type BulkPackageMailRecord = {
   status: "planned" | "sending" | "sent" | "failed";
   errorMessage?: string;
   createdAt: string;
+  updatedAt?: string;
+  sentAt?: string;
+};
+
+type BulkPackageRecord = {
+  id: string;
+  label?: string;
+  createdAt: string;
+  updatedAt?: string;
+  searchLocation: string;
+  radiusKm: string;
+  plannedCount: number;
+  textBlockTitles: string[];
+  shortMode: boolean;
+  testMode: boolean;
+  mails: BulkPackageMailRecord[];
 };
 
 const EMPTY_BULK_LEADS: BulkLead[] = [];
@@ -115,6 +125,29 @@ function formatDate(dateString: string) {
   }
 }
 
+function formatDateOnly(dateString: string) {
+  try {
+    return new Date(dateString).toLocaleDateString("de-DE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return dateString;
+  }
+}
+
+function formatTimeOnly(dateString: string) {
+  try {
+    return new Date(dateString).toLocaleTimeString("de-DE", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
 function isWithinLast14Days(dateString: string) {
   if (!dateString) return false;
   const date = new Date(dateString).getTime();
@@ -123,12 +156,15 @@ function isWithinLast14Days(dateString: string) {
   return diff <= 14 * 24 * 60 * 60 * 1000;
 }
 
-function displayMailTitle(mail: Pick<MailRecord, "jobTitle" | "subject">) {
-  return mail.jobTitle?.trim() || mail.subject || "Ohne Betreff";
-}
-
 function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)} %`;
+}
+
+function packageStatusLabel(status: BulkPackageMailRecord["status"]) {
+  if (status === "sent") return "Gesendet";
+  if (status === "sending") return "Wird gesendet";
+  if (status === "failed") return "Fehler";
+  return "Geplant";
 }
 
 function primaryButtonStyle(disabled: boolean): React.CSSProperties {
@@ -243,9 +279,8 @@ export default function PhotoToMailPageReplacementV4() {
   const [isMobile, setIsMobile] = useState(false);
   const [loadingCrm, setLoadingCrm] = useState(false);
   const [mailHistory, setMailHistory] = useState<MailRecord[]>([]);
-  const [selectedMail, setSelectedMail] = useState<MailRecord | null>(null);
-  const [selectedMailDetail, setSelectedMailDetail] = useState<MailDetail | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [bulkPackageHistory, setBulkPackageHistory] = useState<BulkPackageRecord[]>([]);
+  const [selectedBulkPackageId, setSelectedBulkPackageId] = useState<string | null>(null);
   const [loadingTextStats, setLoadingTextStats] = useState(false);
   const [textStats, setTextStats] = useState<HookBaseStats[]>([]);
   const [selectedAnalyticsHookId, setSelectedAnalyticsHookId] = useState("");
@@ -292,19 +327,83 @@ export default function PhotoToMailPageReplacementV4() {
 
   const selectedHookStats = useMemo(() => textStats.find((item) => item.hookBaseId === selectedAnalyticsHookId) || null, [textStats, selectedAnalyticsHookId]);
   const activeBulkTextBlocks = useMemo(() => bulkTextBlocks.filter((block) => activeBulkTextBlockIds.includes(block.id)), [bulkTextBlocks, activeBulkTextBlockIds]);
+  const bulkPackages = useMemo(() => {
+    const storedMap = new Map(
+      bulkPackageHistory.map((item) => [
+        item.id,
+        {
+          ...item,
+          label: item.label || `Streumail-Paket ${formatDateOnly(item.createdAt)}`,
+        },
+      ])
+    );
+    const grouped = new Map<string, MailRecord[]>();
+
+    for (const mail of mailHistory.filter((item) => item.kind === "bulk")) {
+      const key = mail.batchId?.trim() || mail.id;
+      grouped.set(key, [...(grouped.get(key) || []), mail]);
+    }
+
+    for (const [key, mails] of grouped.entries()) {
+      if (storedMap.has(key)) continue;
+      const sortedMails = [...mails].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const firstMail = sortedMails[0];
+      storedMap.set(key, {
+        id: key,
+        label: `Streumail-Paket ${formatDateOnly(firstMail?.createdAt || new Date().toISOString())}`,
+        createdAt: firstMail?.createdAt || new Date().toISOString(),
+        searchLocation: firstMail?.searchLocation || "",
+        radiusKm: firstMail?.radiusKm || "",
+        plannedCount: sortedMails.length,
+        textBlockTitles: firstMail?.textBlockTitles || [],
+        shortMode: Boolean(firstMail?.shortMode),
+        testMode: Boolean(firstMail?.testMode),
+        mails: sortedMails.map((mail) => ({
+          id: mail.id,
+          leadId: "",
+          company: mail.company || "",
+          recipientEmail: mail.recipientEmail,
+          phone: mail.phone || "",
+          subject: mail.subject || "",
+          textBlockTitles: mail.textBlockTitles || [],
+          contactPerson: mail.contactPerson || "",
+          status: "sent" as const,
+          errorMessage: "",
+          createdAt: mail.createdAt,
+          updatedAt: mail.createdAt,
+          sentAt: mail.createdAt,
+        })),
+      });
+    }
+
+    return Array.from(storedMap.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [bulkPackageHistory, mailHistory]);
+  const selectedBulkPackage = useMemo(
+    () => bulkPackages.find((item) => item.id === selectedBulkPackageId) || null,
+    [bulkPackages, selectedBulkPackageId]
+  );
 
   async function loadCrm() {
     try {
       setLoadingCrm(true);
-      const response = await fetch(`/api/crm/emails?mode=all`);
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.error || "CRM konnte nicht geladen werden.");
+      const [emailsResponse, packagesResponse] = await Promise.all([
+        fetch(`/api/crm/emails?mode=all`),
+        fetch("/api/crm/bulk-packages"),
+      ]);
+      const data = await emailsResponse.json();
+      const packagesData = await packagesResponse.json();
+      if (!emailsResponse.ok) {
+        setError(data.error || "Historie konnte nicht geladen werden.");
+        return;
+      }
+      if (!packagesResponse.ok) {
+        setError(packagesData.error || "Historie konnte nicht geladen werden.");
         return;
       }
       setMailHistory(Array.isArray(data.emails) ? data.emails : []);
+      setBulkPackageHistory(Array.isArray(packagesData.packages) ? packagesData.packages : []);
     } catch {
-      setError("CRM konnte nicht geladen werden.");
+      setError("Historie konnte nicht geladen werden.");
     } finally {
       setLoadingCrm(false);
     }
@@ -620,6 +719,8 @@ export default function PhotoToMailPageReplacementV4() {
       setError(createData.error || "Streumail-Paket konnte nicht vorbereitet werden.");
       return;
     }
+    setBulkPackageHistory((prev) => [createData.package as BulkPackageRecord, ...prev.filter((item) => item.id !== packageId)]);
+    setSelectedBulkPackageId(packageId);
 
     const sendableEntries = generatedEntries.filter(
       (entry): entry is typeof entry & { generated: { subject: string; text: string } } =>
@@ -683,30 +784,10 @@ export default function PhotoToMailPageReplacementV4() {
     await handleSendBulkBatch([id]);
   }
 
-  async function handleOpenMailDetail(mail: MailRecord) {
-    setSelectedMail(mail);
-    setSelectedMailDetail(null);
-    try {
-      setLoadingDetail(true);
-      const response = await fetch(`/api/crm/email/${mail.id}`);
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.error || "Details konnten nicht geladen werden.");
-        return;
-      }
-      setSelectedMailDetail(data);
-    } catch {
-      setError("Details konnten nicht geladen werden.");
-    } finally {
-      setLoadingDetail(false);
-    }
-  }
-
   return (
     <>
       <div style={{ marginBottom: "18px", display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
         <button type="button" onClick={() => setMainView("bulk")} style={topMenuButtonStyle(mainView === "bulk")}>Streumail</button>
-        <button type="button" onClick={() => setMainView("analytics")} style={topMenuButtonStyle(mainView === "analytics")}>Texte & Auswertungen</button>
       </div>
 
       <div style={{ display: "flex", gap: "24px", alignItems: "flex-start", flexDirection: isMobile ? "column" : "row", width: "100%" }}>
@@ -804,13 +885,20 @@ export default function PhotoToMailPageReplacementV4() {
         </div>
 
         <div style={{ width: isMobile ? "100%" : "340px", minWidth: isMobile ? "100%" : "340px", background: "#ffffff", border: "1px solid #d1d5db", borderRadius: "14px", padding: "16px", boxSizing: "border-box", position: isMobile ? "static" : "sticky", top: "20px" }}>
-          <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "12px" }}>CRM</div>
-          {loadingCrm ? <div style={{ fontSize: "13px", color: "#6b7280" }}>CRM wird geladen...</div> : <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: isMobile ? "none" : "70vh", overflowY: "auto", paddingRight: "2px" }}>
-            {mailHistory.length === 0 ? <div style={{ fontSize: "13px", color: "#6b7280" }}>Noch keine passenden Einträge vorhanden.</div> : mailHistory.map((mail, index) => <button key={mail.id} type="button" onClick={() => handleOpenMailDetail(mail)} style={{ textAlign: "left", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "10px", background: "#ffffff", cursor: "pointer" }}>
-              <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px", lineHeight: 1.3 }}>Streumail {index + 1}</div>
-              <div style={{ fontSize: "12px", color: "#374151", marginBottom: "4px" }}>{formatDate(mail.createdAt)}</div>
-              <div style={{ fontSize: "11px", color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mail.subject || mail.jobTitle || "Baustein"}</div>
-            </button>)}
+          <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "12px" }}>Historie</div>
+          {loadingCrm ? <div style={{ fontSize: "13px", color: "#6b7280" }}>Historie wird geladen...</div> : <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: isMobile ? "none" : "70vh", overflowY: "auto", paddingRight: "2px" }}>
+            {bulkPackages.length === 0 ? <div style={{ fontSize: "13px", color: "#6b7280" }}>Noch keine passenden Einträge vorhanden.</div> : bulkPackages.map((item) => {
+              const sentCount = item.mails.filter((mail) => mail.status === "sent").length;
+              return (
+                <button key={item.id} type="button" onClick={() => setSelectedBulkPackageId(item.id)} style={{ textAlign: "left", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "10px", background: "#ffffff", cursor: "pointer" }}>
+                  <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "4px", lineHeight: 1.3 }}>{item.label || "Streumail-Paket"}</div>
+                  <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "4px" }}>{item.shortMode ? "Kurze Mail" : "Standardmail"}{item.testMode ? " - Testmodus" : " - Produktiv"}</div>
+                  <div style={{ fontSize: "12px", color: "#374151", marginBottom: "4px" }}>{formatDateOnly(item.createdAt)}, {formatTimeOnly(item.createdAt)}</div>
+                  <div style={{ fontSize: "11px", color: "#6b7280", marginBottom: "4px" }}>{sentCount} von {item.plannedCount || item.mails.length} Mails gesendet</div>
+                  <div style={{ fontSize: "11px", color: "#6b7280" }}>{item.searchLocation ? `PLZ/Ort ${item.searchLocation}` : "PLZ/Ort -"}{item.radiusKm ? ` - Umkreis ${item.radiusKm} km` : " - Umkreis -"}</div>
+                </button>
+              );
+            })}
           </div>}
         </div>
       </div>
@@ -830,28 +918,57 @@ export default function PhotoToMailPageReplacementV4() {
         </div>
       </div> : null}
 
-      {selectedMail ? <div onClick={() => { setSelectedMail(null); setSelectedMailDetail(null); }} style={{ position: "fixed", inset: 0, background: "rgba(17, 24, 39, 0.45)", zIndex: 50, padding: "24px", overflowY: "auto" }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "720px", margin: "40px auto", background: "#ffffff", borderRadius: "14px", padding: "20px", boxSizing: "border-box" }}>
+      {selectedBulkPackage ? <div onClick={() => setSelectedBulkPackageId(null)} style={{ position: "fixed", inset: 0, background: "rgba(17, 24, 39, 0.45)", zIndex: 50, padding: "24px", overflowY: "auto" }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "780px", margin: "40px auto", background: "#ffffff", borderRadius: "14px", padding: "20px", boxSizing: "border-box" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: "16px", alignItems: "flex-start", marginBottom: "16px" }}>
             <div>
-              <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "4px" }}>{displayMailTitle(selectedMail)}</div>
-              <div style={{ color: "#374151", fontSize: "14px" }}>{selectedMail.company?.trim() || selectedMail.recipientLabel || selectedMail.recipientEmail}</div>
+              <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "4px" }}>{selectedBulkPackage.label || "Streumail-Paket"}</div>
+              <div style={{ color: "#374151", fontSize: "14px" }}>{formatDateOnly(selectedBulkPackage.createdAt)}, {formatTimeOnly(selectedBulkPackage.createdAt)}</div>
             </div>
-            <button type="button" onClick={() => { setSelectedMail(null); setSelectedMailDetail(null); }} style={{ border: "1px solid #cbd5e1", background: "#ffffff", borderRadius: "8px", padding: "6px 10px", cursor: "pointer" }}>Schließen</button>
+            <button type="button" onClick={() => setSelectedBulkPackageId(null)} style={{ border: "1px solid #cbd5e1", background: "#ffffff", borderRadius: "8px", padding: "6px 10px", cursor: "pointer" }}>Schließen</button>
           </div>
-          {loadingDetail ? <div style={{ fontSize: "14px", color: "#6b7280" }}>Details werden geladen...</div> : selectedMailDetail ? <>
-            <div style={{ display: "grid", gap: "10px", marginBottom: "16px", fontSize: "14px" }}>
-              <DetailRow label="Von" value={selectedMailDetail.from || "-"} />
-              <DetailRow label="Empfänger" value={(selectedMailDetail.to || []).join(", ") || "-"} />
-              <DetailRow label="Datum" value={formatDate(selectedMailDetail.createdAt)} />
-              <DetailRow label="Status" value={selectedMailDetail.lastEvent || "-"} />
-              <DetailRow label="Betreff" value={selectedMailDetail.subject || "-"} />
+
+          <div style={{ display: "grid", gap: "10px", marginBottom: "16px", fontSize: "14px" }}>
+            <DetailRow label="PLZ / Ort" value={selectedBulkPackage.searchLocation || "-"} />
+            <DetailRow label="Umkreis" value={selectedBulkPackage.radiusKm ? `${selectedBulkPackage.radiusKm} km` : "-"} />
+            <DetailRow label="Erstellt" value={formatDate(selectedBulkPackage.createdAt)} />
+            <DetailRow label="Gesendet" value={`${selectedBulkPackage.mails.filter((mail) => mail.status === "sent").length} von ${selectedBulkPackage.plannedCount || selectedBulkPackage.mails.length} E-Mails`} />
+            <DetailRow label="Bausteine" value={selectedBulkPackage.textBlockTitles.length > 0 ? selectedBulkPackage.textBlockTitles.join(", ") : "-"} />
+            <DetailRow label="Kurzmodus" value={selectedBulkPackage.shortMode ? "Ja" : "Nein"} />
+            <DetailRow label="Testmodus" value={selectedBulkPackage.testMode ? "Ja" : "Nein"} />
+          </div>
+
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", overflow: "hidden" }}>
+            <div style={{ padding: "14px 16px", borderBottom: "1px solid #e5e7eb", fontWeight: 700 }}>Einzelne Mails</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb", textAlign: "left" }}>
+                    <th style={tableHeadStyle}>Firma</th>
+                    <th style={tableHeadStyle}>Empfänger</th>
+                    <th style={tableHeadStyle}>Telefon</th>
+                    <th style={tableHeadStyle}>Betreff</th>
+                    <th style={tableHeadStyle}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedBulkPackage.mails.map((mail) => (
+                    <tr key={mail.id}>
+                      <td style={tableCellStyle}>{mail.company || "-"}</td>
+                      <td style={tableCellStyle}>{mail.recipientEmail || "-"}</td>
+                      <td style={tableCellStyle}>{mail.phone || "-"}</td>
+                      <td style={tableCellStyle}>{mail.subject || "-"}</td>
+                      <td style={tableCellStyle}>
+                        <div>{packageStatusLabel(mail.status)}</div>
+                        {mail.sentAt ? <div style={{ marginTop: "4px", fontSize: "12px", color: "#6b7280" }}>{formatDate(mail.sentAt)}</div> : null}
+                        {mail.errorMessage ? <div style={{ marginTop: "4px", fontSize: "12px", color: "#b91c1c" }}>{mail.errorMessage}</div> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div>
-              <div style={{ fontWeight: 600, marginBottom: "8px" }}>Mailtext</div>
-              <div style={{ whiteSpace: "pre-wrap", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px", fontSize: "14px", lineHeight: 1.5, maxHeight: "400px", overflowY: "auto" }}>{selectedMailDetail.text || "Kein Plain-Text vorhanden. HTML liegt vor."}</div>
-            </div>
-          </> : <div style={{ fontSize: "14px", color: "#6b7280" }}>Keine Details geladen.</div>}
+          </div>
         </div>
       </div> : null}
     </>

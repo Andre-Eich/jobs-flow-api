@@ -3,6 +3,8 @@ import path from "path";
 import { getTextControllingEntries, type TextControllingEntry } from "@/lib/textControllingStore";
 
 const filePath = path.join(process.cwd(), "data", "leads.json");
+const backupDir = path.join(process.cwd(), "data", "backups", "leads");
+let backupCreatedInProcess = false;
 
 export type LeadChannel = "kaltakquise" | "streumail" | "mixed";
 
@@ -218,7 +220,25 @@ export function getLeads() {
 
 function saveLeads(leads: LeadRecord[]) {
   ensureFile();
-  fs.writeFileSync(filePath, JSON.stringify(leads, null, 2), "utf-8");
+  const existing = getLeads();
+  const next = leads.map((lead) => normalizeLeadRecord(lead));
+  const nextIds = new Set(next.map((lead) => lead.id));
+  const preservedExisting = existing.filter((lead) => !nextIds.has(lead.id));
+  const safeNext =
+    existing.length > 0 && next.length < existing.length
+      ? [...next, ...preservedExisting]
+      : next;
+
+  if (!backupCreatedInProcess && existing.length > 0) {
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    fs.copyFileSync(filePath, path.join(backupDir, `leads-${stamp}.json`));
+    backupCreatedInProcess = true;
+  }
+
+  fs.writeFileSync(filePath, JSON.stringify(safeNext, null, 2), "utf-8");
 }
 
 function findLeadIndex(leads: LeadRecord[], input: UpsertLeadMailInput) {
@@ -227,17 +247,25 @@ function findLeadIndex(leads: LeadRecord[], input: UpsertLeadMailInput) {
   const normalizedName = normalizeCompany(input.company);
   const normalizedCity = safeString(input.city).toLowerCase();
 
+  if (normalizedEmail) {
+    return leads.findIndex(
+      (lead) => safeString(lead.recipientEmail).toLowerCase() === normalizedEmail
+    );
+  }
+
+  if (normalizedWebsite) {
+    return leads.findIndex(
+      (lead) => normalizeWebsite(safeString(lead.website)).toLowerCase() === normalizedWebsite
+    );
+  }
+
   return leads.findIndex((lead) => {
-    const emailMatch =
-      normalizedEmail && safeString(lead.recipientEmail).toLowerCase() === normalizedEmail;
-    const websiteMatch =
-      normalizedWebsite && normalizeWebsite(safeString(lead.website)).toLowerCase() === normalizedWebsite;
     const companyMatch =
       normalizedName &&
       normalizeCompany(lead.company) === normalizedName &&
       (!normalizedCity || safeString(lead.city).toLowerCase() === normalizedCity);
 
-    return emailMatch || websiteMatch || companyMatch;
+    return companyMatch;
   });
 }
 
@@ -247,18 +275,25 @@ function findLeadIndexByLeadData(leads: LeadRecord[], input: UpsertLeadInput) {
   const normalizedName = normalizeCompany(input.company);
   const normalizedCity = safeString(input.city).toLowerCase();
 
+  if (normalizedEmail) {
+    return leads.findIndex(
+      (lead) => safeString(lead.recipientEmail).toLowerCase() === normalizedEmail
+    );
+  }
+
+  if (normalizedWebsite) {
+    return leads.findIndex(
+      (lead) => normalizeWebsite(safeString(lead.website)).toLowerCase() === normalizedWebsite
+    );
+  }
+
   return leads.findIndex((lead) => {
-    const emailMatch =
-      normalizedEmail && safeString(lead.recipientEmail).toLowerCase() === normalizedEmail;
-    const websiteMatch =
-      normalizedWebsite &&
-      normalizeWebsite(safeString(lead.website)).toLowerCase() === normalizedWebsite;
     const companyMatch =
       normalizedName &&
       normalizeCompany(lead.company) === normalizedName &&
       (!normalizedCity || safeString(lead.city).toLowerCase() === normalizedCity);
 
-    return emailMatch || websiteMatch || companyMatch;
+    return companyMatch;
   });
 }
 
