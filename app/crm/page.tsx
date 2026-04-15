@@ -227,6 +227,7 @@ export default function CrmPage() {
   const [dashboardActiveBlockIds, setDashboardActiveBlockIds] = useState<string[]>([]);
   const [dashboardShortMode, setDashboardShortMode] = useState(false);
   const [dashboardTestMode, setDashboardTestMode] = useState(true);
+  const [dashboardSendReminderMode, setDashboardSendReminderMode] = useState(false);
   const [dashboardPreviewText, setDashboardPreviewText] = useState("");
   const [dashboardHookMeta, setDashboardHookMeta] = useState<DashboardHookMeta | null>(null);
   const [dashboardGenerating, setDashboardGenerating] = useState(false);
@@ -411,6 +412,7 @@ export default function CrmPage() {
     setDashboardActiveBlockIds([]);
     setDashboardShortMode(false);
     setDashboardTestMode(true);
+    setDashboardSendReminderMode(false);
     setDashboardPreviewText("");
     setDashboardHookMeta(null);
     setDashboardError("");
@@ -463,6 +465,7 @@ export default function CrmPage() {
     setDashboardActiveBlockIds([]);
     setDashboardShortMode(false);
     setDashboardTestMode(true);
+    setDashboardSendReminderMode(false);
     setDashboardPreviewText("");
     setDashboardHookMeta(null);
     setDashboardError("");
@@ -689,6 +692,15 @@ export default function CrmPage() {
     }
   }
 
+  async function sendDashboardEmail() {
+    if (dashboardSendReminderMode) {
+      await sendDashboardReminder();
+      return;
+    }
+
+    await sendDashboardMail();
+  }
+
   function openReminderModal(targets: LeadRecord[]) {
     setReminderTargets(targets.filter((lead) => !lead.optOut && !lead.archived));
     setActiveBlockIds([]);
@@ -749,6 +761,10 @@ export default function CrmPage() {
   const isBusy =
     dashboardSaving || dashboardGenerating || dashboardSending || dashboardSendingReminder;
   const dashboardIsNew = dashboardLead?.id === NEW_LEAD_ID;
+  const dashboardEmailSending = dashboardSendReminderMode ? dashboardSendingReminder : dashboardSending;
+  const dashboardEmailDisabled = dashboardSendReminderMode
+    ? dashboardSendingReminder || dashboardOptOut || dashboardIsNew
+    : dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut || dashboardIsNew;
 
   async function archiveLead(id: string) {
     try {
@@ -1238,6 +1254,143 @@ export default function CrmPage() {
                   gap: "16px",
                 }}
               >
+                {/* Email schicken */}
+                <div
+                  style={{
+                    background: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    padding: "16px",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "14px" }}>
+                    Email schicken
+                  </div>
+
+                  <div style={{ marginBottom: "16px" }}>
+                    <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "10px" }}>
+                      Text-Stil
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {HOOK_STYLE_OPTIONS.map((option) => {
+                        const active = dashboardHookBaseId === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setDashboardHookBaseId(option.id)}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: "999px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "12px",
+                              cursor: "pointer",
+                              background: active ? "#111827" : "#ffffff",
+                              color: active ? "#ffffff" : "#111827",
+                            }}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {bulkTextBlocks.length > 0 ? (
+                    <div style={{ marginBottom: "16px" }}>
+                      <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "10px" }}>
+                        Textbausteine
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                        {bulkTextBlocks.map((block) => {
+                          const active = dashboardActiveBlockIds.includes(block.id);
+                          return (
+                            <button
+                              key={block.id}
+                              type="button"
+                              onClick={() =>
+                                setDashboardActiveBlockIds((prev) =>
+                                  prev.includes(block.id)
+                                    ? prev.filter((id) => id !== block.id)
+                                    : [...prev, block.id]
+                                )
+                              }
+                              style={{
+                                padding: "5px 10px",
+                                borderRadius: "999px",
+                                border: "1px solid #cbd5e1",
+                                fontSize: "12px",
+                                cursor: "pointer",
+                                background: active ? "#111827" : "#ffffff",
+                                color: active ? "#ffffff" : "#111827",
+                              }}
+                            >
+                              {block.title}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "10px 14px",
+                      fontSize: "14px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <label style={{ cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={dashboardTestMode}
+                        onChange={(e) => setDashboardTestMode(e.target.checked)}
+                        style={{ marginRight: "6px" }}
+                      />
+                      Testmodus
+                    </label>
+                    <label style={{ cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={dashboardShortMode}
+                        onChange={(e) => setDashboardShortMode(e.target.checked)}
+                        style={{ marginRight: "6px" }}
+                      />
+                      Kurze Mail
+                    </label>
+                    <label style={{ cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={dashboardSendReminderMode}
+                        onChange={(e) => setDashboardSendReminderMode(e.target.checked)}
+                        style={{ marginRight: "6px" }}
+                      />
+                      Erinnerung senden
+                    </label>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <button
+                      type="button"
+                      onClick={generateDashboardPreview}
+                      disabled={dashboardGenerating || dashboardIsNew || dashboardSendReminderMode}
+                      style={buttonStyle(false, dashboardGenerating || dashboardIsNew || dashboardSendReminderMode)}
+                    >
+                      {dashboardGenerating ? "Wird generiert..." : "Vorschau generieren"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={sendDashboardEmail}
+                      disabled={dashboardEmailDisabled}
+                      style={buttonStyle(true, dashboardEmailDisabled)}
+                    >
+                      {dashboardEmailSending ? "Wird gesendet..." : "Email senden"}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Edit lead fields */}
                 <div
                   style={{
@@ -1518,145 +1671,6 @@ export default function CrmPage() {
                   </div>
                 </div>
 
-                {/* Text-Stil */}
-                <div
-                  style={{
-                    background: "#f9fafb",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "12px",
-                    padding: "16px",
-                  }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "10px" }}>
-                    Text-Stil
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                    {HOOK_STYLE_OPTIONS.map((option) => {
-                      const active = dashboardHookBaseId === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setDashboardHookBaseId(option.id)}
-                          style={{
-                            padding: "5px 10px",
-                            borderRadius: "999px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                            background: active ? "#111827" : "#ffffff",
-                            color: active ? "#ffffff" : "#111827",
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Textbausteine */}
-                {bulkTextBlocks.length > 0 ? (
-                  <div
-                    style={{
-                      background: "#f9fafb",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "12px",
-                      padding: "16px",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "10px" }}>
-                      Textbausteine
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                      {bulkTextBlocks.map((block) => {
-                        const active = dashboardActiveBlockIds.includes(block.id);
-                        return (
-                          <button
-                            key={block.id}
-                            type="button"
-                            onClick={() =>
-                              setDashboardActiveBlockIds((prev) =>
-                                prev.includes(block.id)
-                                  ? prev.filter((id) => id !== block.id)
-                                  : [...prev, block.id]
-                              )
-                            }
-                            style={{
-                              padding: "5px 10px",
-                              borderRadius: "999px",
-                              border: "1px solid #cbd5e1",
-                              fontSize: "12px",
-                              cursor: "pointer",
-                              background: active ? "#111827" : "#ffffff",
-                              color: active ? "#ffffff" : "#111827",
-                            }}
-                          >
-                            {block.title}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Optionen */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "14px" }}>
-                  <label style={{ cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={dashboardTestMode}
-                      onChange={(e) => setDashboardTestMode(e.target.checked)}
-                      style={{ marginRight: "6px" }}
-                    />
-                    Testmodus
-                  </label>
-                  <label style={{ cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={dashboardShortMode}
-                      onChange={(e) => setDashboardShortMode(e.target.checked)}
-                      style={{ marginRight: "6px" }}
-                    />
-                    Kurze Mail
-                  </label>
-                </div>
-
-                {/* Aktionsbuttons */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <button
-                    type="button"
-                    onClick={generateDashboardPreview}
-                    disabled={dashboardGenerating || dashboardIsNew}
-                    style={buttonStyle(false, dashboardGenerating || dashboardIsNew)}
-                  >
-                    {dashboardGenerating ? "Wird generiert..." : "Vorschau generieren"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={sendDashboardMail}
-                    disabled={dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut || dashboardIsNew}
-                    style={buttonStyle(true, dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut || dashboardIsNew)}
-                  >
-                    {dashboardSending ? "Wird gesendet..." : "Kalt-Mail senden"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={sendDashboardReminder}
-                    disabled={dashboardSendingReminder || dashboardOptOut || dashboardIsNew}
-                    style={buttonStyle(false, dashboardSendingReminder || dashboardOptOut || dashboardIsNew)}
-                  >
-                    {dashboardSendingReminder ? "Wird gesendet..." : "Erinnerung senden"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => dashboardLead && archiveLead(dashboardLead.id)}
-                    disabled={dashboardIsNew}
-                    style={buttonStyle(false, dashboardIsNew)}
-                  >
-                    Ins Archiv verschieben
-                  </button>
-                </div>
               </div>
 
               {/* Right panel: 2/3 */}
