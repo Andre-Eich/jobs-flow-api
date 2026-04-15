@@ -227,6 +227,7 @@ export default function CrmPage() {
   const [dashboardActiveBlockIds, setDashboardActiveBlockIds] = useState<string[]>([]);
   const [dashboardShortMode, setDashboardShortMode] = useState(false);
   const [dashboardTestMode, setDashboardTestMode] = useState(true);
+  const [dashboardSendCopy, setDashboardSendCopy] = useState(false);
   const [dashboardSendReminderMode, setDashboardSendReminderMode] = useState(false);
   const [dashboardPreviewText, setDashboardPreviewText] = useState("");
   const [dashboardHookMeta, setDashboardHookMeta] = useState<DashboardHookMeta | null>(null);
@@ -413,6 +414,7 @@ export default function CrmPage() {
     setDashboardActiveBlockIds([]);
     setDashboardShortMode(false);
     setDashboardTestMode(true);
+    setDashboardSendCopy(false);
     setDashboardSendReminderMode(false);
     setDashboardPreviewText("");
     setDashboardHookMeta(null);
@@ -466,6 +468,7 @@ export default function CrmPage() {
     setDashboardActiveBlockIds([]);
     setDashboardShortMode(false);
     setDashboardTestMode(true);
+    setDashboardSendCopy(false);
     setDashboardSendReminderMode(false);
     setDashboardPreviewText("");
     setDashboardHookMeta(null);
@@ -625,6 +628,7 @@ export default function CrmPage() {
           to: dashboardEditEmail || dashboardLead.recipientEmail,
           text: dashboardPreviewText,
           testMode: dashboardTestMode,
+          sendCopy: dashboardSendCopy,
           company: dashboardEditCompany || dashboardLead.company,
           contactPerson: dashboardEditContactPerson || dashboardLead.contactPerson,
           phone: dashboardEditPhone || dashboardLead.phone,
@@ -673,6 +677,7 @@ export default function CrmPage() {
           city: dashboardLead.city,
           shortMode: dashboardShortMode,
           testMode: dashboardTestMode,
+          sendCopy: dashboardSendCopy,
           textBlocks: dashboardActiveBlocks,
         }),
       });
@@ -1332,6 +1337,15 @@ export default function CrmPage() {
                         style={{ marginRight: "6px" }}
                       />
                       Kurze Mail
+                    </label>
+                    <label style={{ cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={dashboardSendCopy}
+                        onChange={(e) => setDashboardSendCopy(e.target.checked)}
+                        style={{ marginRight: "6px" }}
+                      />
+                      Kopie an mich
                     </label>
                     <label style={{ cursor: "pointer" }}>
                       <input

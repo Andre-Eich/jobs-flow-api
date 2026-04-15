@@ -155,6 +155,7 @@ export async function POST(req: Request) {
       city = "",
       shortMode = false,
       testMode = true,
+      sendCopy = false,
       textBlocks = [],
     } = await req.json();
 
@@ -252,7 +253,11 @@ export async function POST(req: Request) {
       html,
       text: `${reminderTextPlain}\n\n${buildCrmMetaText(crmMeta)}`,
       attachments: compactInlineMailAttachments([portrait, footer]),
-      bcc: Boolean(testMode) ? recipientEmail || undefined : "a.eichstaedt@jobs-in-berlin-brandenburg.de",
+      bcc: Boolean(testMode)
+        ? recipientEmail || undefined
+        : Boolean(sendCopy)
+        ? "a.eichstaedt@jobs-in-berlin-brandenburg.de"
+        : undefined,
     });
 
     const emailId = getEmailId(result);
