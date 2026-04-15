@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildFormalPreviewGreeting } from "@/lib/contactPerson";
 
 type HookBaseId =
   | "hybrid"
@@ -281,6 +282,22 @@ function pickHook(selectedHookBaseId?: string, jobTitle?: string) {
   };
 }
 
+function removeLeadingGreeting(text: string) {
+  return String(text || "")
+    .replace(
+      /^\s*(?:sehr\s+geehrte\s+damen\s+und\s+herren|sehr\s+geehrte(?:r|n)?(?:\s+(?:frau|herr))?(?:\s+[^\n,]+){0,4}|guten\s+tag(?:\s+[^\n,]+){0,4}|hallo(?:\s+[^\n,]+){0,4}),\s*/i,
+      ""
+    )
+    .trim();
+}
+
+function ensurePreviewGreeting(text: string, contactPerson: string) {
+  const greeting = buildFormalPreviewGreeting(contactPerson);
+  const body = removeLeadingGreeting(text);
+
+  return body ? `${greeting}\n\n${body}` : greeting;
+}
+
 export async function POST(req: Request) {
   try {
     const {
@@ -296,10 +313,11 @@ export async function POST(req: Request) {
       String(jobTitle || "").trim() || "die ausgeschriebene Position";
     const safeCompany = String(company || "").trim() || "Ihr Unternehmen";
     const safeContactPerson = String(contactPerson || "").trim();
+    const previewGreeting = buildFormalPreviewGreeting(safeContactPerson);
 
     const openingInstruction = safeContactPerson
-      ? `Verwende den Ansprechpartner "${safeContactPerson}" nur in der Anrede. Im eigentlichen Mailtext darf der Ansprechpartner nicht erwähnt oder direkt angesprochen werden. Nach der Anrede folgt immer eine Leerzeile.`
-      : `Beginne mit "Sehr geehrte Damen und Herren,". Nach der Anrede folgt immer eine Leerzeile.`;
+      ? `Beginne exakt mit "${previewGreeting}". Verwende in der Anrede nur Frau oder Herr plus Nachname, niemals den Vornamen. Verwende den Ansprechpartner "${safeContactPerson}" nur in der Anrede. Im eigentlichen Mailtext darf der Ansprechpartner nicht erwähnt oder direkt angesprochen werden. Nach der Anrede folgt immer eine Leerzeile.`
+      : `Beginne exakt mit "${previewGreeting}". Nach der Anrede folgt immer eine Leerzeile.`;
 
     const hookMeta = pickHook(selectedHookBaseId, safeJobTitle);
 
@@ -405,9 +423,10 @@ Danach folgt IMMER ein neuer Absatz mit exakt diesem Text:
       );
     }
 
-    const text = data?.choices?.[0]?.message?.content?.trim();
+    const rawText = data?.choices?.[0]?.message?.content?.trim();
+    const text = ensurePreviewGreeting(rawText, safeContactPerson);
 
-    if (!text) {
+    if (!rawText) {
       return NextResponse.json(
         { error: "Kein Text erzeugt" },
         { status: 500 }

@@ -22,7 +22,7 @@ type HookBaseId =
   | "minimal"
   | "consultative";
 
-type MainView = "mails" | "bulk" | "reminders" | "analytics";
+type MainView = "mails" | "bulk" | "reminders";
 
 type AnalyzeResponse = {
   jobTitle?: string;
@@ -84,29 +84,6 @@ type MailDetail = {
   cc: string[];
   bcc: string[];
   replyTo: string[];
-};
-
-type HookVariantStats = {
-  hookVariantId: string;
-  hookText: string;
-  sent: number;
-  opened: number;
-  openRate: number;
-  reminderSent: number;
-  reminderRate: number;
-};
-
-type HookBaseStats = {
-  hookBaseId: string;
-  hookBaseLabel: string;
-  sent: number;
-  opened: number;
-  openRate: number;
-  reminderSent: number;
-  reminderRate: number;
-  bestVariantId: string;
-  bestVariantOpenRate: number;
-  variants: HookVariantStats[];
 };
 
 const EMPTY_JOB_DATA: JobData = {
@@ -207,102 +184,6 @@ function statusColor(status: MailRecord["status"]) {
 
 function displayMailTitle(mail: Pick<MailRecord, "jobTitle" | "subject">) {
   return mail.jobTitle?.trim() || mail.subject || "Ohne Betreff";
-}
-
-function formatPercent(value: number) {
-  return `${(value * 100).toFixed(1)} %`;
-}
-
-function StatBar({ value, label }: { value: number; label: string }) {
-  const width = Math.max(0, Math.min(100, value * 100));
-
-  return (
-    <div style={{ marginBottom: "12px" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: "12px",
-          marginBottom: "6px",
-          fontSize: "13px",
-        }}
-      >
-        <span>{label}</span>
-        <span style={{ fontWeight: 600 }}>{formatPercent(value)}</span>
-      </div>
-
-      <div
-        style={{
-          height: "10px",
-          background: "#e5e7eb",
-          borderRadius: "999px",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            width: `${width}%`,
-            height: "100%",
-            background: "#111827",
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  subValue,
-}: {
-  label: string;
-  value: string;
-  subValue?: string;
-}) {
-  return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: "12px",
-        padding: "14px",
-        background: "#ffffff",
-      }}
-    >
-      <div
-        style={{
-          fontSize: "12px",
-          color: "#6b7280",
-          marginBottom: "6px",
-        }}
-      >
-        {label}
-      </div>
-
-      <div
-        style={{
-          fontSize: "20px",
-          fontWeight: 700,
-          lineHeight: 1.2,
-          wordBreak: "break-word",
-        }}
-      >
-        {value}
-      </div>
-
-      {subValue ? (
-        <div
-          style={{
-            marginTop: "6px",
-            fontSize: "12px",
-            color: "#6b7280",
-          }}
-        >
-          {subValue}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function Field({
@@ -573,9 +454,6 @@ export default function PhotoToMailPage({
   const [remindersCollapsed, setRemindersCollapsed] = useState(false);
   const [dismissedReminderIds, setDismissedReminderIds] = useState<string[]>([]);
 
-  const [loadingTextStats, setLoadingTextStats] = useState(false);
-  const [textStats, setTextStats] = useState<HookBaseStats[]>([]);
-  const [selectedAnalyticsHookId, setSelectedAnalyticsHookId] = useState("");
 
   const [bulkLocation, setBulkLocation] = useState("");
   const [bulkRadius, setBulkRadius] = useState("30");
@@ -630,11 +508,6 @@ export default function PhotoToMailPage({
           !dismissedReminderIds.includes(item.id)
       ),
     [reminders, completedReminders, dismissedReminderIds]
-  );
-
-  const selectedHookStats = useMemo(
-    () => textStats.find((item) => item.hookBaseId === selectedAnalyticsHookId) || null,
-    [textStats, selectedAnalyticsHookId]
   );
 
   function toggleHint(hint: HintKey) {
@@ -708,42 +581,10 @@ export default function PhotoToMailPage({
     }
   }
 
-  async function loadTextStats() {
-    try {
-      setLoadingTextStats(true);
-
-      const response = await fetch("/api/crm/text-stats");
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Text-Auswertungen konnten nicht geladen werden.");
-        return;
-      }
-
-      const hooks = Array.isArray(data.hooks) ? data.hooks : [];
-      setTextStats(hooks);
-
-      if (hooks.length > 0 && !selectedAnalyticsHookId) {
-        setSelectedAnalyticsHookId(hooks[0].hookBaseId);
-      }
-    } catch {
-      setError("Text-Auswertungen konnten nicht geladen werden.");
-    } finally {
-      setLoadingTextStats(false);
-    }
-  }
-
   useEffect(() => {
     loadCrm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crmView, currentDomain, currentCompany]);
-
-  useEffect(() => {
-    if (mainView === "analytics") {
-      loadTextStats();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainView]);
 
   useEffect(() => {
     if (serviceMode === "cold" && mainView === "bulk") {
@@ -945,9 +786,6 @@ export default function PhotoToMailPage({
       setSuccessMessage(testMode ? "Test-E-Mail erfolgreich an dich gesendet." : "E-Mail erfolgreich gesendet.");
 
       await loadCrm();
-      if (mainView === "analytics") {
-        await loadTextStats();
-      }
     } catch {
       setError("Die E-Mail konnte nicht gesendet werden.");
     } finally {
@@ -1014,9 +852,6 @@ export default function PhotoToMailPage({
 
       if (reloadAfter) {
         await loadCrm();
-        if (mainView === "analytics") {
-          await loadTextStats();
-        }
       }
     } catch {
       setError("Erinnerungs-Mail konnte nicht gesendet werden.");
@@ -1040,9 +875,6 @@ export default function PhotoToMailPage({
 
       setSuccessMessage("Alle offenen Erinnerungen wurden als Test verschickt.");
       await loadCrm();
-      if (mainView === "analytics") {
-        await loadTextStats();
-      }
     } catch {
       setError("Nicht alle Erinnerungen konnten verschickt werden.");
     } finally {
@@ -1322,9 +1154,6 @@ export default function PhotoToMailPage({
         ) : null}
         <button type="button" onClick={() => setMainView("reminders")} style={topMenuButtonStyle(mainView === "reminders")}>
           Erinnerungen
-        </button>
-        <button type="button" onClick={() => setMainView("analytics")} style={topMenuButtonStyle(mainView === "analytics")}>
-          Texte & Auswertungen
         </button>
       </div>
 
@@ -1784,106 +1613,6 @@ export default function PhotoToMailPage({
             </div>
           )}
 
-          {mainView === "analytics" && (
-            <div style={{ background: "#ffffff", border: "1px solid #d1d5db", borderRadius: "14px", padding: "20px", boxSizing: "border-box" }}>
-              <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "18px" }}>Texte & Auswertungen</div>
-
-              {loadingTextStats ? (
-                <div style={{ fontSize: "14px", color: "#6b7280" }}>Auswertungen werden geladen...</div>
-              ) : textStats.length === 0 ? (
-                <div style={{ fontSize: "14px", color: "#6b7280" }}>Noch keine Textdaten vorhanden.</div>
-              ) : (
-                <>
-                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "20px" }}>
-                    {textStats.map((hook) => {
-                      const active = selectedAnalyticsHookId === hook.hookBaseId;
-
-                      return (
-                        <button
-                          key={hook.hookBaseId}
-                          type="button"
-                          onClick={() => setSelectedAnalyticsHookId(hook.hookBaseId)}
-                          style={{
-                            padding: "10px 14px",
-                            borderRadius: "999px",
-                            border: "1px solid #cbd5e1",
-                            background: active ? "#111827" : "#ffffff",
-                            color: active ? "#ffffff" : "#111827",
-                            cursor: "pointer",
-                            fontSize: "14px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {hook.hookBaseLabel}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {selectedHookStats && (
-                    <>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(5, minmax(0, 1fr))", gap: "12px", marginBottom: "20px" }}>
-                        <StatCard label="Gesendet" value={String(selectedHookStats.sent)} />
-                        <StatCard label="Geöffnet" value={String(selectedHookStats.opened)} />
-                        <StatCard label="Öffnungsrate" value={formatPercent(selectedHookStats.openRate)} />
-                        <StatCard label="Reminder-Quote" value={formatPercent(selectedHookStats.reminderRate)} />
-                        <StatCard label="Beste Variante" value={selectedHookStats.bestVariantId || "-"} subValue={formatPercent(selectedHookStats.bestVariantOpenRate)} />
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.1fr 1fr", gap: "20px", marginBottom: "24px" }}>
-                        <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "16px" }}>
-                          <div style={{ fontWeight: 700, marginBottom: "14px" }}>Kennzahlen</div>
-                          <StatBar label="Öffnungsrate" value={selectedHookStats.openRate} />
-                          <StatBar label="Reminder-Quote" value={selectedHookStats.reminderRate} />
-                          <StatBar label="Beste Variantenrate" value={selectedHookStats.bestVariantOpenRate} />
-                        </div>
-
-                        <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "16px" }}>
-                          <div style={{ fontWeight: 700, marginBottom: "10px" }}>Hook-Überblick</div>
-                          <div style={{ fontSize: "14px", color: "#374151", lineHeight: 1.5 }}>
-                            <div style={{ marginBottom: "10px" }}>Basehook: <strong>{selectedHookStats.hookBaseLabel}</strong></div>
-                            <div style={{ marginBottom: "10px" }}>Varianten: <strong>{selectedHookStats.variants.length}</strong></div>
-                            <div>Bestperformer: <strong>{selectedHookStats.bestVariantId}</strong></div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", overflow: "hidden" }}>
-                        <div style={{ padding: "14px 16px", borderBottom: "1px solid #e5e7eb", fontWeight: 700 }}>Varianten</div>
-                        <div style={{ overflowX: "auto" }}>
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-                            <thead>
-                              <tr style={{ background: "#f9fafb", textAlign: "left" }}>
-                                <th style={tableHeadStyle}>Variante</th>
-                                <th style={tableHeadStyle}>Gesendet</th>
-                                <th style={tableHeadStyle}>Geöffnet</th>
-                                <th style={tableHeadStyle}>Öffnungsrate</th>
-                                <th style={tableHeadStyle}>Reminder-Quote</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {selectedHookStats.variants.map((variant) => (
-                                <tr key={variant.hookVariantId}>
-                                  <td style={tableCellStyle}>
-                                    <div style={{ fontWeight: 600, marginBottom: "4px" }}>{variant.hookVariantId}</div>
-                                    <div style={{ fontSize: "12px", color: "#6b7280", lineHeight: 1.4 }}>{variant.hookText}</div>
-                                  </td>
-                                  <td style={tableCellStyle}>{variant.sent}</td>
-                                  <td style={tableCellStyle}>{variant.opened}</td>
-                                  <td style={tableCellStyle}>{formatPercent(variant.openRate)}</td>
-                                  <td style={tableCellStyle}>{formatPercent(variant.reminderRate)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-          )}
         </div>
 
         <div
@@ -2058,21 +1787,6 @@ export default function PhotoToMailPage({
     </>
   );
 }
-
-const tableHeadStyle: React.CSSProperties = {
-  padding: "12px 14px",
-  fontSize: "13px",
-  fontWeight: 700,
-  color: "#111827",
-  borderBottom: "1px solid #e5e7eb",
-  verticalAlign: "top",
-};
-
-const tableCellStyle: React.CSSProperties = {
-  padding: "12px 14px",
-  verticalAlign: "top",
-  borderBottom: "1px solid #f3f4f6",
-};
 
 const selectStyle: React.CSSProperties = {
   width: "100%",

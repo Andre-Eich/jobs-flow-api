@@ -157,6 +157,32 @@ export function sanitizeContactPerson(value: string) {
   return `${toDisplayName(tokens[0])} ${toDisplayName(tokens[tokens.length - 1])}`;
 }
 
+function extractNameTokens(value: string) {
+  const raw = String(value || "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[|/\\]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!raw) return [];
+
+  const commaParts = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const normalizedInput =
+    commaParts.length === 2 && !/\s/.test(commaParts[0])
+      ? `${commaParts[1]} ${commaParts[0]}`
+      : raw;
+
+  return normalizedInput
+    .split(/\s+/)
+    .map(normalizeToken)
+    .filter((token) => token && isNameToken(token) && !isRoleWord(token))
+    .map(toDisplayName);
+}
+
 function inferGenderFromFirstName(firstName: string) {
   const normalized = String(firstName || "").trim().toLocaleLowerCase("de-DE");
   if (!normalized) return "";
@@ -172,26 +198,65 @@ function inferExplicitSalutation(value: string) {
   return "";
 }
 
-export function buildFormalContactGreeting(value: string) {
+function getContactGreetingParts(value: string) {
   const safeContactPerson = sanitizeContactPerson(value);
+  const explicitGender = inferExplicitSalutation(value);
+
   if (!safeContactPerson) {
-    return "Guten Tag,";
+    const tokens = extractNameTokens(value);
+    const lastName = tokens[tokens.length - 1] || "";
+
+    if (explicitGender && lastName) {
+      return {
+        gender: explicitGender,
+        lastName,
+      };
+    }
+
+    return null;
   }
 
   const tokens = safeContactPerson.split(/\s+/).filter(Boolean);
   const firstName = tokens[0] || "";
   const lastName = tokens[tokens.length - 1] || "";
-  const gender = inferExplicitSalutation(value) || inferGenderFromFirstName(firstName);
+  const gender = explicitGender || inferGenderFromFirstName(firstName);
 
-  if (gender === "female" && lastName) {
-    return `Guten Tag Frau ${lastName},`;
+  return {
+    gender,
+    lastName,
+  };
+}
+
+export function buildFormalContactGreeting(value: string) {
+  const parts = getContactGreetingParts(value);
+  if (!parts) {
+    return "Guten Tag,";
   }
 
-  if (gender === "male" && lastName) {
-    return `Guten Tag Herr ${lastName},`;
+  if (parts.gender === "female" && parts.lastName) {
+    return `Guten Tag Frau ${parts.lastName},`;
   }
 
-  return lastName ? `Guten Tag Herr ${lastName},` : "Guten Tag,";
+  if (parts.gender === "male" && parts.lastName) {
+    return `Guten Tag Herr ${parts.lastName},`;
+  }
+
+  return parts.lastName ? `Guten Tag Herr ${parts.lastName},` : "Guten Tag,";
+}
+
+export function buildFormalPreviewGreeting(value: string) {
+  const parts = getContactGreetingParts(value);
+  if (!parts) {
+    return "Sehr geehrte Damen und Herren,";
+  }
+
+  if (parts.gender === "female" && parts.lastName) {
+    return `Sehr geehrte Frau ${parts.lastName},`;
+  }
+
+  return parts.lastName
+    ? `Sehr geehrter Herr ${parts.lastName},`
+    : "Sehr geehrte Damen und Herren,";
 }
 
 export function sanitizeContactPersonOptions(values: string[]) {
