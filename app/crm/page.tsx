@@ -235,6 +235,7 @@ export default function CrmPage() {
   const [dashboardSendingReminder, setDashboardSendingReminder] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
   const [dashboardSuccess, setDashboardSuccess] = useState("");
+  const [archivingSelected, setArchivingSelected] = useState(false);
 
   // Batch-Erinnerung
   const [reminderTargets, setReminderTargets] = useState<LeadRecord[]>([]);
@@ -766,25 +767,33 @@ export default function CrmPage() {
     ? dashboardSendingReminder || dashboardOptOut || dashboardIsNew
     : dashboardSending || !dashboardPreviewText.trim() || dashboardOptOut || dashboardIsNew;
 
-  async function archiveLead(id: string) {
+  async function archiveSelectedLeads() {
+    if (selectedLeadIds.length === 0) return;
+
     try {
+      setArchivingSelected(true);
       setError("");
-      const response = await fetch(`/api/crm/leads/${id}`, {
-        method: "DELETE",
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.error || "Lead konnte nicht archiviert werden.");
-        return;
+
+      for (const id of selectedLeadIds) {
+        const response = await fetch(`/api/crm/leads/${id}`, {
+          method: "DELETE",
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Leads konnten nicht archiviert werden.");
+        }
       }
+
       await loadLeads();
-      setSelectedLeadIds((prev) => prev.filter((leadId) => leadId !== id));
-      if (dashboardLead?.id === id) {
-        setDashboardLead(data.lead || null);
-      }
-      setSuccessMessage("Lead wurde ins Archiv verschoben.");
-    } catch {
-      setError("Lead konnte nicht archiviert werden.");
+      setSelectedLeadIds([]);
+      setSuccessMessage(
+        `${selectedLeadIds.length} Lead${selectedLeadIds.length === 1 ? "" : "s"} archiviert.`
+      );
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Leads konnten nicht archiviert werden.");
+    } finally {
+      setArchivingSelected(false);
     }
   }
 
@@ -805,33 +814,6 @@ export default function CrmPage() {
       setSuccessMessage("Lead wurde aus dem Archiv wiederhergestellt.");
     } catch {
       setError("Lead konnte nicht wiederhergestellt werden.");
-    }
-  }
-
-  async function toggleLeadOptOut(lead: LeadRecord, nextOptOut: boolean) {
-    try {
-      setError("");
-      const response = await fetch(`/api/crm/leads/${lead.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ optOut: nextOptOut }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.error || "Opt-out konnte nicht gespeichert werden.");
-        return;
-      }
-      if (data.lead) {
-        setLeads((prev) => prev.map((item) => (item.id === data.lead.id ? data.lead : item)));
-        setArchivedLeads((prev) => prev.map((item) => (item.id === data.lead.id ? data.lead : item)));
-        if (dashboardLead?.id === data.lead.id) {
-          setDashboardLead(data.lead);
-          setDashboardOptOut(Boolean(data.lead.optOut));
-        }
-      }
-      setSuccessMessage(nextOptOut ? "Lead als Opt-out markiert." : "Opt-out aufgehoben.");
-    } catch {
-      setError("Opt-out konnte nicht gespeichert werden.");
     }
   }
 
@@ -905,9 +887,14 @@ export default function CrmPage() {
                 <div style={{ fontSize: "13px", color: "#6b7280" }}>
                   {selectedLeads.length} ausgewaehlt von {leads.length}
                 </div>
-                <div style={{ fontSize: "13px", color: "#6b7280" }}>
-                  Archiv: {archivedLeads.length}
-                </div>
+                <button
+                  type="button"
+                  onClick={archiveSelectedLeads}
+                  disabled={selectedLeads.length === 0 || archivingSelected}
+                  style={buttonStyle(false, selectedLeads.length === 0 || archivingSelected)}
+                >
+                  {archivingSelected ? "Archiviert..." : "Archivieren"}
+                </button>
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
@@ -1033,25 +1020,11 @@ export default function CrmPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => toggleLeadOptOut(lead, !lead.optOut)}
-                                style={buttonStyle(false)}
-                              >
-                                {lead.optOut ? "Opt-in" : "Opt-out"}
-                              </button>
-                              <button
-                                type="button"
                                 onClick={() => openReminderModal([lead])}
                                 disabled={lead.optOut}
                                 style={buttonStyle(true, lead.optOut)}
                               >
                                 Erinnerung schicken
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => archiveLead(lead.id)}
-                                style={buttonStyle(false)}
-                              >
-                                Archivieren
                               </button>
                             </div>
                           </td>

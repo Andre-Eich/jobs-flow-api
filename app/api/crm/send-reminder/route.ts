@@ -87,12 +87,28 @@ function getEmailId(result: unknown) {
   return data && "id" in data && typeof data.id === "string" ? data.id : topLevelId;
 }
 
-function buildReminderSubject(channel: "kaltakquise" | "streumail") {
+function compactSubjectCompany(company: string) {
+  const safeCompany = safeString(company)
+    .replace(/\s+/g, " ")
+    .replace(/\b(GmbH|mbH|AG|UG|KG|e\.V\.|eV)\b\.?/gi, "")
+    .trim();
+
+  if (safeCompany.length <= 42) return safeCompany;
+  return `${safeCompany.slice(0, 39).trim()}...`;
+}
+
+function buildReminderSubject(channel: "kaltakquise" | "streumail", company: string) {
+  const safeCompany = compactSubjectCompany(company);
+
   if (channel === "streumail") {
-    return "Kurzes Follow-up zu regionaler Sichtbarkeit";
+    return safeCompany
+      ? `Kurze Erinnerung: regionale Reichweite fuer ${safeCompany}`
+      : "Kurze Erinnerung: regionale Reichweite fuer offene Stellen";
   }
 
-  return "Kurzes Follow-up zu meiner letzten Nachricht";
+  return safeCompany
+    ? `Kurze Erinnerung zu ${safeCompany}`
+    : "Kurze Erinnerung zu meiner letzten Nachricht";
 }
 
 function buildReminderText(args: {
@@ -165,7 +181,7 @@ export async function POST(req: Request) {
       lead.channel === "streumail" || lead.channel === "mixed" ? "streumail" : "kaltakquise";
     const latestMail = lead.mails[0];
     const safeContactPerson = sanitizeContactPerson(lead.contactPerson);
-    const subject = buildReminderSubject(baseChannel);
+    const subject = buildReminderSubject(baseChannel, lead.company);
     const reminderText = buildReminderText({
       company: lead.company,
       contactPerson: safeContactPerson,

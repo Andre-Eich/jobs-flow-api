@@ -609,14 +609,14 @@ Mit freundlichen Grüßen`,
       area: "crm",
       title: "CRM Reminder Betrefflogik",
       description: "Betreffzeilen fuer Erinnerungen aus dem CRM.",
-      preview: "Kurzes Follow-up zu regionaler Sichtbarkeit fuer {company}",
+      preview: "Kurze Erinnerung: regionale Reichweite fuer {company}",
       content: `Streumail:
-- Kurzes Follow-up zu regionaler Sichtbarkeit fuer {company}
-- Kurzes Follow-up zu regionaler Sichtbarkeit
+- Kurze Erinnerung: regionale Reichweite fuer {company}
+- Kurze Erinnerung: regionale Reichweite fuer offene Stellen
 
 Kaltakquise:
-- Kurzes Follow-up zu {company}
-- Kurzes Follow-up zu meiner letzten Nachricht`,
+- Kurze Erinnerung zu {company}
+- Kurze Erinnerung zu meiner letzten Nachricht`,
       usage: "Wird aktuell in app/api/crm/send-reminder/route.ts verwendet.",
       placeholders: ["{company}"],
       status: "aktiv",
