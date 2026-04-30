@@ -87,8 +87,11 @@ type CrmSortKey =
 type CrmSortDirection = "asc" | "desc";
 
 function formatDate(dateString: string) {
+  if (!dateString) return "-";
   try {
-    return new Date(dateString).toLocaleString("de-DE", {
+    const date = new Date(dateString);
+    if (!Number.isFinite(date.getTime())) return "-";
+    return date.toLocaleString("de-DE", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -98,6 +101,21 @@ function formatDate(dateString: string) {
   } catch {
     return dateString;
   }
+}
+
+function dateTime(value: string) {
+  const time = new Date(value || "").getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getLastMailAt(lead: LeadRecord) {
+  const latestMailTime = Math.max(0, ...lead.mails.map((mail) => dateTime(mail.createdAt)));
+  return latestMailTime > 0 ? new Date(latestMailTime).toISOString() : "";
+}
+
+function getLastActivityAt(lead: LeadRecord) {
+  const latestTime = Math.max(dateTime(lead.updatedAt), dateTime(getLastMailAt(lead)));
+  return latestTime > 0 ? new Date(latestTime).toISOString() : "";
 }
 
 function channelLabel(value: LeadRecord["channel"] | LeadMailRecord["channel"]) {
@@ -329,7 +347,7 @@ export default function CrmPage() {
       } else if (sortKey === "quality") {
         result = (a.qualityStars || 0) - (b.qualityStars || 0);
       } else {
-        result = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        result = dateTime(getLastActivityAt(a)) - dateTime(getLastActivityAt(b));
       }
 
       if (result === 0) {
@@ -1013,7 +1031,7 @@ export default function CrmPage() {
                           <td style={tableCellStyle}>
                             <div style={{ fontSize: "16px", fontWeight: 700 }}>{stars(lead.qualityStars)}</div>
                           </td>
-                          <td style={tableCellStyle}>{formatDate(lead.updatedAt)}</td>
+                          <td style={tableCellStyle}>{formatDate(getLastActivityAt(lead))}</td>
                           <td style={tableCellStyle}>
                             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                               <button

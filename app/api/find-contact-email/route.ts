@@ -18,12 +18,15 @@ const STANDARD_PATHS = [
   "/impressum/",
   "/karriere",
   "/jobs",
+  "/offene-stellen",
   "/stellenangebote",
   "/bewerbung",
+  "/personal",
 ];
 
-const RELEVANT_LINK_PATTERN = /(kontakt|impressum|karriere|jobs|stellen|stellenangebote|bewerbung|career|hr)/i;
-const BAD_PREFIXES = ["noreply", "no-reply", "datenschutz", "privacy", "impressum", "webmaster"];
+const RELEVANT_LINK_PATTERN = /(kontakt|impressum|karriere|jobs|stellen|offene-stellen|stellenangebote|bewerbung|career|hr|personal)/i;
+const ATS_SUBDOMAIN_PREFIXES = ["bewerbung", "bewerben", "karriere", "jobs", "apply", "career", "recruiting"];
+const BAD_PREFIXES = ["noreply", "no-reply", "datenschutz", "privacy", "impressum", "webmaster", "widerruf"];
 const HIGH_PREFIXES = ["bewerbung", "jobs", "karriere", "personal", "hr"];
 const MEDIUM_PREFIXES = ["kontakt"];
 const LOW_PREFIXES = ["info", "office", "mail"];
@@ -63,6 +66,23 @@ function getBaseUrl(...values: string[]) {
   }
 
   return "";
+}
+
+function getOrganizationBaseUrl(baseUrl: string) {
+  try {
+    const url = new URL(baseUrl);
+    const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+    const labels = host.split(".").filter(Boolean);
+    const subdomain = labels[0] || "";
+
+    if (labels.length <= 2 || !ATS_SUBDOMAIN_PREFIXES.includes(subdomain)) {
+      return "";
+    }
+
+    return `${url.protocol}//${labels.slice(1).join(".")}`;
+  } catch {
+    return "";
+  }
 }
 
 function normalizeObfuscatedEmails(text: string) {
@@ -120,13 +140,15 @@ function extractRelevantLinks(html: string, baseUrl: string) {
   return Array.from(new Set(links)).slice(0, 5);
 }
 
-function classifyEmail(email: string, source: string, companyDomain: string): EmailOption | null {
+function classifyEmail(email: string, source: string, companyDomains: string[]): EmailOption | null {
   const [localPart, domain = ""] = email.toLowerCase().split("@");
   const prefix = localPart.split(/[._+-]/)[0] || localPart;
 
   if (!localPart || !domain || BAD_PREFIXES.includes(prefix)) return null;
 
-  const sameDomain = domain === companyDomain || domain.endsWith(`.${companyDomain}`);
+  const sameDomain = companyDomains.some(
+    (companyDomain) => domain === companyDomain || domain.endsWith(`.${companyDomain}`)
+  );
   const sourceLower = source.toLowerCase();
 
   if (HIGH_PREFIXES.includes(prefix)) {
@@ -155,7 +177,7 @@ function classifyEmail(email: string, source: string, companyDomain: string): Em
     return {
       email,
       source,
-      confidence: "low",
+      confidence: sameDomain && prefix === "info" ? "medium" : "low",
       needsReview: true,
       reason: "Allgemeine Kontaktadresse",
     };
@@ -211,11 +233,13 @@ export async function POST(req: Request) {
       });
     }
 
-    const companyDomain = new URL(baseUrl).hostname.replace(/^www\./i, "").toLowerCase();
+    const organizationBaseUrl = getOrganizationBaseUrl(baseUrl);
+    const baseUrls = Array.from(new Set([baseUrl, organizationBaseUrl].filter(Boolean)));
+    const companyDomains = baseUrls.map((url) => new URL(url).hostname.replace(/^www\./i, "").toLowerCase());
     const initialUrls = [websiteUrl, sourceUrl, jobUrl]
       .map(normalizeUrl)
-      .filter((url) => url && url.startsWith(baseUrl));
-    const standardUrls = STANDARD_PATHS.map((path) => new URL(path, baseUrl).toString());
+      .filter(Boolean);
+    const standardUrls = baseUrls.flatMap((url) => STANDARD_PATHS.map((path) => new URL(path, url).toString()));
     const urls = Array.from(new Set([...initialUrls, ...standardUrls]));
     const found = new Map<string, EmailOption>();
     const discoveredLinks: string[] = [];
@@ -224,12 +248,14 @@ export async function POST(req: Request) {
       const html = await fetchText(url, controller.signal).catch(() => "");
       if (!html) continue;
 
-      if (url === baseUrl || url === `${baseUrl}/`) {
-        discoveredLinks.push(...extractRelevantLinks(html, baseUrl));
+      for (const currentBaseUrl of baseUrls) {
+        if (url === currentBaseUrl || url === `${currentBaseUrl}/`) {
+          discoveredLinks.push(...extractRelevantLinks(html, currentBaseUrl));
+        }
       }
 
       for (const email of extractEmails(html)) {
-        const option = classifyEmail(email, url, companyDomain);
+        const option = classifyEmail(email, url, companyDomains);
         if (!option) continue;
 
         const existing = found.get(email);
@@ -244,7 +270,7 @@ export async function POST(req: Request) {
       if (!html) continue;
 
       for (const email of extractEmails(html)) {
-        const option = classifyEmail(email, url, companyDomain);
+        const option = classifyEmail(email, url, companyDomains);
         if (!option) continue;
 
         const existing = found.get(email);

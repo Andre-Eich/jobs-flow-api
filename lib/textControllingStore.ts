@@ -100,7 +100,6 @@ function ensureFile() {
 
 export function getTextControllingEntries(): TextControllingEntry[] {
   try {
-    ensureFile();
     return readJsonArray(filePath);
   } catch {
     return [];

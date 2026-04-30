@@ -121,7 +121,7 @@ export async function GET(req: Request) {
         const toValue = Array.isArray(item?.to) ? item.to[0] || "" : item?.to || "";
         const recipientEmail = safeString(toValue);
         const subject = safeString(item?.subject) || "Ohne Betreff";
-        const createdAt = safeString(item?.created_at) || new Date().toISOString();
+        const createdAt = safeString(item?.created_at);
         const lastEvent = safeString(item?.last_event);
         const entry = entryByEmailId.get(id);
 
@@ -256,6 +256,7 @@ export async function GET(req: Request) {
     const reminders = limited
       .filter((mail) => {
         const mailTime = new Date(mail.createdAt).getTime();
+        if (!Number.isFinite(mailTime)) return false;
 
         return (
           mail.status === "sent" &&

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
-import { getLeadById, syncLeadsFromTextControlling, upsertLeadMail } from "@/lib/leadStore";
+import { getLeadById, getLeads, upsertLeadMail } from "@/lib/leadStore";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
 import { buildFormalContactGreeting, sanitizeContactPerson } from "@/lib/contactPerson";
 import { compactInlineMailAttachments, loadJobsInlineMailAssets } from "@/lib/mailInlineAssets";
@@ -38,7 +38,7 @@ function findLeadForReminder(args: {
   const normalizedCompany = normalizeCompany(safeString(args.company));
   const city = safeString(args.city).toLowerCase();
 
-  return syncLeadsFromTextControlling().find((lead) => {
+  return getLeads().find((lead) => {
     const sameEmail =
       recipientEmail && safeString(lead.recipientEmail).toLowerCase() === recipientEmail;
     const sameCompany =

@@ -62,7 +62,6 @@ function safeString(value: unknown) {
 }
 
 function normalizeMailRecord(mail: Partial<BulkPackageMailRecord>): BulkPackageMailRecord {
-  const now = new Date().toISOString();
   const status =
     mail.status === "sending" || mail.status === "sent" || mail.status === "failed"
       ? mail.status
@@ -81,8 +80,8 @@ function normalizeMailRecord(mail: Partial<BulkPackageMailRecord>): BulkPackageM
     contactPerson: safeString(mail.contactPerson),
     status,
     errorMessage: safeString(mail.errorMessage),
-    createdAt: safeString(mail.createdAt) || now,
-    updatedAt: safeString(mail.updatedAt) || now,
+    createdAt: safeString(mail.createdAt),
+    updatedAt: safeString(mail.updatedAt),
     sentAt: safeString(mail.sentAt),
   };
 }
@@ -91,7 +90,7 @@ function normalizeBulkPackage(record: Partial<BulkPackageRecord>): BulkPackageRe
   const mails = Array.isArray(record.mails)
     ? record.mails.map((mail) => normalizeMailRecord(mail))
     : [];
-  const createdAt = safeString(record.createdAt) || new Date().toISOString();
+  const createdAt = safeString(record.createdAt);
 
   return {
     id: safeString(record.id) || crypto.randomUUID(),
@@ -114,7 +113,6 @@ function normalizeBulkPackage(record: Partial<BulkPackageRecord>): BulkPackageRe
 
 export function getBulkPackages() {
   try {
-    ensureFile();
     const file = fs.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(file);
     return Array.isArray(parsed)

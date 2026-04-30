@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { syncLeadsFromTextControlling } from "@/lib/leadStore";
+import { getLeads } from "@/lib/leadStore";
 
 type GeocodeResult = {
   lat: number;
@@ -145,7 +145,7 @@ function buildCandidateKey(candidate: { website?: string; name?: string; vicinit
 function buildCrmLeadKeys() {
   const keys = new Set<string>();
 
-  for (const lead of syncLeadsFromTextControlling()) {
+  for (const lead of getLeads()) {
     const companyKey = normalizeCompany(lead.company);
     if (companyKey) {
       keys.add(companyKey);

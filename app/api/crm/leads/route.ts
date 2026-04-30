@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { syncLeadsFromTextControlling, upsertLead } from "@/lib/leadStore";
+import { getLeads, upsertLead } from "@/lib/leadStore";
 
 type CrmLeadUpsertPayload = {
   company?: string;
@@ -24,8 +24,8 @@ function safeString(value: unknown) {
 
 export async function GET() {
   try {
-    const leads = syncLeadsFromTextControlling().sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    const leads = getLeads().sort(
+      (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
     );
 
     return NextResponse.json({
@@ -85,8 +85,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       count: stored.length,
-      leads: syncLeadsFromTextControlling().sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      leads: getLeads().sort(
+        (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
       ),
     });
   } catch (error: unknown) {

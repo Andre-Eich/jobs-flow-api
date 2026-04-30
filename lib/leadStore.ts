@@ -200,7 +200,7 @@ function normalizeLeadMail(mail: LeadMailRecord): LeadMailRecord {
   return {
     id: safeString(mail.id) || crypto.randomUUID(),
     emailId: safeString(mail.emailId),
-    createdAt: safeString(mail.createdAt) || new Date().toISOString(),
+    createdAt: safeString(mail.createdAt),
     subject: safeString(mail.subject),
     bodyText: safeString(mail.bodyText),
     textBlockTitles: Array.isArray(mail.textBlockTitles)
@@ -241,8 +241,8 @@ function normalizeLeadRecord(lead: LeadRecord): LeadRecord {
       lead.channel === "kaltakquise" || lead.channel === "streumail" || lead.channel === "mixed"
         ? lead.channel
         : "kaltakquise",
-    createdAt: safeString(lead.createdAt) || new Date().toISOString(),
-    updatedAt: safeString(lead.updatedAt) || new Date().toISOString(),
+    createdAt: safeString(lead.createdAt),
+    updatedAt: safeString(lead.updatedAt),
     mails: mails.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     ),
@@ -251,7 +251,6 @@ function normalizeLeadRecord(lead: LeadRecord): LeadRecord {
 
 export function getLeads() {
   try {
-    ensureFile();
     return readJsonArray(filePath).map((item) => normalizeLeadRecord(item));
   } catch {
     return [];
@@ -550,7 +549,7 @@ function leadMailFromEntry(entry: TextControllingEntry): LeadMailRecord {
   return normalizeLeadMail({
     id: safeString(entry.id) || crypto.randomUUID(),
     emailId: safeString(entry.emailId),
-    createdAt: safeString(entry.createdAt) || new Date().toISOString(),
+    createdAt: safeString(entry.createdAt),
     subject: safeString(entry.subject),
     bodyText: safeString(entry.bodyText),
     textBlockTitles: Array.isArray(entry.textBlockTitles) ? entry.textBlockTitles : [],
@@ -594,7 +593,7 @@ export function syncLeadsFromTextControlling() {
 }
 
 export function getLeadById(id: string) {
-  return syncLeadsFromTextControlling().find((lead) => lead.id === safeString(id)) || null;
+  return getLeads().find((lead) => lead.id === safeString(id)) || null;
 }
 
 export function updateLeadById(
