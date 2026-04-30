@@ -35,12 +35,12 @@ export async function loadJobsInlineMailAssets() {
     loadInlineAttachment({
       filename: "andre-eichstaedt.png",
       contentType: "image/png",
-      contentId: "andre-eichstaedt-portrait",
+      contentId: "andre-eichstaedt",
     }),
     loadInlineAttachment({
       filename: "footer-logos.png",
       contentType: "image/png",
-      contentId: "jobs-footer-logos",
+      contentId: "footer-logos",
     }),
   ]);
 

@@ -4,6 +4,7 @@ import { buildCrmMetaHtmlComment, buildCrmMetaText } from "@/lib/crmMeta";
 import { saveTextControllingEntry } from "@/lib/textControllingStore";
 import { upsertLeadMail } from "@/lib/leadStore";
 import { buildFormalContactGreeting } from "@/lib/contactPerson";
+import { compactInlineMailAttachments, loadJobsInlineMailAssets } from "@/lib/mailInlineAssets";
 
 function escapeHtml(value: string) {
   return value
@@ -46,6 +47,7 @@ function lowercaseFirstContentSentence(text: string) {
 }
 
 function lowercaseOnlyFirstLetterOfFirstSentence(text: string) {
+  return String(text || "");
   void lowercaseFirstContentSentence;
   const source = String(text || "");
   const greetingMatch = source.match(
@@ -224,6 +226,9 @@ export async function POST(req: Request) {
 
     const finalText = buildFinalText(text, String(contactPerson || "").trim(), hiddenMarker);
     const finalSubject = buildSubject(jobTitle, followUp);
+    const { portrait, footer } = await loadJobsInlineMailAssets();
+    const portraitImageUrl = "cid:andre-eichstaedt";
+    const footerLogosUrl = "cid:footer-logos";
     const crmMeta = {
       kind: "single" as const,
       jobTitle: String(jobTitle || "").trim(),
@@ -243,7 +248,11 @@ export async function POST(req: Request) {
           ${textToHtml(finalText)}
         </div>
 
-        <div style="margin-top: 28px;">
+        <div style="margin: 20px 0 18px;">
+          <img src="${portraitImageUrl}" alt="Andre Eichstädt" style="display:block; max-width: 220px; height: auto; margin: 0 0 12px 0; border: 0;" />
+        </div>
+
+        <div style="margin-top: 18px;">
           <div style="font-weight: 700;">Andre Eichstaedt</div>
           <div>Anzeigenberater</div>
           <div>Jobs in Berlin-Brandenburg</div>
@@ -260,6 +269,9 @@ export async function POST(req: Request) {
               www.jobs-in-berlin-brandenburg.de
             </a>
           </div>
+          <div style="margin: 18px 0 0;">
+            <img src="${footerLogosUrl}" alt="Jobs in Berlin Brandenburg" style="display:block; max-width: 420px; height: auto; margin: 0; border: 0;" />
+          </div>
           ${buildCrmMetaHtmlComment(crmMeta)}
         </div>
       </div>
@@ -272,6 +284,11 @@ export async function POST(req: Request) {
       subject: finalSubject,
       html,
       text: `${finalText}\n\n${buildCrmMetaText(crmMeta)}`,
+      attachments: compactInlineMailAttachments([portrait, footer]),
+      tags: [
+        { name: "project", value: "jobs-flow" },
+        { name: "workflow", value: "cold-mail" },
+      ],
       bcc: isTestMode
         ? testRecipient || undefined
         : sendCopy

@@ -86,6 +86,9 @@ Regeln für die Optionen:
 - nur echte plausible Varianten
 - keine Fantasieeinträge
 - wenn nichts da ist, leeres Array
+- Übernimm Firmennamen, Personennamen, Jobtitel und Ortsnamen in plausibler Originalschreibweise
+- Schreibe Eigennamen niemals pauschal klein
+- Wenn Angaben offensichtlich komplett kleingeschrieben sind, korrigiere sie behutsam, ohne Markennamen oder Abkürzungen zu verfälschen
 
 Aufgabe 2:
 Erstelle eine kurze, professionelle Vertriebs-E-Mail für ein Stellenportal.
@@ -100,7 +103,9 @@ WICHTIG:
   - "Bewerbung"
 - Fokus auf Nutzen für das Unternehmen
 - kurz, vertrieblich, professionell
-- Der erste Satz nach der Anrede muss mit einem kleingeschriebenen Wort beginnen
+- Beachte die deutsche Groß- und Kleinschreibung sorgfältig
+- Übernimm Firmennamen, Personennamen, Jobtitel und Ortsnamen in plausibler Originalschreibweise
+- Schreibe Eigennamen niemals pauschal klein
 - Verwende echte deutsche Umlaute: ä, ö, ü
 - Wenn eine Grußformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
 - Falls ein Ansprechpartner erkannt wird, darf er nur in der Anrede vorkommen, niemals im eigentlichen Mailtext

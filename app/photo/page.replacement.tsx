@@ -51,6 +51,14 @@ type JobData = {
   hookText?: string;
 };
 
+type ContactEmailOption = {
+  email: string;
+  source?: string;
+  confidence?: "high" | "medium" | "low";
+  needsReview?: boolean;
+  reason?: string;
+};
+
 type MailRecord = {
   id: string;
   subject: string;
@@ -127,6 +135,10 @@ const EMPTY_BULK_LEADS: BulkLead[] = [];
 
 function getDomain(email: string) {
   return email.split("@")[1]?.toLowerCase().trim() || "";
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 function normalizeCompany(company: string) {
@@ -442,6 +454,9 @@ export default function PhotoToMailPage({
   const [successMessage, setSuccessMessage] = useState("");
 
   const [jobData, setJobData] = useState<JobData>(EMPTY_JOB_DATA);
+  const [emailSearchLoading, setEmailSearchLoading] = useState(false);
+  const [emailSearchError, setEmailSearchError] = useState("");
+  const [emailSearchOptions, setEmailSearchOptions] = useState<ContactEmailOption[]>([]);
 
   const [crmView, setCrmView] = useState<"company" | "all">("all");
   const [mailHistory, setMailHistory] = useState<MailRecord[]>([]);
@@ -524,7 +539,13 @@ export default function PhotoToMailPage({
     return Array.from(new Set(values));
   }
 
+  function mergeEmailOptions(primary: string, options: string[], contactOptions: ContactEmailOption[] = []) {
+    return uniqueOptions(primary, [...options, ...contactOptions.map((option) => option.email)]);
+  }
+
   function applyAnalyzeData(data: AnalyzeResponse) {
+    setEmailSearchError("");
+    setEmailSearchOptions([]);
     setJobData((prev) => ({
       ...prev,
       jobTitle: data.jobTitle || "",
@@ -734,6 +755,67 @@ export default function PhotoToMailPage({
       setError("Die E-Mail konnte nicht generiert werden.");
     } finally {
       setGeneratingEmail(false);
+    }
+  }
+
+  async function handleFindContactEmail() {
+    setEmailSearchError("");
+    setSuccessMessage("");
+
+    try {
+      setEmailSearchLoading(true);
+
+      const response = await fetch("/api/find-contact-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyName: jobData.company,
+          websiteUrl: "",
+          jobUrl: jobUrl.trim(),
+          sourceUrl: jobUrl.trim(),
+          contactPerson: jobData.contactPerson,
+          jobTitle: jobData.jobTitle,
+          city: "",
+        }),
+      });
+
+      const data = await response.json();
+      const options: ContactEmailOption[] = Array.isArray(data.options)
+        ? data.options
+            .map((item: ContactEmailOption) => ({
+              email: String(item?.email || "").trim(),
+              source: String(item?.source || "").trim(),
+              confidence: item?.confidence,
+              needsReview: Boolean(item?.needsReview),
+              reason: String(item?.reason || "").trim(),
+            }))
+            .filter((item: ContactEmailOption) => isValidEmail(item.email))
+            .slice(0, 3)
+        : [];
+      const primaryEmail = String(data.email || options[0]?.email || "").trim();
+
+      if (!response.ok || !primaryEmail || options.length === 0) {
+        setEmailSearchOptions([]);
+        setEmailSearchError("Keine sichere E-Mail gefunden. Bitte manuell eintragen oder Website prüfen.");
+        return;
+      }
+
+      setEmailSearchOptions(options);
+      setJobData((prev) => ({
+        ...prev,
+        email: primaryEmail,
+        emailOptions: mergeEmailOptions(primaryEmail, prev.emailOptions, options),
+      }));
+      setSuccessMessage(
+        options.some((option) => option.needsReview)
+          ? "Kontaktadresse gefunden. Bitte markierte Treffer prüfen."
+          : "Kontaktadresse gefunden und übernommen."
+      );
+    } catch {
+      setEmailSearchOptions([]);
+      setEmailSearchError("Keine sichere E-Mail gefunden. Bitte manuell eintragen oder Website prüfen.");
+    } finally {
+      setEmailSearchLoading(false);
     }
   }
 
@@ -1132,6 +1214,9 @@ export default function PhotoToMailPage({
   }
 
   const hasAnalyzedSource = !!jobData.jobTitle || !!jobData.company || !!jobData.contactPerson || !!jobData.email;
+  const hasValidEmail = isValidEmail(jobData.email);
+  const canSearchContactEmail =
+    hasAnalyzedSource && !hasValidEmail && Boolean(jobData.company.trim() || jobUrl.trim());
 
   return (
     <>
@@ -1309,6 +1394,60 @@ export default function PhotoToMailPage({
                   options={jobData.emailOptions}
                   onSelectOption={(value) => setFieldValue("email", value)}
                 />
+                {canSearchContactEmail && (
+                  <div
+                    style={{
+                      border: "1px solid #dbeafe",
+                      background: "#eff6ff",
+                      borderRadius: "10px",
+                      padding: "12px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={handleFindContactEmail}
+                      disabled={emailSearchLoading}
+                      style={{
+                        ...primaryButtonStyle(emailSearchLoading),
+                        fontSize: "14px",
+                        padding: "9px 13px",
+                      }}
+                    >
+                      {emailSearchLoading ? "Suche Kontaktadresse ..." : "Online nach passender E-Mail suchen"}
+                    </button>
+
+                    {emailSearchError && (
+                      <div style={{ marginTop: "10px", color: "#b91c1c", fontWeight: 600 }}>
+                        {emailSearchError}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {emailSearchOptions.length > 0 && (
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "-8px" }}>
+                    {emailSearchOptions.map((option) => (
+                      <button
+                        key={`${option.email}-${option.source || ""}`}
+                        type="button"
+                        onClick={() => setFieldValue("email", option.email)}
+                        title={[option.reason, option.source].filter(Boolean).join(" - ")}
+                        style={{
+                          padding: "6px 10px",
+                          border: option.needsReview ? "1px solid #f59e0b" : "1px solid #cbd5e1",
+                          borderRadius: "999px",
+                          background: option.email === jobData.email ? "#111827" : "#ffffff",
+                          color: option.email === jobData.email ? "#ffffff" : "#111827",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                        }}
+                      >
+                        {option.email}
+                        {option.needsReview ? " · Bitte prüfen" : ""}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { extractCrmMeta, type CrmMeta } from "@/lib/crmMeta";
 import { getTextControllingEntries } from "@/lib/textControllingStore";
+import { filterJobsFlowEmails, getKnownJobsFlowResendIds } from "@/lib/jobsFlowMailScope";
 
 type RawEmailListItem = {
   id?: string;
@@ -81,14 +82,32 @@ export async function GET(req: Request) {
     const rawEmails: RawEmailListItem[] = Array.isArray(result.data?.data)
       ? (result.data.data as RawEmailListItem[])
       : [];
+    const knownJobsFlowIds = getKnownJobsFlowResendIds();
+    const scopedRawEmails = filterJobsFlowEmails(rawEmails);
     const entries = getTextControllingEntries();
     const entryByEmailId = new Map(
       entries
-        .filter((entry) => entry.emailId)
+        .filter((entry) => entry.emailId && knownJobsFlowIds.has(String(entry.emailId)))
         .map((entry) => [String(entry.emailId), entry] as const)
     );
 
-    const sortedRawEmails = rawEmails.sort(
+    const scopedRawById = new Map(
+      scopedRawEmails
+        .map((email) => [safeString(email.id), email] as const)
+        .filter(([id]) => Boolean(id))
+    );
+    const localRawEmails: RawEmailListItem[] = entries
+      .filter((entry) => entry.emailId && knownJobsFlowIds.has(String(entry.emailId)))
+      .map((entry) => ({
+        id: String(entry.emailId),
+        to: entry.recipientEmail,
+        subject: entry.subject,
+        created_at: entry.createdAt,
+        last_event: entry.lastEvent || "",
+      }))
+      .filter((email) => !scopedRawById.has(safeString(email.id)));
+
+    const sortedRawEmails = [...scopedRawEmails, ...localRawEmails].sort(
       (a, b) =>
         new Date(safeString(b?.created_at)).getTime() -
         new Date(safeString(a?.created_at)).getTime()

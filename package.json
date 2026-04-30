@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "check:protected": "node scripts/check-protected-files.mjs",
+    "check:safe": "npm run check:protected && npm run lint && npx tsc --noEmit",
     "backup:leads": "node scripts/backup-leads.mjs"
   },
   "dependencies": {

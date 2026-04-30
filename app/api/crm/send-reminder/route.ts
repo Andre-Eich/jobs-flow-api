@@ -253,6 +253,10 @@ export async function POST(req: Request) {
       html,
       text: `${reminderTextPlain}\n\n${buildCrmMetaText(crmMeta)}`,
       attachments: compactInlineMailAttachments([portrait, footer]),
+      tags: [
+        { name: "project", value: "jobs-flow" },
+        { name: "workflow", value: "reminder" },
+      ],
       bcc: Boolean(testMode)
         ? recipientEmail || undefined
         : Boolean(sendCopy)

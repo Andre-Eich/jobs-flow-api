@@ -365,7 +365,10 @@ WICHTIG:
 - Das ist KEINE Bewerbung
 - Fokus auf Nutzen für das Unternehmen
 - kurz, klar, professionell
-- Der erste Satz nach der Anrede muss mit einem kleingeschriebenen Wort beginnen
+- Beachte die deutsche Groß- und Kleinschreibung sorgfältig
+- Übernimm Firmennamen, Personennamen, Jobtitel und Ortsnamen in plausibler Originalschreibweise
+- Schreibe Eigennamen niemals pauschal klein
+- Wenn extrahierte Angaben offensichtlich komplett kleingeschrieben sind, korrigiere sie behutsam, ohne Markennamen oder Abkürzungen zu verfälschen
 - Verwende echte deutsche Umlaute: ä, ö, ü
 - Wenn eine Grußformel erwähnt oder ausgegeben wird, dann immer "Mit freundlichen Grüßen" mit ß
 - Der Ansprechpartner darf nur in der Anrede stehen, niemals im eigentlichen Mailtext

@@ -202,6 +202,10 @@ export async function POST(req: Request) {
       html,
       text: `${preparedTextPlain}\nAndre Eichstaedt\n\n${buildCrmMetaText(crmMeta)}\n[BULK_META:${JSON.stringify(bulkMeta)}]`,
       attachments: compactInlineMailAttachments([portrait, footer]),
+      tags: [
+        { name: "project", value: "jobs-flow" },
+        { name: "workflow", value: "bulk-mail" },
+      ],
       bcc: isTestMode ? testRecipient || undefined : sendCopy ? "a.eichstaedt@jobs-in-berlin-brandenburg.de" : undefined,
     });
 
